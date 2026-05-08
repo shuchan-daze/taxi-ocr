@@ -1,0 +1,11 @@
+key.json
+*.json
+.env
+secrets.toml
+.streamlit/secrets.toml
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
