@@ -18,6 +18,7 @@ st.markdown("""
 h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
 .stApp > header {background: transparent;}
 .title-block {margin-bottom: 1.5rem;}
+.result-card h1, .result-card h2, .result-card h3, .result-card h4 {color: #010519 !important;}
 .title-block h1 {color: white !important; font-size: 22px !important; font-weight: 500 !important; margin: 0 0 6px !important; display: flex; align-items: center; gap: 10px;}
 .title-block .subtitle {color: #d4af37; font-size: 11px; letter-spacing: 0.15em; margin: 0 0 8px;}
 .title-block .divider {height: 1px; background: linear-gradient(90deg, #d4af37, transparent);}
