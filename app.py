@@ -107,6 +107,16 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [data-testid="stFileUploader"] button:hover {
     background: #0a1845 !important;
 }
+
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] button * {
+    color: white !important;
+}
+[data-testid="stFileUploader"] button p,
+[data-testid="stFileUploader"] button div,
+[data-testid="stFileUploader"] button span {
+    color: white !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
