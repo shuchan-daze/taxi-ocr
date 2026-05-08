@@ -1568,12 +1568,11 @@ if len(imgs) == 2:
                     st.markdown(table_match.group(1))
                 
                 st.markdown('</div>', unsafe_allow_html=True)
+                
+                st.markdown('<br>', unsafe_allow_html=True)
+                if st.button('🔄 新しい日報を作成', use_container_width=True):
+                    st.rerun()
         except Exception as e:
             st.error(f'エラー: {e}')
 elif files and len(files) != 2:
     st.warning(f'2枚選択してください（現在{len(files)}枚）')
-
-
-st.markdown('---')
-if st.button('🔄 リフレッシュ', use_container_width=True):
-    st.rerun()
