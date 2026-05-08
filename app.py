@@ -61,8 +61,8 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
 table {width: 100%; font-size: 12px; border-collapse: collapse; border-radius: 12px; overflow: hidden; border: 0.5px solid #eee;}
 thead tr {background: #010519 !important; color: white !important;}
 thead tr th {padding: 8px 6px !important; font-weight: 500 !important; color: white !important;}
-tbody tr td {padding: 6px !important; color: #010519 !important;}
-tbody tr:nth-child(even) {background: #fafafa !important;}
+tbody tr td {padding: 6px !important; color: #010519 !important; background: white !important;}
+tbody tr:nth-child(even) td {background: #fafafa !important;}
 .stAlert {border-radius: 12px !important;}
 .stSpinner > div {border-top-color: #d4af37 !important;}
 </style>
