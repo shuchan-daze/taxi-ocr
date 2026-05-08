@@ -85,6 +85,19 @@ tbody tr td {padding: 6px !important; color: #010519 !important; background: whi
 tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .stAlert {border-radius: 12px !important;}
 .stSpinner > div {border-top-color: #d4af37 !important;}
+
+[data-testid="stFileUploaderDropzoneInstructions"] span {
+    font-size: 9px !important;
+    color: #888 !important;
+    line-height: 1 !important;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+[data-testid="stFileUploader"] section {
+    padding: 0.5rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -95,21 +108,6 @@ st.markdown("""
   <div class="divider"></div>
 </div>
 """, unsafe_allow_html=True)
-
-# JavaScriptで200MB表示を書き換え
-st.markdown('''
-<script>
-const observer = new MutationObserver(() => {
-  document.querySelectorAll('[data-testid="stFileUploaderDropzoneInstructions"] span').forEach(s => {
-    if (s.textContent.includes('MB per file')) {
-      s.textContent = '日報と営業明細書をアップしてください';
-    }
-  });
-});
-observer.observe(document.body, {childList: true, subtree: true});
-</script>
-''', unsafe_allow_html=True)
-
 
 def fix_orientation(img):
     try:
