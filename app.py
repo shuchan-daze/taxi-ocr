@@ -28,11 +28,6 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
     border-radius: 14px !important;
     padding: 1rem !important;
 }
-[data-testid="stFileUploaderDropzoneInstructions"] div::before {
-    content: "日報と明細の写真をアップしてください";
-    font-size: 14px; font-weight: 500; color: #010519; display: block; margin-bottom: 4px;
-}
-[data-testid="stFileUploaderDropzoneInstructions"] div span {display: none !important;}
 [data-testid="stFileUploaderDropzoneInstructions"] small {color: #999 !important; font-size: 11px !important;}
 .stButton button {
     background: #d4af37 !important;
@@ -109,7 +104,7 @@ def is_meter(client, img):
     return 'はい' in res.content[0].text
 
 st.markdown('<div class="upload-card">', unsafe_allow_html=True)
-files = st.file_uploader(' ', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, label_visibility='collapsed')
+files = st.file_uploader('日報と明細の写真をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True)
 
 imgs = []
 if files:
