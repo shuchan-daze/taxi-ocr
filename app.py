@@ -169,173 +169,769 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 }
 .particle {
     position: absolute;
-    width: 6px; height: 6px;
-    background: rgba(212, 175, 55, 0.6);
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 2px;
+    background: white;
     border-radius: 50%;
-    box-shadow: 0 0 12px rgba(212, 175, 55, 0.8);
+    box-shadow: 0 0 6px rgba(255,255,255,0.8), 0 0 12px rgba(212,175,55,0.6);
 }
-@keyframes float1 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(60vw,30vh) rotate(180deg) scale(1.5)} 50%{transform:translate(80vw,-40vh) rotate(360deg) scale(0.5)} 75%{transform:translate(-30vw,50vh) rotate(540deg) scale(1.3)} 100%{transform:translate(0,0) rotate(720deg) scale(1)} }
-@keyframes float2 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(-70vw,40vh) rotate(-180deg) scale(0.7)} 50%{transform:translate(50vw,60vh) rotate(-360deg) scale(1.4)} 75%{transform:translate(40vw,-50vh) rotate(-540deg) scale(0.8)} 100%{transform:translate(0,0) rotate(-720deg) scale(1)} }
-@keyframes float3 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(50vw,-60vh) rotate(270deg) scale(1.6)} 50%{transform:translate(-60vw,-30vh) rotate(540deg) scale(0.6)} 75%{transform:translate(-40vw,40vh) rotate(810deg) scale(1.2)} 100%{transform:translate(0,0) rotate(1080deg) scale(1)} }
-@keyframes float4 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(-50vw,-50vh) rotate(-270deg) scale(0.8)} 50%{transform:translate(70vw,30vh) rotate(-540deg) scale(1.5)} 75%{transform:translate(20vw,-60vh) rotate(-810deg) scale(0.9)} 100%{transform:translate(0,0) rotate(-1080deg) scale(1)} }
-@keyframes float5 { 0%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(80vw,80vh) rotate(360deg)} 66%{transform:translate(-80vw,-80vh) rotate(720deg)} 100%{transform:translate(0,0) rotate(1080deg)} }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.p1 {top: 56%; left: 53%; animation: curve2 4s linear infinite;}
-.p2 {top: 34%; left: 36%; animation: curve1 4s linear infinite reverse;}
-.p3 {top: 54%; left: 72%; animation: curve2 8s linear infinite;}
-.p4 {top: 84%; left: 67%; animation: curve1 4s linear infinite;}
-.p5 {top: 52%; left: 54%; animation: curve2 8s linear infinite;}
-.p6 {top: 64%; left: 89%; animation: curve2 4s linear infinite reverse;}
-.p7 {top: 15%; left: 72%; animation: curve1 8s linear infinite reverse;}
-.p8 {top: 45%; left: 56%; animation: curve3 3s linear infinite;}
-.p9 {top: 59%; left: 31%; animation: curve2 5s linear infinite;}
-.p10 {top: 64%; left: 71%; animation: curve2 4s linear infinite reverse;}
-.p11 {top: 11%; left: 50%; animation: curve2 4s linear infinite;}
-.p12 {top: 61%; left: 81%; animation: curve2 4s linear infinite;}
-.p13 {top: 9%; left: 19%; animation: curve2 3s linear infinite reverse;}
-.p14 {top: 92%; left: 58%; animation: curve1 3s linear infinite;}
-.p15 {top: 23%; left: 44%; animation: curve1 7s linear infinite reverse;}
-.p16 {top: 47%; left: 22%; animation: curve1 7s linear infinite;}
-.p17 {top: 12%; left: 86%; animation: curve1 4s linear infinite reverse;}
-.p18 {top: 74%; left: 56%; animation: curve3 4s linear infinite reverse;}
-.p19 {top: 12%; left: 21%; animation: curve2 8s linear infinite;}
-.p20 {top: 82%; left: 57%; animation: curve1 3s linear infinite;}
-.p21 {top: 23%; left: 42%; animation: curve2 4s linear infinite reverse;}
-.p22 {top: 23%; left: 31%; animation: curve3 7s linear infinite reverse;}
-.p23 {top: 34%; left: 37%; animation: curve3 3s linear infinite;}
-.p24 {top: 91%; left: 14%; animation: curve3 7s linear infinite;}
-.p25 {top: 79%; left: 11%; animation: curve2 5s linear infinite reverse;}
-.p26 {top: 56%; left: 48%; animation: curve1 6s linear infinite reverse;}
-.p27 {top: 52%; left: 73%; animation: curve2 3s linear infinite;}
-.p28 {top: 52%; left: 56%; animation: curve2 6s linear infinite reverse;}
-.p29 {top: 88%; left: 33%; animation: curve3 8s linear infinite;}
-.p30 {top: 93%; left: 45%; animation: curve2 4s linear infinite reverse;}
-.p31 {top: 42%; left: 61%; animation: curve1 3s linear infinite reverse;}
-.p32 {top: 37%; left: 13%; animation: curve3 7s linear infinite reverse;}
-.p33 {top: 66%; left: 73%; animation: curve3 4s linear infinite reverse;}
-.p34 {top: 42%; left: 57%; animation: curve2 8s linear infinite;}
-.p35 {top: 41%; left: 53%; animation: curve2 8s linear infinite reverse;}
-.p36 {top: 29%; left: 53%; animation: curve2 5s linear infinite reverse;}
-.p37 {top: 5%; left: 90%; animation: curve3 5s linear infinite;}
-.p38 {top: 90%; left: 90%; animation: curve3 4s linear infinite reverse;}
-.p39 {top: 95%; left: 34%; animation: curve3 6s linear infinite reverse;}
-.p40 {top: 5%; left: 19%; animation: curve2 7s linear infinite;}
-.p41 {top: 5%; left: 71%; animation: curve2 5s linear infinite reverse;}
-.p42 {top: 31%; left: 38%; animation: curve1 8s linear infinite reverse;}
-.p43 {top: 76%; left: 72%; animation: curve2 8s linear infinite reverse;}
-.p44 {top: 30%; left: 7%; animation: curve3 3s linear infinite;}
-.p45 {top: 79%; left: 9%; animation: curve1 3s linear infinite reverse;}
-.p46 {top: 52%; left: 76%; animation: curve2 8s linear infinite reverse;}
-.p47 {top: 29%; left: 17%; animation: curve1 6s linear infinite;}
-.p48 {top: 38%; left: 63%; animation: curve2 5s linear infinite;}
-.p49 {top: 62%; left: 93%; animation: curve1 8s linear infinite reverse;}
-.p50 {top: 76%; left: 27%; animation: curve3 5s linear infinite;}
-.p51 {top: 40%; left: 64%; animation: curve1 7s linear infinite;}
-.p52 {top: 66%; left: 78%; animation: curve1 8s linear infinite;}
-.p53 {top: 14%; left: 73%; animation: curve1 4s linear infinite;}
-.p54 {top: 19%; left: 47%; animation: curve1 6s linear infinite reverse;}
-.p55 {top: 88%; left: 5%; animation: curve2 7s linear infinite reverse;}
-.p56 {top: 86%; left: 6%; animation: curve3 7s linear infinite reverse;}
-.p57 {top: 38%; left: 26%; animation: curve2 4s linear infinite;}
-.p58 {top: 55%; left: 9%; animation: curve3 3s linear infinite;}
-.p59 {top: 76%; left: 42%; animation: curve1 4s linear infinite;}
-.p60 {top: 94%; left: 58%; animation: curve2 4s linear infinite;}
-.p61 {top: 67%; left: 26%; animation: curve3 5s linear infinite reverse;}
-.p62 {top: 14%; left: 76%; animation: curve2 4s linear infinite;}
-.p63 {top: 94%; left: 50%; animation: curve2 8s linear infinite;}
-.p64 {top: 91%; left: 19%; animation: curve2 8s linear infinite;}
-.p65 {top: 24%; left: 74%; animation: curve1 3s linear infinite reverse;}
-.p66 {top: 26%; left: 50%; animation: curve2 8s linear infinite;}
-.p67 {top: 48%; left: 11%; animation: curve1 5s linear infinite;}
-.p68 {top: 44%; left: 27%; animation: curve1 8s linear infinite;}
-.p69 {top: 68%; left: 87%; animation: curve1 7s linear infinite;}
-.p70 {top: 53%; left: 92%; animation: curve2 3s linear infinite reverse;}
-.p71 {top: 82%; left: 15%; animation: curve2 4s linear infinite reverse;}
-.p72 {top: 52%; left: 37%; animation: curve2 5s linear infinite;}
-.p73 {top: 79%; left: 55%; animation: curve3 3s linear infinite;}
-.p74 {top: 21%; left: 6%; animation: curve2 5s linear infinite reverse;}
-.p75 {top: 42%; left: 20%; animation: curve1 6s linear infinite;}
-.p76 {top: 10%; left: 50%; animation: curve2 4s linear infinite reverse;}
-.p77 {top: 47%; left: 89%; animation: curve1 5s linear infinite reverse;}
-.p78 {top: 39%; left: 83%; animation: curve2 4s linear infinite;}
-.p79 {top: 93%; left: 91%; animation: curve3 3s linear infinite reverse;}
-.p80 {top: 58%; left: 70%; animation: curve2 8s linear infinite;}
-.p81 {top: 72%; left: 57%; animation: curve2 3s linear infinite;}
-.p82 {top: 87%; left: 38%; animation: curve2 4s linear infinite;}
-.p83 {top: 60%; left: 5%; animation: curve1 7s linear infinite;}
-.p84 {top: 21%; left: 28%; animation: curve3 8s linear infinite;}
-.p85 {top: 37%; left: 28%; animation: curve1 7s linear infinite;}
-.p86 {top: 5%; left: 87%; animation: curve2 3s linear infinite reverse;}
-.p87 {top: 62%; left: 14%; animation: curve2 4s linear infinite;}
-.p88 {top: 48%; left: 60%; animation: curve1 4s linear infinite;}
-.p89 {top: 52%; left: 69%; animation: curve2 4s linear infinite reverse;}
-.p90 {top: 31%; left: 17%; animation: curve2 6s linear infinite;}
-.p91 {top: 27%; left: 22%; animation: curve2 6s linear infinite;}
-.p92 {top: 92%; left: 37%; animation: curve2 4s linear infinite;}
-.p93 {top: 35%; left: 35%; animation: curve2 7s linear infinite reverse;}
-.p94 {top: 55%; left: 72%; animation: curve1 7s linear infinite;}
-.p95 {top: 37%; left: 46%; animation: curve3 7s linear infinite reverse;}
-.p96 {top: 29%; left: 17%; animation: curve1 8s linear infinite;}
-.p97 {top: 60%; left: 12%; animation: curve2 5s linear infinite;}
-.p98 {top: 89%; left: 42%; animation: curve3 4s linear infinite reverse;}
-.p99 {top: 6%; left: 78%; animation: curve3 7s linear infinite;}
-.p100 {top: 51%; left: 19%; animation: curve3 4s linear infinite reverse;}
-
-@keyframes curve1 {
-  0% {transform: translate(0,0) rotate(0deg);}
-  25% {transform: translate(35vw, -15vh) rotate(180deg);}
-  50% {transform: translate(60vw, 20vh) rotate(360deg);}
-  75% {transform: translate(25vw, 45vh) rotate(540deg);}
-  100% {transform: translate(0,0) rotate(720deg);}
+.particle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(212,175,55,0.8), white);
+    transform: translateX(-100%) translateY(-50%);
+    transform-origin: right center;
 }
-@keyframes curve2 {
-  0% {transform: translate(0,0) rotate(0deg);}
-  25% {transform: translate(-30vw, 20vh) rotate(-180deg);}
-  50% {transform: translate(-55vw, -10vh) rotate(-360deg);}
-  75% {transform: translate(-15vw, -40vh) rotate(-540deg);}
-  100% {transform: translate(0,0) rotate(-720deg);}
-}
-@keyframes curve3 {
-  0% {transform: translate(0,0) rotate(0deg);}
-  25% {transform: translate(40vw, 30vh) rotate(180deg);}
-  50% {transform: translate(10vw, 55vh) rotate(360deg);}
-  75% {transform: translate(-30vw, 30vh) rotate(540deg);}
-  100% {transform: translate(0,0) rotate(720deg);}
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .particle {animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1) !important;}
+@keyframes warp1 {
+  0% {transform: rotate(327deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(327deg) translateX(94vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp2 {
+  0% {transform: rotate(114deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(114deg) translateX(97vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp3 {
+  0% {transform: rotate(279deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(279deg) translateX(91vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp4 {
+  0% {transform: rotate(47deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(47deg) translateX(107vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp5 {
+  0% {transform: rotate(287deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(287deg) translateX(105vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp6 {
+  0% {transform: rotate(214deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(214deg) translateX(108vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp7 {
+  0% {transform: rotate(3deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(3deg) translateX(100vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp8 {
+  0% {transform: rotate(79deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(79deg) translateX(107vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp9 {
+  0% {transform: rotate(47deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(47deg) translateX(128vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp10 {
+  0% {transform: rotate(309deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(309deg) translateX(113vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp11 {
+  0% {transform: rotate(274deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(274deg) translateX(95vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp12 {
+  0% {transform: rotate(282deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(282deg) translateX(117vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp13 {
+  0% {transform: rotate(185deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(185deg) translateX(104vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp14 {
+  0% {transform: rotate(116deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(116deg) translateX(117vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp15 {
+  0% {transform: rotate(51deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(51deg) translateX(128vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp16 {
+  0% {transform: rotate(186deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(186deg) translateX(100vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp17 {
+  0% {transform: rotate(136deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(136deg) translateX(89vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp18 {
+  0% {transform: rotate(125deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(125deg) translateX(100vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp19 {
+  0% {transform: rotate(327deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(327deg) translateX(108vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp20 {
+  0% {transform: rotate(28deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(28deg) translateX(109vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp21 {
+  0% {transform: rotate(205deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(205deg) translateX(114vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp22 {
+  0% {transform: rotate(290deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(290deg) translateX(120vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp23 {
+  0% {transform: rotate(329deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(329deg) translateX(138vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp24 {
+  0% {transform: rotate(287deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(287deg) translateX(148vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp25 {
+  0% {transform: rotate(298deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(298deg) translateX(131vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp26 {
+  0% {transform: rotate(70deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(70deg) translateX(145vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp27 {
+  0% {transform: rotate(56deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(56deg) translateX(99vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp28 {
+  0% {transform: rotate(216deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(216deg) translateX(88vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp29 {
+  0% {transform: rotate(239deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(239deg) translateX(147vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp30 {
+  0% {transform: rotate(5deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(5deg) translateX(94vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp31 {
+  0% {transform: rotate(136deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(136deg) translateX(123vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp32 {
+  0% {transform: rotate(232deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(232deg) translateX(80vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp33 {
+  0% {transform: rotate(134deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(134deg) translateX(144vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp34 {
+  0% {transform: rotate(54deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(54deg) translateX(118vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp35 {
+  0% {transform: rotate(101deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(101deg) translateX(99vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp36 {
+  0% {transform: rotate(271deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(271deg) translateX(80vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp37 {
+  0% {transform: rotate(57deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(57deg) translateX(126vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp38 {
+  0% {transform: rotate(157deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(157deg) translateX(110vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp39 {
+  0% {transform: rotate(40deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(40deg) translateX(90vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp40 {
+  0% {transform: rotate(272deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(272deg) translateX(96vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp41 {
+  0% {transform: rotate(281deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(281deg) translateX(101vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp42 {
+  0% {transform: rotate(216deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(216deg) translateX(107vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp43 {
+  0% {transform: rotate(353deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(353deg) translateX(105vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp44 {
+  0% {transform: rotate(343deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(343deg) translateX(127vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp45 {
+  0% {transform: rotate(61deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(61deg) translateX(111vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp46 {
+  0% {transform: rotate(301deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(301deg) translateX(150vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp47 {
+  0% {transform: rotate(36deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(36deg) translateX(87vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp48 {
+  0% {transform: rotate(169deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(169deg) translateX(89vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp49 {
+  0% {transform: rotate(248deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(248deg) translateX(107vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp50 {
+  0% {transform: rotate(292deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(292deg) translateX(140vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp51 {
+  0% {transform: rotate(208deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(208deg) translateX(104vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp52 {
+  0% {transform: rotate(181deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(181deg) translateX(134vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp53 {
+  0% {transform: rotate(27deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(27deg) translateX(92vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp54 {
+  0% {transform: rotate(55deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(55deg) translateX(111vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp55 {
+  0% {transform: rotate(71deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(71deg) translateX(134vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp56 {
+  0% {transform: rotate(38deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(38deg) translateX(136vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp57 {
+  0% {transform: rotate(50deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(50deg) translateX(86vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp58 {
+  0% {transform: rotate(7deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(7deg) translateX(91vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp59 {
+  0% {transform: rotate(85deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(85deg) translateX(132vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp60 {
+  0% {transform: rotate(205deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(205deg) translateX(87vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp61 {
+  0% {transform: rotate(199deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(199deg) translateX(113vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp62 {
+  0% {transform: rotate(146deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(146deg) translateX(134vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp63 {
+  0% {transform: rotate(284deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(284deg) translateX(142vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp64 {
+  0% {transform: rotate(29deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(29deg) translateX(149vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp65 {
+  0% {transform: rotate(25deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(25deg) translateX(141vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp66 {
+  0% {transform: rotate(80deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(80deg) translateX(87vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp67 {
+  0% {transform: rotate(95deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(95deg) translateX(88vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp68 {
+  0% {transform: rotate(120deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(120deg) translateX(131vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp69 {
+  0% {transform: rotate(126deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(126deg) translateX(85vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp70 {
+  0% {transform: rotate(298deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(298deg) translateX(146vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp71 {
+  0% {transform: rotate(342deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(342deg) translateX(120vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp72 {
+  0% {transform: rotate(343deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(343deg) translateX(118vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp73 {
+  0% {transform: rotate(37deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(37deg) translateX(81vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp74 {
+  0% {transform: rotate(51deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(51deg) translateX(89vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp75 {
+  0% {transform: rotate(67deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(67deg) translateX(124vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp76 {
+  0% {transform: rotate(189deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(189deg) translateX(116vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp77 {
+  0% {transform: rotate(154deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(154deg) translateX(147vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp78 {
+  0% {transform: rotate(153deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(153deg) translateX(93vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp79 {
+  0% {transform: rotate(59deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(59deg) translateX(93vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp80 {
+  0% {transform: rotate(144deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(144deg) translateX(106vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp81 {
+  0% {transform: rotate(324deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(324deg) translateX(113vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp82 {
+  0% {transform: rotate(26deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(26deg) translateX(91vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp83 {
+  0% {transform: rotate(22deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(22deg) translateX(80vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp84 {
+  0% {transform: rotate(134deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(134deg) translateX(100vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp85 {
+  0% {transform: rotate(218deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(218deg) translateX(81vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp86 {
+  0% {transform: rotate(353deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(353deg) translateX(99vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp87 {
+  0% {transform: rotate(298deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(298deg) translateX(150vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp88 {
+  0% {transform: rotate(157deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(157deg) translateX(126vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp89 {
+  0% {transform: rotate(20deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(20deg) translateX(125vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp90 {
+  0% {transform: rotate(52deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(52deg) translateX(125vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp91 {
+  0% {transform: rotate(208deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(208deg) translateX(99vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp92 {
+  0% {transform: rotate(83deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(83deg) translateX(102vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp93 {
+  0% {transform: rotate(170deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(170deg) translateX(132vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp94 {
+  0% {transform: rotate(127deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(127deg) translateX(114vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp95 {
+  0% {transform: rotate(195deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(195deg) translateX(84vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp96 {
+  0% {transform: rotate(235deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(235deg) translateX(124vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp97 {
+  0% {transform: rotate(116deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(116deg) translateX(108vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp98 {
+  0% {transform: rotate(168deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(168deg) translateX(115vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp99 {
+  0% {transform: rotate(142deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(142deg) translateX(124vmax) scale(1.5); opacity: 0;}
+}
+@keyframes warp100 {
+  0% {transform: rotate(274deg) translateX(0) scale(0.3); opacity: 0;}
+  10% {opacity: 1;}
+  100% {transform: rotate(274deg) translateX(122vmax) scale(1.5); opacity: 0;}
+}
+.p1 {animation: warp1 1.04s linear infinite; animation-delay: -0.83s;}
+.p2 {animation: warp2 2.10s linear infinite; animation-delay: -2.03s;}
+.p3 {animation: warp3 1.89s linear infinite; animation-delay: -0.10s;}
+.p4 {animation: warp4 1.35s linear infinite; animation-delay: -1.81s;}
+.p5 {animation: warp5 2.07s linear infinite; animation-delay: -2.10s;}
+.p6 {animation: warp6 1.67s linear infinite; animation-delay: -0.83s;}
+.p7 {animation: warp7 2.05s linear infinite; animation-delay: -1.02s;}
+.p8 {animation: warp8 2.44s linear infinite; animation-delay: -1.01s;}
+.p9 {animation: warp9 1.15s linear infinite; animation-delay: -2.54s;}
+.p10 {animation: warp10 2.21s linear infinite; animation-delay: -2.19s;}
+.p11 {animation: warp11 2.46s linear infinite; animation-delay: -1.14s;}
+.p12 {animation: warp12 2.24s linear infinite; animation-delay: -1.86s;}
+.p13 {animation: warp13 2.06s linear infinite; animation-delay: -0.14s;}
+.p14 {animation: warp14 2.48s linear infinite; animation-delay: -2.57s;}
+.p15 {animation: warp15 1.42s linear infinite; animation-delay: -1.91s;}
+.p16 {animation: warp16 1.56s linear infinite; animation-delay: -0.63s;}
+.p17 {animation: warp17 1.91s linear infinite; animation-delay: -0.51s;}
+.p18 {animation: warp18 1.69s linear infinite; animation-delay: -0.81s;}
+.p19 {animation: warp19 2.03s linear infinite; animation-delay: -2.53s;}
+.p20 {animation: warp20 2.23s linear infinite; animation-delay: -2.42s;}
+.p21 {animation: warp21 1.10s linear infinite; animation-delay: -2.74s;}
+.p22 {animation: warp22 1.32s linear infinite; animation-delay: -1.50s;}
+.p23 {animation: warp23 1.21s linear infinite; animation-delay: -0.42s;}
+.p24 {animation: warp24 1.39s linear infinite; animation-delay: -1.75s;}
+.p25 {animation: warp25 1.54s linear infinite; animation-delay: -2.99s;}
+.p26 {animation: warp26 1.74s linear infinite; animation-delay: -2.27s;}
+.p27 {animation: warp27 1.94s linear infinite; animation-delay: -2.38s;}
+.p28 {animation: warp28 1.58s linear infinite; animation-delay: -1.79s;}
+.p29 {animation: warp29 1.38s linear infinite; animation-delay: -1.66s;}
+.p30 {animation: warp30 2.02s linear infinite; animation-delay: -1.61s;}
+.p31 {animation: warp31 1.17s linear infinite; animation-delay: -1.30s;}
+.p32 {animation: warp32 2.43s linear infinite; animation-delay: -2.63s;}
+.p33 {animation: warp33 2.14s linear infinite; animation-delay: -1.52s;}
+.p34 {animation: warp34 2.26s linear infinite; animation-delay: -1.52s;}
+.p35 {animation: warp35 1.56s linear infinite; animation-delay: -0.48s;}
+.p36 {animation: warp36 1.90s linear infinite; animation-delay: -1.47s;}
+.p37 {animation: warp37 2.32s linear infinite; animation-delay: -2.49s;}
+.p38 {animation: warp38 1.09s linear infinite; animation-delay: -2.63s;}
+.p39 {animation: warp39 2.10s linear infinite; animation-delay: -2.45s;}
+.p40 {animation: warp40 1.19s linear infinite; animation-delay: -1.43s;}
+.p41 {animation: warp41 1.40s linear infinite; animation-delay: -2.62s;}
+.p42 {animation: warp42 2.39s linear infinite; animation-delay: -2.27s;}
+.p43 {animation: warp43 2.07s linear infinite; animation-delay: -1.20s;}
+.p44 {animation: warp44 1.66s linear infinite; animation-delay: -1.55s;}
+.p45 {animation: warp45 1.34s linear infinite; animation-delay: -1.01s;}
+.p46 {animation: warp46 1.35s linear infinite; animation-delay: -0.66s;}
+.p47 {animation: warp47 1.34s linear infinite; animation-delay: -2.72s;}
+.p48 {animation: warp48 1.77s linear infinite; animation-delay: -0.84s;}
+.p49 {animation: warp49 1.81s linear infinite; animation-delay: -2.17s;}
+.p50 {animation: warp50 1.36s linear infinite; animation-delay: -1.42s;}
+.p51 {animation: warp51 1.14s linear infinite; animation-delay: -1.98s;}
+.p52 {animation: warp52 1.62s linear infinite; animation-delay: -2.59s;}
+.p53 {animation: warp53 1.09s linear infinite; animation-delay: -2.18s;}
+.p54 {animation: warp54 1.29s linear infinite; animation-delay: -1.61s;}
+.p55 {animation: warp55 1.28s linear infinite; animation-delay: -1.39s;}
+.p56 {animation: warp56 2.21s linear infinite; animation-delay: -2.57s;}
+.p57 {animation: warp57 1.98s linear infinite; animation-delay: -1.62s;}
+.p58 {animation: warp58 2.39s linear infinite; animation-delay: -2.55s;}
+.p59 {animation: warp59 1.73s linear infinite; animation-delay: -0.64s;}
+.p60 {animation: warp60 1.25s linear infinite; animation-delay: -0.01s;}
+.p61 {animation: warp61 2.39s linear infinite; animation-delay: -2.36s;}
+.p62 {animation: warp62 2.04s linear infinite; animation-delay: -2.19s;}
+.p63 {animation: warp63 1.23s linear infinite; animation-delay: -0.89s;}
+.p64 {animation: warp64 1.09s linear infinite; animation-delay: -0.94s;}
+.p65 {animation: warp65 1.75s linear infinite; animation-delay: -2.56s;}
+.p66 {animation: warp66 2.44s linear infinite; animation-delay: -0.24s;}
+.p67 {animation: warp67 1.89s linear infinite; animation-delay: -2.03s;}
+.p68 {animation: warp68 1.18s linear infinite; animation-delay: -2.67s;}
+.p69 {animation: warp69 1.93s linear infinite; animation-delay: -1.26s;}
+.p70 {animation: warp70 1.47s linear infinite; animation-delay: -0.78s;}
+.p71 {animation: warp71 1.36s linear infinite; animation-delay: -1.19s;}
+.p72 {animation: warp72 1.69s linear infinite; animation-delay: -2.79s;}
+.p73 {animation: warp73 1.69s linear infinite; animation-delay: -3.00s;}
+.p74 {animation: warp74 1.81s linear infinite; animation-delay: -1.52s;}
+.p75 {animation: warp75 2.32s linear infinite; animation-delay: -2.64s;}
+.p76 {animation: warp76 1.24s linear infinite; animation-delay: -2.50s;}
+.p77 {animation: warp77 1.01s linear infinite; animation-delay: -2.45s;}
+.p78 {animation: warp78 2.41s linear infinite; animation-delay: -0.40s;}
+.p79 {animation: warp79 2.11s linear infinite; animation-delay: -0.47s;}
+.p80 {animation: warp80 2.08s linear infinite; animation-delay: -0.61s;}
+.p81 {animation: warp81 1.76s linear infinite; animation-delay: -0.75s;}
+.p82 {animation: warp82 1.95s linear infinite; animation-delay: -2.49s;}
+.p83 {animation: warp83 1.50s linear infinite; animation-delay: -0.39s;}
+.p84 {animation: warp84 2.11s linear infinite; animation-delay: -1.66s;}
+.p85 {animation: warp85 1.17s linear infinite; animation-delay: -2.84s;}
+.p86 {animation: warp86 1.82s linear infinite; animation-delay: -2.50s;}
+.p87 {animation: warp87 1.22s linear infinite; animation-delay: -0.38s;}
+.p88 {animation: warp88 2.35s linear infinite; animation-delay: -2.39s;}
+.p89 {animation: warp89 1.32s linear infinite; animation-delay: -0.75s;}
+.p90 {animation: warp90 2.17s linear infinite; animation-delay: -2.65s;}
+.p91 {animation: warp91 2.39s linear infinite; animation-delay: -0.71s;}
+.p92 {animation: warp92 2.32s linear infinite; animation-delay: -0.07s;}
+.p93 {animation: warp93 2.20s linear infinite; animation-delay: -2.59s;}
+.p94 {animation: warp94 1.24s linear infinite; animation-delay: -2.10s;}
+.p95 {animation: warp95 2.29s linear infinite; animation-delay: -0.67s;}
+.p96 {animation: warp96 1.46s linear infinite; animation-delay: -2.39s;}
+.p97 {animation: warp97 1.04s linear infinite; animation-delay: -0.58s;}
+.p98 {animation: warp98 2.30s linear infinite; animation-delay: -2.90s;}
+.p99 {animation: warp99 1.96s linear infinite; animation-delay: -1.20s;}
+.p100 {animation: warp100 2.41s linear infinite; animation-delay: -0.35s;}
 </style>
 """, unsafe_allow_html=True)
 
