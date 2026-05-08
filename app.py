@@ -121,6 +121,17 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [data-testid="stVerticalBlock"] > div:empty {display: none !important;}
 .result-card:empty {display: none !important;}
 .upload-card:empty {display: none !important;}
+
+[data-testid="stProgress"] > div > div > div > div {
+    background-color: #d4af37 !important;
+}
+[data-testid="stProgress"] > div > div > div {
+    background-color: #e8e8e8 !important;
+    height: 12px !important;
+}
+[data-testid="stProgress"] {
+    height: 12px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -238,7 +249,6 @@ if len(imgs) == 2:
                 fmt = lambda x: f'¥{int(x):,}'
                 
                 progress.progress(100, text='✓ 完成しました！')
-                st.balloons()
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
                 st.markdown(f"""
 <div class="complete-bar">
