@@ -174,114 +174,145 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     border-radius: 50%;
     box-shadow: 0 0 12px rgba(212, 175, 55, 0.8);
 }
-@keyframes float1 { 0%{transform:translate(0,0)} 50%{transform:translate(60vw,40vh)} 100%{transform:translate(0,0)} }
-@keyframes float2 { 0%{transform:translate(0,0)} 50%{transform:translate(-50vw,30vh)} 100%{transform:translate(0,0)} }
-@keyframes float3 { 0%{transform:translate(0,0)} 50%{transform:translate(40vw,-50vh)} 100%{transform:translate(0,0)} }
-@keyframes float4 { 0%{transform:translate(0,0)} 50%{transform:translate(-30vw,-40vh)} 100%{transform:translate(0,0)} }
+@keyframes float1 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(60vw,30vh) rotate(180deg) scale(1.5)} 50%{transform:translate(80vw,-40vh) rotate(360deg) scale(0.5)} 75%{transform:translate(-30vw,50vh) rotate(540deg) scale(1.3)} 100%{transform:translate(0,0) rotate(720deg) scale(1)} }
+@keyframes float2 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(-70vw,40vh) rotate(-180deg) scale(0.7)} 50%{transform:translate(50vw,60vh) rotate(-360deg) scale(1.4)} 75%{transform:translate(40vw,-50vh) rotate(-540deg) scale(0.8)} 100%{transform:translate(0,0) rotate(-720deg) scale(1)} }
+@keyframes float3 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(50vw,-60vh) rotate(270deg) scale(1.6)} 50%{transform:translate(-60vw,-30vh) rotate(540deg) scale(0.6)} 75%{transform:translate(-40vw,40vh) rotate(810deg) scale(1.2)} 100%{transform:translate(0,0) rotate(1080deg) scale(1)} }
+@keyframes float4 { 0%{transform:translate(0,0) rotate(0deg) scale(1)} 25%{transform:translate(-50vw,-50vh) rotate(-270deg) scale(0.8)} 50%{transform:translate(70vw,30vh) rotate(-540deg) scale(1.5)} 75%{transform:translate(20vw,-60vh) rotate(-810deg) scale(0.9)} 100%{transform:translate(0,0) rotate(-1080deg) scale(1)} }
+@keyframes float5 { 0%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(80vw,80vh) rotate(360deg)} 66%{transform:translate(-80vw,-80vh) rotate(720deg)} 100%{transform:translate(0,0) rotate(1080deg)} }
 
 
 
 
-.p1 {top: 86%; left: 19%; animation: float3 6s ease-in-out infinite;}
-.p2 {top: 33%; left: 22%; animation: float1 7s ease-in-out infinite reverse;}
-.p3 {top: 9%; left: 8%; animation: float2 7s ease-in-out infinite;}
-.p4 {top: 69%; left: 82%; animation: float2 6s ease-in-out infinite reverse;}
-.p5 {top: 33%; left: 62%; animation: float3 15s ease-in-out infinite;}
-.p6 {top: 25%; left: 94%; animation: float3 12s ease-in-out infinite reverse;}
-.p7 {top: 24%; left: 32%; animation: float1 11s ease-in-out infinite;}
-.p8 {top: 53%; left: 17%; animation: float3 11s ease-in-out infinite reverse;}
-.p9 {top: 10%; left: 63%; animation: float1 14s ease-in-out infinite reverse;}
-.p10 {top: 15%; left: 75%; animation: float3 10s ease-in-out infinite;}
-.p11 {top: 95%; left: 13%; animation: float2 6s ease-in-out infinite reverse;}
-.p12 {top: 15%; left: 34%; animation: float4 7s ease-in-out infinite reverse;}
-.p13 {top: 63%; left: 86%; animation: float2 11s ease-in-out infinite reverse;}
-.p14 {top: 50%; left: 31%; animation: float3 16s ease-in-out infinite;}
-.p15 {top: 82%; left: 86%; animation: float2 8s ease-in-out infinite;}
-.p16 {top: 64%; left: 53%; animation: float2 10s ease-in-out infinite reverse;}
-.p17 {top: 12%; left: 34%; animation: float3 6s ease-in-out infinite reverse;}
-.p18 {top: 39%; left: 13%; animation: float3 9s ease-in-out infinite;}
-.p19 {top: 88%; left: 68%; animation: float4 12s ease-in-out infinite;}
-.p20 {top: 38%; left: 22%; animation: float3 9s ease-in-out infinite reverse;}
-.p21 {top: 79%; left: 56%; animation: float2 11s ease-in-out infinite;}
-.p22 {top: 70%; left: 68%; animation: float1 7s ease-in-out infinite;}
-.p23 {top: 24%; left: 85%; animation: float4 8s ease-in-out infinite;}
-.p24 {top: 54%; left: 53%; animation: float4 15s ease-in-out infinite reverse;}
-.p25 {top: 75%; left: 6%; animation: float1 16s ease-in-out infinite reverse;}
-.p26 {top: 87%; left: 48%; animation: float3 7s ease-in-out infinite reverse;}
-.p27 {top: 25%; left: 63%; animation: float3 6s ease-in-out infinite;}
-.p28 {top: 69%; left: 18%; animation: float3 16s ease-in-out infinite;}
-.p29 {top: 24%; left: 52%; animation: float1 8s ease-in-out infinite reverse;}
-.p30 {top: 67%; left: 7%; animation: float3 7s ease-in-out infinite reverse;}
-.p31 {top: 35%; left: 12%; animation: float1 9s ease-in-out infinite;}
-.p32 {top: 67%; left: 13%; animation: float2 14s ease-in-out infinite;}
-.p33 {top: 89%; left: 65%; animation: float2 14s ease-in-out infinite reverse;}
-.p34 {top: 72%; left: 82%; animation: float2 12s ease-in-out infinite;}
-.p35 {top: 44%; left: 56%; animation: float3 16s ease-in-out infinite reverse;}
-.p36 {top: 71%; left: 62%; animation: float2 7s ease-in-out infinite;}
-.p37 {top: 13%; left: 48%; animation: float2 6s ease-in-out infinite;}
-.p38 {top: 5%; left: 14%; animation: float1 16s ease-in-out infinite;}
-.p39 {top: 13%; left: 9%; animation: float1 11s ease-in-out infinite;}
-.p40 {top: 40%; left: 90%; animation: float2 13s ease-in-out infinite;}
-.p41 {top: 78%; left: 78%; animation: float2 13s ease-in-out infinite reverse;}
-.p42 {top: 57%; left: 29%; animation: float1 7s ease-in-out infinite reverse;}
-.p43 {top: 50%; left: 59%; animation: float4 12s ease-in-out infinite;}
-.p44 {top: 91%; left: 88%; animation: float1 16s ease-in-out infinite;}
-.p45 {top: 56%; left: 48%; animation: float2 7s ease-in-out infinite;}
-.p46 {top: 29%; left: 73%; animation: float2 13s ease-in-out infinite reverse;}
-.p47 {top: 28%; left: 40%; animation: float2 13s ease-in-out infinite;}
-.p48 {top: 61%; left: 75%; animation: float1 7s ease-in-out infinite;}
-.p49 {top: 16%; left: 35%; animation: float4 8s ease-in-out infinite reverse;}
-.p50 {top: 66%; left: 32%; animation: float1 12s ease-in-out infinite;}
-.p51 {top: 53%; left: 5%; animation: float3 12s ease-in-out infinite reverse;}
-.p52 {top: 41%; left: 59%; animation: float4 14s ease-in-out infinite;}
-.p53 {top: 29%; left: 42%; animation: float1 9s ease-in-out infinite;}
-.p54 {top: 45%; left: 12%; animation: float4 6s ease-in-out infinite;}
-.p55 {top: 12%; left: 70%; animation: float2 7s ease-in-out infinite;}
-.p56 {top: 81%; left: 13%; animation: float2 16s ease-in-out infinite reverse;}
-.p57 {top: 20%; left: 77%; animation: float1 9s ease-in-out infinite;}
-.p58 {top: 58%; left: 89%; animation: float3 15s ease-in-out infinite reverse;}
-.p59 {top: 31%; left: 90%; animation: float2 11s ease-in-out infinite reverse;}
-.p60 {top: 55%; left: 21%; animation: float3 16s ease-in-out infinite reverse;}
-.p61 {top: 45%; left: 14%; animation: float4 6s ease-in-out infinite;}
-.p62 {top: 14%; left: 73%; animation: float3 9s ease-in-out infinite;}
-.p63 {top: 49%; left: 13%; animation: float3 9s ease-in-out infinite reverse;}
-.p64 {top: 25%; left: 61%; animation: float3 14s ease-in-out infinite;}
-.p65 {top: 90%; left: 75%; animation: float1 10s ease-in-out infinite;}
-.p66 {top: 38%; left: 19%; animation: float2 7s ease-in-out infinite reverse;}
-.p67 {top: 41%; left: 82%; animation: float3 9s ease-in-out infinite;}
-.p68 {top: 92%; left: 86%; animation: float4 10s ease-in-out infinite reverse;}
-.p69 {top: 11%; left: 16%; animation: float4 16s ease-in-out infinite reverse;}
-.p70 {top: 10%; left: 5%; animation: float2 11s ease-in-out infinite reverse;}
-.p71 {top: 25%; left: 61%; animation: float4 14s ease-in-out infinite;}
-.p72 {top: 19%; left: 14%; animation: float1 8s ease-in-out infinite reverse;}
-.p73 {top: 79%; left: 75%; animation: float4 8s ease-in-out infinite;}
-.p74 {top: 10%; left: 44%; animation: float1 11s ease-in-out infinite reverse;}
-.p75 {top: 31%; left: 92%; animation: float1 9s ease-in-out infinite reverse;}
-.p76 {top: 76%; left: 57%; animation: float2 15s ease-in-out infinite;}
-.p77 {top: 25%; left: 27%; animation: float1 12s ease-in-out infinite;}
-.p78 {top: 47%; left: 57%; animation: float2 16s ease-in-out infinite reverse;}
-.p79 {top: 25%; left: 94%; animation: float4 7s ease-in-out infinite;}
-.p80 {top: 65%; left: 33%; animation: float4 9s ease-in-out infinite reverse;}
-.p81 {top: 44%; left: 34%; animation: float1 9s ease-in-out infinite;}
-.p82 {top: 56%; left: 47%; animation: float1 10s ease-in-out infinite reverse;}
-.p83 {top: 49%; left: 87%; animation: float4 14s ease-in-out infinite reverse;}
-.p84 {top: 8%; left: 19%; animation: float2 10s ease-in-out infinite reverse;}
-.p85 {top: 9%; left: 18%; animation: float4 15s ease-in-out infinite reverse;}
-.p86 {top: 45%; left: 60%; animation: float1 15s ease-in-out infinite reverse;}
-.p87 {top: 78%; left: 29%; animation: float1 10s ease-in-out infinite reverse;}
-.p88 {top: 5%; left: 71%; animation: float2 14s ease-in-out infinite reverse;}
-.p89 {top: 60%; left: 13%; animation: float3 16s ease-in-out infinite reverse;}
-.p90 {top: 89%; left: 20%; animation: float3 10s ease-in-out infinite reverse;}
-.p91 {top: 46%; left: 56%; animation: float2 10s ease-in-out infinite;}
-.p92 {top: 58%; left: 90%; animation: float2 12s ease-in-out infinite reverse;}
-.p93 {top: 56%; left: 75%; animation: float3 6s ease-in-out infinite reverse;}
-.p94 {top: 31%; left: 60%; animation: float3 15s ease-in-out infinite reverse;}
-.p95 {top: 61%; left: 61%; animation: float2 16s ease-in-out infinite reverse;}
-.p96 {top: 26%; left: 89%; animation: float3 7s ease-in-out infinite reverse;}
-.p97 {top: 16%; left: 35%; animation: float3 16s ease-in-out infinite;}
-.p98 {top: 30%; left: 23%; animation: float1 6s ease-in-out infinite;}
-.p99 {top: 65%; left: 83%; animation: float4 7s ease-in-out infinite reverse;}
-.p100 {top: 85%; left: 78%; animation: float4 9s ease-in-out infinite reverse;}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.p1 {top: 56%; left: 53%; animation: float5 4s linear infinite;}
+.p2 {top: 34%; left: 36%; animation: float1 4s linear infinite reverse;}
+.p3 {top: 54%; left: 72%; animation: float5 8s linear infinite;}
+.p4 {top: 84%; left: 67%; animation: float4 4s linear infinite;}
+.p5 {top: 52%; left: 54%; animation: float2 8s linear infinite;}
+.p6 {top: 64%; left: 89%; animation: float5 4s linear infinite reverse;}
+.p7 {top: 15%; left: 72%; animation: float1 8s linear infinite reverse;}
+.p8 {top: 45%; left: 56%; animation: float3 3s linear infinite;}
+.p9 {top: 59%; left: 31%; animation: float5 5s linear infinite;}
+.p10 {top: 64%; left: 71%; animation: float5 4s linear infinite reverse;}
+.p11 {top: 11%; left: 50%; animation: float2 4s linear infinite;}
+.p12 {top: 61%; left: 81%; animation: float5 4s linear infinite;}
+.p13 {top: 9%; left: 19%; animation: float2 3s linear infinite reverse;}
+.p14 {top: 92%; left: 58%; animation: float4 3s linear infinite;}
+.p15 {top: 23%; left: 44%; animation: float1 7s linear infinite reverse;}
+.p16 {top: 47%; left: 22%; animation: float4 7s linear infinite;}
+.p17 {top: 12%; left: 86%; animation: float4 4s linear infinite reverse;}
+.p18 {top: 74%; left: 56%; animation: float3 4s linear infinite reverse;}
+.p19 {top: 12%; left: 21%; animation: float5 8s linear infinite;}
+.p20 {top: 82%; left: 57%; animation: float1 3s linear infinite;}
+.p21 {top: 23%; left: 42%; animation: float2 4s linear infinite reverse;}
+.p22 {top: 23%; left: 31%; animation: float3 7s linear infinite reverse;}
+.p23 {top: 34%; left: 37%; animation: float3 3s linear infinite;}
+.p24 {top: 91%; left: 14%; animation: float3 7s linear infinite;}
+.p25 {top: 79%; left: 11%; animation: float2 5s linear infinite reverse;}
+.p26 {top: 56%; left: 48%; animation: float4 6s linear infinite reverse;}
+.p27 {top: 52%; left: 73%; animation: float2 3s linear infinite;}
+.p28 {top: 52%; left: 56%; animation: float2 6s linear infinite reverse;}
+.p29 {top: 88%; left: 33%; animation: float3 8s linear infinite;}
+.p30 {top: 93%; left: 45%; animation: float2 4s linear infinite reverse;}
+.p31 {top: 42%; left: 61%; animation: float4 3s linear infinite reverse;}
+.p32 {top: 37%; left: 13%; animation: float3 7s linear infinite reverse;}
+.p33 {top: 66%; left: 73%; animation: float3 4s linear infinite reverse;}
+.p34 {top: 42%; left: 57%; animation: float5 8s linear infinite;}
+.p35 {top: 41%; left: 53%; animation: float5 8s linear infinite reverse;}
+.p36 {top: 29%; left: 53%; animation: float2 5s linear infinite reverse;}
+.p37 {top: 5%; left: 90%; animation: float3 5s linear infinite;}
+.p38 {top: 90%; left: 90%; animation: float3 4s linear infinite reverse;}
+.p39 {top: 95%; left: 34%; animation: float3 6s linear infinite reverse;}
+.p40 {top: 5%; left: 19%; animation: float5 7s linear infinite;}
+.p41 {top: 5%; left: 71%; animation: float2 5s linear infinite reverse;}
+.p42 {top: 31%; left: 38%; animation: float4 8s linear infinite reverse;}
+.p43 {top: 76%; left: 72%; animation: float5 8s linear infinite reverse;}
+.p44 {top: 30%; left: 7%; animation: float3 3s linear infinite;}
+.p45 {top: 79%; left: 9%; animation: float4 3s linear infinite reverse;}
+.p46 {top: 52%; left: 76%; animation: float5 8s linear infinite reverse;}
+.p47 {top: 29%; left: 17%; animation: float4 6s linear infinite;}
+.p48 {top: 38%; left: 63%; animation: float2 5s linear infinite;}
+.p49 {top: 62%; left: 93%; animation: float4 8s linear infinite reverse;}
+.p50 {top: 76%; left: 27%; animation: float3 5s linear infinite;}
+.p51 {top: 40%; left: 64%; animation: float4 7s linear infinite;}
+.p52 {top: 66%; left: 78%; animation: float4 8s linear infinite;}
+.p53 {top: 14%; left: 73%; animation: float4 4s linear infinite;}
+.p54 {top: 19%; left: 47%; animation: float1 6s linear infinite reverse;}
+.p55 {top: 88%; left: 5%; animation: float5 7s linear infinite reverse;}
+.p56 {top: 86%; left: 6%; animation: float3 7s linear infinite reverse;}
+.p57 {top: 38%; left: 26%; animation: float5 4s linear infinite;}
+.p58 {top: 55%; left: 9%; animation: float3 3s linear infinite;}
+.p59 {top: 76%; left: 42%; animation: float4 4s linear infinite;}
+.p60 {top: 94%; left: 58%; animation: float2 4s linear infinite;}
+.p61 {top: 67%; left: 26%; animation: float3 5s linear infinite reverse;}
+.p62 {top: 14%; left: 76%; animation: float5 4s linear infinite;}
+.p63 {top: 94%; left: 50%; animation: float5 8s linear infinite;}
+.p64 {top: 91%; left: 19%; animation: float2 8s linear infinite;}
+.p65 {top: 24%; left: 74%; animation: float1 3s linear infinite reverse;}
+.p66 {top: 26%; left: 50%; animation: float2 8s linear infinite;}
+.p67 {top: 48%; left: 11%; animation: float4 5s linear infinite;}
+.p68 {top: 44%; left: 27%; animation: float1 8s linear infinite;}
+.p69 {top: 68%; left: 87%; animation: float1 7s linear infinite;}
+.p70 {top: 53%; left: 92%; animation: float2 3s linear infinite reverse;}
+.p71 {top: 82%; left: 15%; animation: float2 4s linear infinite reverse;}
+.p72 {top: 52%; left: 37%; animation: float5 5s linear infinite;}
+.p73 {top: 79%; left: 55%; animation: float3 3s linear infinite;}
+.p74 {top: 21%; left: 6%; animation: float5 5s linear infinite reverse;}
+.p75 {top: 42%; left: 20%; animation: float4 6s linear infinite;}
+.p76 {top: 10%; left: 50%; animation: float5 4s linear infinite reverse;}
+.p77 {top: 47%; left: 89%; animation: float1 5s linear infinite reverse;}
+.p78 {top: 39%; left: 83%; animation: float5 4s linear infinite;}
+.p79 {top: 93%; left: 91%; animation: float3 3s linear infinite reverse;}
+.p80 {top: 58%; left: 70%; animation: float2 8s linear infinite;}
+.p81 {top: 72%; left: 57%; animation: float2 3s linear infinite;}
+.p82 {top: 87%; left: 38%; animation: float5 4s linear infinite;}
+.p83 {top: 60%; left: 5%; animation: float1 7s linear infinite;}
+.p84 {top: 21%; left: 28%; animation: float3 8s linear infinite;}
+.p85 {top: 37%; left: 28%; animation: float4 7s linear infinite;}
+.p86 {top: 5%; left: 87%; animation: float5 3s linear infinite reverse;}
+.p87 {top: 62%; left: 14%; animation: float5 4s linear infinite;}
+.p88 {top: 48%; left: 60%; animation: float4 4s linear infinite;}
+.p89 {top: 52%; left: 69%; animation: float2 4s linear infinite reverse;}
+.p90 {top: 31%; left: 17%; animation: float5 6s linear infinite;}
+.p91 {top: 27%; left: 22%; animation: float2 6s linear infinite;}
+.p92 {top: 92%; left: 37%; animation: float5 4s linear infinite;}
+.p93 {top: 35%; left: 35%; animation: float2 7s linear infinite reverse;}
+.p94 {top: 55%; left: 72%; animation: float1 7s linear infinite;}
+.p95 {top: 37%; left: 46%; animation: float3 7s linear infinite reverse;}
+.p96 {top: 29%; left: 17%; animation: float1 8s linear infinite;}
+.p97 {top: 60%; left: 12%; animation: float2 5s linear infinite;}
+.p98 {top: 89%; left: 42%; animation: float3 4s linear infinite reverse;}
+.p99 {top: 6%; left: 78%; animation: float3 7s linear infinite;}
+.p100 {top: 51%; left: 19%; animation: float3 4s linear infinite reverse;}
 </style>
 """, unsafe_allow_html=True)
 
