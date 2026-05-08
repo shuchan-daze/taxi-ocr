@@ -117,6 +117,10 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [data-testid="stFileUploader"] button span {
     color: white !important;
 }
+
+[data-testid="stVerticalBlock"] > div:empty {display: none !important;}
+.result-card:empty {display: none !important;}
+.upload-card:empty {display: none !important;}
 </style>
 """, unsafe_allow_html=True)
 
