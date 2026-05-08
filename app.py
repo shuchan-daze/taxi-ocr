@@ -98,6 +98,15 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [data-testid="stFileUploader"] section {
     padding: 0.5rem !important;
 }
+
+[data-testid="stFileUploader"] button {
+    background: #010519 !important;
+    color: white !important;
+    border: none !important;
+}
+[data-testid="stFileUploader"] button:hover {
+    background: #0a1845 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
