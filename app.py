@@ -19,8 +19,8 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
 .stApp > header {background: transparent;}
 .title-block {margin-bottom: 1.5rem;}
 .result-card h1, .result-card h2, .result-card h3, .result-card h4 {color: #010519 !important;}
-.title-block h1 {color: white !important; font-size: 22px !important; font-weight: 500 !important; margin: 0 0 6px !important; display: flex; align-items: center; gap: 10px;}
-.title-block h1 span, .title-block h1 * {color: white !important;}
+.title-block h1 {color: #d4af37 !important; font-size: 32px !important; font-weight: 600 !important; margin: 0 0 6px !important;}
+.title-block h1 * {color: #d4af37 !important;}
 .title-block .subtitle {color: #d4af37; font-size: 11px; letter-spacing: 0.15em; margin: 0 0 8px;}
 .title-block .divider {height: 1px; background: linear-gradient(90deg, #d4af37, transparent);}
 .upload-card, .result-card {background: white; border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem;}
@@ -76,7 +76,7 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 
 st.markdown("""
 <div class="title-block">
-  <h1><span style="color:#d4af37;">●</span> タクシー日報</h1>
+  <h1>タクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
 </div>
