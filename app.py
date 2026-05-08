@@ -20,6 +20,7 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
 .title-block {margin-bottom: 1.5rem;}
 .result-card h1, .result-card h2, .result-card h3, .result-card h4 {color: #010519 !important;}
 .title-block h1 {color: white !important; font-size: 22px !important; font-weight: 500 !important; margin: 0 0 6px !important; display: flex; align-items: center; gap: 10px;}
+.title-block h1 span, .title-block h1 * {color: white !important;}
 .title-block .subtitle {color: #d4af37; font-size: 11px; letter-spacing: 0.15em; margin: 0 0 8px;}
 .title-block .divider {height: 1px; background: linear-gradient(90deg, #d4af37, transparent);}
 .upload-card, .result-card {background: white; border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem;}
@@ -111,8 +112,7 @@ def is_meter(client, img):
     )
     return 'はい' in res.content[0].text
 
-st.markdown('<div class="upload-card">', unsafe_allow_html=True)
-files = st.file_uploader('日報と明細の写真をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True)
+files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True)
 
 imgs = []
 if files:
@@ -122,7 +122,6 @@ if files:
         imgs.append(img)
         with cols[i]:
             st.image(img, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
 
 if len(imgs) == 2:
     if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
