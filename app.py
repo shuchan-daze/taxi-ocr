@@ -51,11 +51,13 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
 .metric-grid-3 {display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px;}
 .metric-grid-2 {display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px;}
 .metric {background: #f5f5f7; border-radius: 10px; padding: 8px 10px;}
-.metric.dark {background: #010519;}
+.metric.dark {background: #d4af37;}
+.metric.dark .label {color: #010519 !important;}
+.metric.dark .value {color: #010519 !important;}
 .metric .label {font-size: 10px; color: #888; margin: 0; letter-spacing: 0.05em;}
-.metric.dark .label {color: #d4af37;}
+
 .metric .value {font-size: 15px; font-weight: 500; margin: 2px 0 0; color: #010519;}
-.metric.dark .value {color: white;}
+
 table {width: 100%; font-size: 12px; border-collapse: collapse; border-radius: 12px; overflow: hidden; border: 0.5px solid #eee;}
 thead tr {background: #010519 !important; color: white !important;}
 thead tr th {padding: 8px 6px !important; font-weight: 500 !important; color: white !important;}
