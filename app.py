@@ -1,59 +1,57 @@
 import streamlit as st
-from google.cloud import vision
-from google.oauth2 import service_account
+import anthropic
+import base64
 from PIL import Image
+from pillow_heif import register_heif_opener
 import io
-import json
-import os
 
-st.set_page_config(page_title="タクシー日報OCR", layout="wide")
-st.title("🚕 タクシー日報OCR (テスト版)")
+register_heif_opener()
+st.set_page_config(page_title='タクシー日報OCR', layout='wide')
+st.title('タクシー日報OCR')
+client = anthropic.Anthropic()
 
-# 認証情報の読み込み(Cloud と Local の両対応)
-def get_credentials():
-    # Streamlit Cloud では st.secrets から読み込む
-    if "gcp_service_account" in st.secrets:
-        info = dict(st.secrets["gcp_service_account"])
-        return service_account.Credentials.from_service_account_info(info)
-    # ローカルでは key.json から読み込む
-    elif os.path.exists("key.json"):
-        return service_account.Credentials.from_service_account_file("key.json")
-    else:
-        st.error("認証情報が見つかりません。key.json または Streamlit Secrets を設定してください。")
-        st.stop()
+st.info('① 日報写真 → ② メーター写真 の順にアップロードしてください')
 
-credentials = get_credentials()
-client = vision.ImageAnnotatorClient(credentials=credentials)
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader('① 日報写真（手書き）')
+    nippou = st.file_uploader('日報写真をアップロード', type=['jpg','jpeg','png','heic'], key='nippou')
+    if nippou:
+        st.image(Image.open(nippou), use_container_width=True)
+with col2:
+    st.subheader('② メーター明細写真')
+    meter = st.file_uploader('メーター写真をアップロード', type=['jpg','jpeg','png','heic'], key='meter')
+    if meter:
+        st.image(Image.open(meter), use_container_width=True)
 
-# ファイルアップロード
-uploaded_file = st.file_uploader(
-    "日報またはメーターレシートの写真をアップロード",
-    type=["jpg", "jpeg", "png", "heic"]
-)
+def to_b64(img):
+    img.thumbnail((2000,2000))
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=85)
+    return base64.standard_b64encode(buf.getvalue()).decode()
 
-if uploaded_file is not None:
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("📷 アップロード画像")
-        image = Image.open(uploaded_file)
-        st.image(image, use_container_width=True)
+if nippou and meter:
+    if st.button('照合して日報を作成'):
+        with st.spinner('照合中...'):
+            n_img = Image.open(nippou)
+            m_img = Image.open(meter)
+            prompt = '''1枚目は手書きのタクシー日報、2枚目はメーター明細書です。
 
-    with col2:
-        st.subheader("🔍 OCR結果")
-        with st.spinner("Google Vision APIで解析中..."):
-            img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='PNG')
-            content = img_byte_arr.getvalue()
+ルール：
+- 現収か未収かの判定は、手書き日報の現収欄・未収欄に数字が書いてある方に従う
+- 金額はメーター明細の値を正として使用する
+- 摘要は手書き日報の記載に従う
 
-            vision_image = vision.Image(content=content)
-            response = client.document_text_detection(
-                image=vision_image,
-                image_context={"language_hints": ["ja"]}
+日報をマークダウンテーブルで出力してください。
+列：No / 人数 / 降車時刻 / 現収 / 未収 / 摘要
+最後に現収合計・未収合計・総営収を表示してください。'''
+            res = client.messages.create(
+                model='claude-opus-4-5',
+                max_tokens=4000,
+                messages=[{'role':'user','content':[
+                    {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(n_img)}},
+                    {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(m_img)}},
+                    {'type':'text','text':prompt}
+                ]}]
             )
-
-            if response.error.message:
-                st.error(f"APIエラー: {response.error.message}")
-            else:
-                full_text = response.full_text_annotation.text
-                st.text_area("認識テキスト", full_text, height=600)
-                st.success(f"✅ 解析完了 ({len(full_text)}文字)")
+            st.markdown(res.content[0].text)
