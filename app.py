@@ -126,7 +126,7 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 
 st.markdown("""
 <div class="title-block">
-  <h1>タクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
+  <h1>AIタクシー日報変換<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
 </div>
@@ -175,19 +175,19 @@ if files:
 
 if len(imgs) == 2:
     if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
-        progress = st.progress(0, text='📸 画像を判別中... (1/3)')
-        try:
+        with st.spinner('画像を判別中...'):
+            try:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
             if is_meter(client, imgs[0]):
                 meter_img, nippou_img = imgs[0], imgs[1]
             else:
                 meter_img, nippou_img = imgs[1], imgs[0]
-            progress.progress(33, text='✓ 判別完了 → 🔍 メーター明細と照合中... (2/3)')
-        except Exception as e:
-            st.error(f'エラー: {e}')
-            st.stop()
-        try:
+            except Exception as e:
+                st.error(f'エラー: {e}')
+                st.stop()
+        with st.spinner('メーター明細と照合中...'):
+            try:
                 prompt = """【最重要ルール】金額は必ずメーター明細書（2枚目の画像）の値を使用すること。日報（1枚目）の金額は無視すること。
 
 手順：
@@ -237,8 +237,6 @@ if len(imgs) == 2:
                 
                 fmt = lambda x: f'¥{int(x):,}'
                 
-                progress.progress(100, text='✓ 完成しました！')
-                st.balloons()
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
                 st.markdown(f"""
 <div class="complete-bar">
