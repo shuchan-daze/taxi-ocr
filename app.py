@@ -1572,3 +1572,8 @@ if len(imgs) == 2:
             st.error(f'エラー: {e}')
 elif files and len(files) != 2:
     st.warning(f'2枚選択してください（現在{len(files)}枚）')
+
+
+st.markdown('---')
+if st.button('🔄 リフレッシュ', use_container_width=True):
+    st.rerun()
