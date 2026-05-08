@@ -160,6 +160,34 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     letter-spacing: 0.2em;
     font-weight: 400 !important;
 }
+
+.particles {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+.particle {
+    position: absolute;
+    width: 6px; height: 6px;
+    background: rgba(212, 175, 55, 0.6);
+    border-radius: 50%;
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.8);
+}
+@keyframes float1 { 0%{transform:translate(0,0)} 50%{transform:translate(60vw,40vh)} 100%{transform:translate(0,0)} }
+@keyframes float2 { 0%{transform:translate(0,0)} 50%{transform:translate(-50vw,30vh)} 100%{transform:translate(0,0)} }
+@keyframes float3 { 0%{transform:translate(0,0)} 50%{transform:translate(40vw,-50vh)} 100%{transform:translate(0,0)} }
+@keyframes float4 { 0%{transform:translate(0,0)} 50%{transform:translate(-30vw,-40vh)} 100%{transform:translate(0,0)} }
+.p1 {top: 20%; left: 10%; animation: float1 8s ease-in-out infinite;}
+.p2 {top: 70%; left: 80%; animation: float2 10s ease-in-out infinite;}
+.p3 {top: 30%; left: 75%; animation: float3 12s ease-in-out infinite;}
+.p4 {top: 80%; left: 20%; animation: float4 9s ease-in-out infinite;}
+.p5 {top: 50%; left: 50%; animation: float1 11s ease-in-out infinite reverse;}
+.p6 {top: 15%; left: 60%; animation: float2 13s ease-in-out infinite;}
+.p7 {top: 85%; left: 45%; animation: float3 7s ease-in-out infinite;}
+.p8 {top: 40%; left: 25%; animation: float4 14s ease-in-out infinite;}
+.p9 {top: 60%; left: 90%; animation: float1 9s ease-in-out infinite;}
+.p10 {top: 25%; left: 40%; animation: float2 15s ease-in-out infinite reverse;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -217,7 +245,7 @@ if len(imgs) == 2:
         loader = st.empty()
         import time
         for pct in [3, 8, 14, 21, 29]:
-            loader.markdown(f'<div class="big-overlay"><div class="big-num">{pct}%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
+            loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span></div><div class="big-num">{pct}%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
             time.sleep(0.15)
         try:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
@@ -227,7 +255,7 @@ if len(imgs) == 2:
             else:
                 meter_img, nippou_img = imgs[1], imgs[0]
             for pct in [34, 42, 51, 58, 65, 71]:
-                loader.markdown(f'<div class="big-overlay"><div class="big-num">{pct}%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
+                loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span></div><div class="big-num">{pct}%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
                 time.sleep(0.2)
         except Exception as e:
             st.error(f'エラー: {e}')
@@ -283,7 +311,7 @@ if len(imgs) == 2:
                 fmt = lambda x: f'¥{int(x):,}'
                 
                 for pct in [82, 91, 97, 100]:
-                    loader.markdown(f'<div class="big-overlay"><div class="big-num">{pct}%</div><div class="big-label">完成しました</div></div>', unsafe_allow_html=True)
+                    loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span></div><div class="big-num">{pct}%</div><div class="big-label">完成しました</div></div>', unsafe_allow_html=True)
                     time.sleep(0.15)
                 loader.empty()
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
