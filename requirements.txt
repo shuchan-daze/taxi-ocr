@@ -1,4 +1,4 @@
 streamlit
-google-cloud-vision
+anthropic
 pillow
-qrcode
+pillow-heif
