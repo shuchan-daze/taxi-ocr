@@ -96,6 +96,21 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# JavaScriptで200MB表示を書き換え
+st.markdown('''
+<script>
+const observer = new MutationObserver(() => {
+  document.querySelectorAll('[data-testid="stFileUploaderDropzoneInstructions"] span').forEach(s => {
+    if (s.textContent.includes('MB per file')) {
+      s.textContent = '日報と営業明細書をアップしてください';
+    }
+  });
+});
+observer.observe(document.body, {childList: true, subtree: true});
+</script>
+''', unsafe_allow_html=True)
+
+
 def fix_orientation(img):
     try:
         for orientation in ExifTags.TAGS.keys():
