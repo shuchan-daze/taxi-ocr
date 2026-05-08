@@ -126,7 +126,7 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 
 st.markdown("""
 <div class="title-block">
-  <h1>タクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
+  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
 </div>
