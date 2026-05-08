@@ -1431,6 +1431,65 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+import streamlit.components.v1 as components
+components.html('''
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<script>
+let audioStarted = false;
+let interval = null;
+
+async function startJazzDrums() {
+  if (audioStarted) return;
+  await Tone.start();
+  audioStarted = true;
+  
+  // ハイハット（テッチッチ）
+  const hihat = new Tone.MetalSynth({
+    frequency: 250,
+    envelope: {attack: 0.001, decay: 0.05, release: 0.05},
+    harmonicity: 5.1,
+    modulationIndex: 32,
+    resonance: 4000,
+    octaves: 1.5
+  }).toDestination();
+  hihat.volume.value = -20;
+  
+  // バスドラム
+  const kick = new Tone.MembraneSynth().toDestination();
+  kick.volume.value = -10;
+  
+  let beat = 0;
+  interval = setInterval(() => {
+    const time = Tone.now();
+    // ジャズのスイングパターン: テッ・チッチ、テッ・チッチ
+    if (beat % 4 === 0) {
+      kick.triggerAttackRelease("C2", "8n", time);
+      hihat.triggerAttackRelease("C5", "32n", time);
+    } else if (beat % 4 === 2) {
+      hihat.triggerAttackRelease("C5", "32n", time);
+      hihat.triggerAttackRelease("C5", "32n", time + 0.1);
+    } else {
+      hihat.triggerAttackRelease("C5", "32n", time);
+    }
+    beat++;
+  }, 250);
+}
+
+function stopJazzDrums() {
+  if (interval) clearInterval(interval);
+  audioStarted = false;
+}
+
+// オーバーレイ表示を監視
+const observer = new MutationObserver(() => {
+  const overlay = document.querySelector('.big-overlay');
+  if (overlay && !audioStarted) startJazzDrums();
+  if (!overlay && audioStarted) stopJazzDrums();
+});
+observer.observe(document.body, {childList: true, subtree: true});
+</script>
+''', height=0)
+
 def fix_orientation(img):
     try:
         for orientation in ExifTags.TAGS.keys():
