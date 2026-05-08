@@ -7,42 +7,18 @@ import io
 import os
 
 register_heif_opener()
-
 st.set_page_config(page_title='タクシー日報OCR', layout='centered')
-
-st.markdown('''
-<style>
-.big-btn {
-    background: #1a2744;
-    color: white;
-    border-radius: 16px;
-    padding: 18px;
-    text-align: center;
-    font-size: 18px;
-    font-weight: bold;
-    margin: 4px 0;
-    cursor: pointer;
-}
-.result-box {
-    background: #f0fff4;
-    border-radius: 12px;
-    padding: 16px;
-    margin-top: 16px;
-}
-</style>
-''', unsafe_allow_html=True)
-
 st.title('タクシー日報 OCR')
 st.caption('日報とメーター明細を読み取り、完成日報を作ります')
 
 col1, col2 = st.columns(2)
 with col1:
-    nippou = st.file_uploader('📷 日報写真', type=['jpg','jpeg','png','heic'], key='nippou', label_visibility='collapsed')
+    nippou = st.file_uploader('日報写真', type=['jpg','jpeg','png','heic'], key='nippou', label_visibility='collapsed')
     st.caption('① 日報写真')
     if nippou:
         st.image(Image.open(nippou), use_container_width=True)
 with col2:
-    meter = st.file_uploader('📷 明細写真', type=['jpg','jpeg','png','heic'], key='meter', label_visibility='collapsed')
+    meter = st.file_uploader('明細写真', type=['jpg','jpeg','png','heic'], key='meter', label_visibility='collapsed')
     st.caption('② メーター明細写真')
     if meter:
         st.image(Image.open(meter), use_container_width=True)
@@ -54,7 +30,7 @@ def to_b64(img):
     return base64.standard_b64encode(buf.getvalue()).decode()
 
 if nippou and meter:
-    if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
+    if st.button('日報を完成させる', use_container_width=True, type='primary'):
         with st.spinner('照合中...'):
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
