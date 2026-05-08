@@ -30,7 +30,14 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
     border-radius: 14px !important;
     padding: 1rem !important;
 }
-[data-testid="stFileUploaderDropzoneInstructions"] small {color: #999 !important; font-size: 11px !important;}
+[data-testid="stFileUploaderDropzoneInstructions"] small {display: none !important;}
+[data-testid="stFileUploaderDropzoneInstructions"] div::after {
+    content: "日報と営業明細書をアップしてください";
+    color: #010519 !important;
+    font-size: 13px !important;
+    display: block;
+    margin-top: 4px;
+}
 [data-testid="stFileUploader"] label {color: #010519 !important; font-weight: 500 !important;}
 [data-testid="stFileUploaderDropzoneInstructions"] {color: #010519 !important;}
 [data-testid="stFileUploaderDropzoneInstructions"] * {color: #010519 !important;}
