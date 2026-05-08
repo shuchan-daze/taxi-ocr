@@ -261,7 +261,7 @@ if len(imgs) == 2:
                     st.markdown(table_match.group(1))
                 
                 st.markdown('</div>', unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f'エラー: {e}')
+        except Exception as e:
+            st.error(f'エラー: {e}')
 elif files and len(files) != 2:
     st.warning(f'2枚選択してください（現在{len(files)}枚）')
