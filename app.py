@@ -30,6 +30,11 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
     padding: 1rem !important;
 }
 [data-testid="stFileUploaderDropzoneInstructions"] small {color: #999 !important; font-size: 11px !important;}
+[data-testid="stFileUploader"] label {color: #010519 !important; font-weight: 500 !important;}
+[data-testid="stFileUploaderDropzoneInstructions"] {color: #010519 !important;}
+[data-testid="stFileUploaderDropzoneInstructions"] * {color: #010519 !important;}
+[data-testid="stFileUploader"] button {color: #010519 !important; background: white !important; border: 1px solid #010519 !important;}
+
 .stButton button {
     background: #d4af37 !important;
     color: #010519 !important;
