@@ -178,7 +178,7 @@ if len(imgs) == 2:
         progress = st.progress(0, text='📸 画像を判別中... (1/3)')
         try:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
-                client = anthropic.Anthropic(api_key=api_key)
+            client = anthropic.Anthropic(api_key=api_key)
             if is_meter(client, imgs[0]):
                 meter_img, nippou_img = imgs[0], imgs[1]
             else:
@@ -188,7 +188,6 @@ if len(imgs) == 2:
             st.error(f'エラー: {e}')
             st.stop()
         try:
-            try:
                 prompt = """【最重要ルール】金額は必ずメーター明細書（2枚目の画像）の値を使用すること。日報（1枚目）の金額は無視すること。
 
 手順：
