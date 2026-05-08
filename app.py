@@ -149,7 +149,7 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .big-num {
     font-size: 120px !important;
     font-weight: 700 !important;
-    color: rgba(212, 175, 55, 0.4) !important;
+    color: rgba(255, 255, 255, 0.15) !important;
     letter-spacing: -0.05em;
     line-height: 1;
     margin-bottom: 16px;
@@ -215,7 +215,10 @@ if files:
 if len(imgs) == 2:
     if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
         loader = st.empty()
-        loader.markdown('<div class="big-overlay"><div class="big-num">30%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
+        import time
+        for pct in [3, 8, 14, 21, 29]:
+            loader.markdown(f'<div class="big-overlay"><div class="big-num">{pct}%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
+            time.sleep(0.15)
         try:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
@@ -223,7 +226,9 @@ if len(imgs) == 2:
                 meter_img, nippou_img = imgs[0], imgs[1]
             else:
                 meter_img, nippou_img = imgs[1], imgs[0]
-            loader.markdown('<div class="big-overlay"><div class="big-num">66%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
+            for pct in [34, 42, 51, 58, 65, 71]:
+                loader.markdown(f'<div class="big-overlay"><div class="big-num">{pct}%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
+                time.sleep(0.2)
         except Exception as e:
             st.error(f'エラー: {e}')
             st.stop()
@@ -277,6 +282,9 @@ if len(imgs) == 2:
                 
                 fmt = lambda x: f'¥{int(x):,}'
                 
+                for pct in [82, 91, 97, 100]:
+                    loader.markdown(f'<div class="big-overlay"><div class="big-num">{pct}%</div><div class="big-label">完成しました</div></div>', unsafe_allow_html=True)
+                    time.sleep(0.15)
                 loader.empty()
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
                 st.markdown(f"""
