@@ -178,16 +178,110 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 @keyframes float2 { 0%{transform:translate(0,0)} 50%{transform:translate(-50vw,30vh)} 100%{transform:translate(0,0)} }
 @keyframes float3 { 0%{transform:translate(0,0)} 50%{transform:translate(40vw,-50vh)} 100%{transform:translate(0,0)} }
 @keyframes float4 { 0%{transform:translate(0,0)} 50%{transform:translate(-30vw,-40vh)} 100%{transform:translate(0,0)} }
-.p1 {top: 20%; left: 10%; animation: float1 8s ease-in-out infinite;}
-.p2 {top: 70%; left: 80%; animation: float2 10s ease-in-out infinite;}
-.p3 {top: 30%; left: 75%; animation: float3 12s ease-in-out infinite;}
-.p4 {top: 80%; left: 20%; animation: float4 9s ease-in-out infinite;}
-.p5 {top: 50%; left: 50%; animation: float1 11s ease-in-out infinite reverse;}
-.p6 {top: 15%; left: 60%; animation: float2 13s ease-in-out infinite;}
-.p7 {top: 85%; left: 45%; animation: float3 7s ease-in-out infinite;}
-.p8 {top: 40%; left: 25%; animation: float4 14s ease-in-out infinite;}
-.p9 {top: 60%; left: 90%; animation: float1 9s ease-in-out infinite;}
-.p10 {top: 25%; left: 40%; animation: float2 15s ease-in-out infinite reverse;}
+
+
+
+
+.p1 {top: 86%; left: 19%; animation: float3 6s ease-in-out infinite;}
+.p2 {top: 33%; left: 22%; animation: float1 7s ease-in-out infinite reverse;}
+.p3 {top: 9%; left: 8%; animation: float2 7s ease-in-out infinite;}
+.p4 {top: 69%; left: 82%; animation: float2 6s ease-in-out infinite reverse;}
+.p5 {top: 33%; left: 62%; animation: float3 15s ease-in-out infinite;}
+.p6 {top: 25%; left: 94%; animation: float3 12s ease-in-out infinite reverse;}
+.p7 {top: 24%; left: 32%; animation: float1 11s ease-in-out infinite;}
+.p8 {top: 53%; left: 17%; animation: float3 11s ease-in-out infinite reverse;}
+.p9 {top: 10%; left: 63%; animation: float1 14s ease-in-out infinite reverse;}
+.p10 {top: 15%; left: 75%; animation: float3 10s ease-in-out infinite;}
+.p11 {top: 95%; left: 13%; animation: float2 6s ease-in-out infinite reverse;}
+.p12 {top: 15%; left: 34%; animation: float4 7s ease-in-out infinite reverse;}
+.p13 {top: 63%; left: 86%; animation: float2 11s ease-in-out infinite reverse;}
+.p14 {top: 50%; left: 31%; animation: float3 16s ease-in-out infinite;}
+.p15 {top: 82%; left: 86%; animation: float2 8s ease-in-out infinite;}
+.p16 {top: 64%; left: 53%; animation: float2 10s ease-in-out infinite reverse;}
+.p17 {top: 12%; left: 34%; animation: float3 6s ease-in-out infinite reverse;}
+.p18 {top: 39%; left: 13%; animation: float3 9s ease-in-out infinite;}
+.p19 {top: 88%; left: 68%; animation: float4 12s ease-in-out infinite;}
+.p20 {top: 38%; left: 22%; animation: float3 9s ease-in-out infinite reverse;}
+.p21 {top: 79%; left: 56%; animation: float2 11s ease-in-out infinite;}
+.p22 {top: 70%; left: 68%; animation: float1 7s ease-in-out infinite;}
+.p23 {top: 24%; left: 85%; animation: float4 8s ease-in-out infinite;}
+.p24 {top: 54%; left: 53%; animation: float4 15s ease-in-out infinite reverse;}
+.p25 {top: 75%; left: 6%; animation: float1 16s ease-in-out infinite reverse;}
+.p26 {top: 87%; left: 48%; animation: float3 7s ease-in-out infinite reverse;}
+.p27 {top: 25%; left: 63%; animation: float3 6s ease-in-out infinite;}
+.p28 {top: 69%; left: 18%; animation: float3 16s ease-in-out infinite;}
+.p29 {top: 24%; left: 52%; animation: float1 8s ease-in-out infinite reverse;}
+.p30 {top: 67%; left: 7%; animation: float3 7s ease-in-out infinite reverse;}
+.p31 {top: 35%; left: 12%; animation: float1 9s ease-in-out infinite;}
+.p32 {top: 67%; left: 13%; animation: float2 14s ease-in-out infinite;}
+.p33 {top: 89%; left: 65%; animation: float2 14s ease-in-out infinite reverse;}
+.p34 {top: 72%; left: 82%; animation: float2 12s ease-in-out infinite;}
+.p35 {top: 44%; left: 56%; animation: float3 16s ease-in-out infinite reverse;}
+.p36 {top: 71%; left: 62%; animation: float2 7s ease-in-out infinite;}
+.p37 {top: 13%; left: 48%; animation: float2 6s ease-in-out infinite;}
+.p38 {top: 5%; left: 14%; animation: float1 16s ease-in-out infinite;}
+.p39 {top: 13%; left: 9%; animation: float1 11s ease-in-out infinite;}
+.p40 {top: 40%; left: 90%; animation: float2 13s ease-in-out infinite;}
+.p41 {top: 78%; left: 78%; animation: float2 13s ease-in-out infinite reverse;}
+.p42 {top: 57%; left: 29%; animation: float1 7s ease-in-out infinite reverse;}
+.p43 {top: 50%; left: 59%; animation: float4 12s ease-in-out infinite;}
+.p44 {top: 91%; left: 88%; animation: float1 16s ease-in-out infinite;}
+.p45 {top: 56%; left: 48%; animation: float2 7s ease-in-out infinite;}
+.p46 {top: 29%; left: 73%; animation: float2 13s ease-in-out infinite reverse;}
+.p47 {top: 28%; left: 40%; animation: float2 13s ease-in-out infinite;}
+.p48 {top: 61%; left: 75%; animation: float1 7s ease-in-out infinite;}
+.p49 {top: 16%; left: 35%; animation: float4 8s ease-in-out infinite reverse;}
+.p50 {top: 66%; left: 32%; animation: float1 12s ease-in-out infinite;}
+.p51 {top: 53%; left: 5%; animation: float3 12s ease-in-out infinite reverse;}
+.p52 {top: 41%; left: 59%; animation: float4 14s ease-in-out infinite;}
+.p53 {top: 29%; left: 42%; animation: float1 9s ease-in-out infinite;}
+.p54 {top: 45%; left: 12%; animation: float4 6s ease-in-out infinite;}
+.p55 {top: 12%; left: 70%; animation: float2 7s ease-in-out infinite;}
+.p56 {top: 81%; left: 13%; animation: float2 16s ease-in-out infinite reverse;}
+.p57 {top: 20%; left: 77%; animation: float1 9s ease-in-out infinite;}
+.p58 {top: 58%; left: 89%; animation: float3 15s ease-in-out infinite reverse;}
+.p59 {top: 31%; left: 90%; animation: float2 11s ease-in-out infinite reverse;}
+.p60 {top: 55%; left: 21%; animation: float3 16s ease-in-out infinite reverse;}
+.p61 {top: 45%; left: 14%; animation: float4 6s ease-in-out infinite;}
+.p62 {top: 14%; left: 73%; animation: float3 9s ease-in-out infinite;}
+.p63 {top: 49%; left: 13%; animation: float3 9s ease-in-out infinite reverse;}
+.p64 {top: 25%; left: 61%; animation: float3 14s ease-in-out infinite;}
+.p65 {top: 90%; left: 75%; animation: float1 10s ease-in-out infinite;}
+.p66 {top: 38%; left: 19%; animation: float2 7s ease-in-out infinite reverse;}
+.p67 {top: 41%; left: 82%; animation: float3 9s ease-in-out infinite;}
+.p68 {top: 92%; left: 86%; animation: float4 10s ease-in-out infinite reverse;}
+.p69 {top: 11%; left: 16%; animation: float4 16s ease-in-out infinite reverse;}
+.p70 {top: 10%; left: 5%; animation: float2 11s ease-in-out infinite reverse;}
+.p71 {top: 25%; left: 61%; animation: float4 14s ease-in-out infinite;}
+.p72 {top: 19%; left: 14%; animation: float1 8s ease-in-out infinite reverse;}
+.p73 {top: 79%; left: 75%; animation: float4 8s ease-in-out infinite;}
+.p74 {top: 10%; left: 44%; animation: float1 11s ease-in-out infinite reverse;}
+.p75 {top: 31%; left: 92%; animation: float1 9s ease-in-out infinite reverse;}
+.p76 {top: 76%; left: 57%; animation: float2 15s ease-in-out infinite;}
+.p77 {top: 25%; left: 27%; animation: float1 12s ease-in-out infinite;}
+.p78 {top: 47%; left: 57%; animation: float2 16s ease-in-out infinite reverse;}
+.p79 {top: 25%; left: 94%; animation: float4 7s ease-in-out infinite;}
+.p80 {top: 65%; left: 33%; animation: float4 9s ease-in-out infinite reverse;}
+.p81 {top: 44%; left: 34%; animation: float1 9s ease-in-out infinite;}
+.p82 {top: 56%; left: 47%; animation: float1 10s ease-in-out infinite reverse;}
+.p83 {top: 49%; left: 87%; animation: float4 14s ease-in-out infinite reverse;}
+.p84 {top: 8%; left: 19%; animation: float2 10s ease-in-out infinite reverse;}
+.p85 {top: 9%; left: 18%; animation: float4 15s ease-in-out infinite reverse;}
+.p86 {top: 45%; left: 60%; animation: float1 15s ease-in-out infinite reverse;}
+.p87 {top: 78%; left: 29%; animation: float1 10s ease-in-out infinite reverse;}
+.p88 {top: 5%; left: 71%; animation: float2 14s ease-in-out infinite reverse;}
+.p89 {top: 60%; left: 13%; animation: float3 16s ease-in-out infinite reverse;}
+.p90 {top: 89%; left: 20%; animation: float3 10s ease-in-out infinite reverse;}
+.p91 {top: 46%; left: 56%; animation: float2 10s ease-in-out infinite;}
+.p92 {top: 58%; left: 90%; animation: float2 12s ease-in-out infinite reverse;}
+.p93 {top: 56%; left: 75%; animation: float3 6s ease-in-out infinite reverse;}
+.p94 {top: 31%; left: 60%; animation: float3 15s ease-in-out infinite reverse;}
+.p95 {top: 61%; left: 61%; animation: float2 16s ease-in-out infinite reverse;}
+.p96 {top: 26%; left: 89%; animation: float3 7s ease-in-out infinite reverse;}
+.p97 {top: 16%; left: 35%; animation: float3 16s ease-in-out infinite;}
+.p98 {top: 30%; left: 23%; animation: float1 6s ease-in-out infinite;}
+.p99 {top: 65%; left: 83%; animation: float4 7s ease-in-out infinite reverse;}
+.p100 {top: 85%; left: 78%; animation: float4 9s ease-in-out infinite reverse;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -245,7 +339,7 @@ if len(imgs) == 2:
         loader = st.empty()
         import time
         for pct in [3, 8, 14, 21, 29]:
-            loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span></div><div class="big-num">{pct}%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
+            loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span><span class="particle p11"></span><span class="particle p12"></span><span class="particle p13"></span><span class="particle p14"></span><span class="particle p15"></span><span class="particle p16"></span><span class="particle p17"></span><span class="particle p18"></span><span class="particle p19"></span><span class="particle p20"></span><span class="particle p21"></span><span class="particle p22"></span><span class="particle p23"></span><span class="particle p24"></span><span class="particle p25"></span><span class="particle p26"></span><span class="particle p27"></span><span class="particle p28"></span><span class="particle p29"></span><span class="particle p30"></span><span class="particle p31"></span><span class="particle p32"></span><span class="particle p33"></span><span class="particle p34"></span><span class="particle p35"></span><span class="particle p36"></span><span class="particle p37"></span><span class="particle p38"></span><span class="particle p39"></span><span class="particle p40"></span><span class="particle p41"></span><span class="particle p42"></span><span class="particle p43"></span><span class="particle p44"></span><span class="particle p45"></span><span class="particle p46"></span><span class="particle p47"></span><span class="particle p48"></span><span class="particle p49"></span><span class="particle p50"></span><span class="particle p51"></span><span class="particle p52"></span><span class="particle p53"></span><span class="particle p54"></span><span class="particle p55"></span><span class="particle p56"></span><span class="particle p57"></span><span class="particle p58"></span><span class="particle p59"></span><span class="particle p60"></span><span class="particle p61"></span><span class="particle p62"></span><span class="particle p63"></span><span class="particle p64"></span><span class="particle p65"></span><span class="particle p66"></span><span class="particle p67"></span><span class="particle p68"></span><span class="particle p69"></span><span class="particle p70"></span><span class="particle p71"></span><span class="particle p72"></span><span class="particle p73"></span><span class="particle p74"></span><span class="particle p75"></span><span class="particle p76"></span><span class="particle p77"></span><span class="particle p78"></span><span class="particle p79"></span><span class="particle p80"></span><span class="particle p81"></span><span class="particle p82"></span><span class="particle p83"></span><span class="particle p84"></span><span class="particle p85"></span><span class="particle p86"></span><span class="particle p87"></span><span class="particle p88"></span><span class="particle p89"></span><span class="particle p90"></span><span class="particle p91"></span><span class="particle p92"></span><span class="particle p93"></span><span class="particle p94"></span><span class="particle p95"></span><span class="particle p96"></span><span class="particle p97"></span><span class="particle p98"></span><span class="particle p99"></span><span class="particle p100"></span></div><div class="big-num">{pct}%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
             time.sleep(0.15)
         try:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
@@ -255,7 +349,7 @@ if len(imgs) == 2:
             else:
                 meter_img, nippou_img = imgs[1], imgs[0]
             for pct in [34, 42, 51, 58, 65, 71]:
-                loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span></div><div class="big-num">{pct}%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
+                loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span><span class="particle p11"></span><span class="particle p12"></span><span class="particle p13"></span><span class="particle p14"></span><span class="particle p15"></span><span class="particle p16"></span><span class="particle p17"></span><span class="particle p18"></span><span class="particle p19"></span><span class="particle p20"></span><span class="particle p21"></span><span class="particle p22"></span><span class="particle p23"></span><span class="particle p24"></span><span class="particle p25"></span><span class="particle p26"></span><span class="particle p27"></span><span class="particle p28"></span><span class="particle p29"></span><span class="particle p30"></span><span class="particle p31"></span><span class="particle p32"></span><span class="particle p33"></span><span class="particle p34"></span><span class="particle p35"></span><span class="particle p36"></span><span class="particle p37"></span><span class="particle p38"></span><span class="particle p39"></span><span class="particle p40"></span><span class="particle p41"></span><span class="particle p42"></span><span class="particle p43"></span><span class="particle p44"></span><span class="particle p45"></span><span class="particle p46"></span><span class="particle p47"></span><span class="particle p48"></span><span class="particle p49"></span><span class="particle p50"></span><span class="particle p51"></span><span class="particle p52"></span><span class="particle p53"></span><span class="particle p54"></span><span class="particle p55"></span><span class="particle p56"></span><span class="particle p57"></span><span class="particle p58"></span><span class="particle p59"></span><span class="particle p60"></span><span class="particle p61"></span><span class="particle p62"></span><span class="particle p63"></span><span class="particle p64"></span><span class="particle p65"></span><span class="particle p66"></span><span class="particle p67"></span><span class="particle p68"></span><span class="particle p69"></span><span class="particle p70"></span><span class="particle p71"></span><span class="particle p72"></span><span class="particle p73"></span><span class="particle p74"></span><span class="particle p75"></span><span class="particle p76"></span><span class="particle p77"></span><span class="particle p78"></span><span class="particle p79"></span><span class="particle p80"></span><span class="particle p81"></span><span class="particle p82"></span><span class="particle p83"></span><span class="particle p84"></span><span class="particle p85"></span><span class="particle p86"></span><span class="particle p87"></span><span class="particle p88"></span><span class="particle p89"></span><span class="particle p90"></span><span class="particle p91"></span><span class="particle p92"></span><span class="particle p93"></span><span class="particle p94"></span><span class="particle p95"></span><span class="particle p96"></span><span class="particle p97"></span><span class="particle p98"></span><span class="particle p99"></span><span class="particle p100"></span></div><div class="big-num">{pct}%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
                 time.sleep(0.2)
         except Exception as e:
             st.error(f'エラー: {e}')
@@ -311,7 +405,7 @@ if len(imgs) == 2:
                 fmt = lambda x: f'¥{int(x):,}'
                 
                 for pct in [82, 91, 97, 100]:
-                    loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span></div><div class="big-num">{pct}%</div><div class="big-label">完成しました</div></div>', unsafe_allow_html=True)
+                    loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span><span class="particle p11"></span><span class="particle p12"></span><span class="particle p13"></span><span class="particle p14"></span><span class="particle p15"></span><span class="particle p16"></span><span class="particle p17"></span><span class="particle p18"></span><span class="particle p19"></span><span class="particle p20"></span><span class="particle p21"></span><span class="particle p22"></span><span class="particle p23"></span><span class="particle p24"></span><span class="particle p25"></span><span class="particle p26"></span><span class="particle p27"></span><span class="particle p28"></span><span class="particle p29"></span><span class="particle p30"></span><span class="particle p31"></span><span class="particle p32"></span><span class="particle p33"></span><span class="particle p34"></span><span class="particle p35"></span><span class="particle p36"></span><span class="particle p37"></span><span class="particle p38"></span><span class="particle p39"></span><span class="particle p40"></span><span class="particle p41"></span><span class="particle p42"></span><span class="particle p43"></span><span class="particle p44"></span><span class="particle p45"></span><span class="particle p46"></span><span class="particle p47"></span><span class="particle p48"></span><span class="particle p49"></span><span class="particle p50"></span><span class="particle p51"></span><span class="particle p52"></span><span class="particle p53"></span><span class="particle p54"></span><span class="particle p55"></span><span class="particle p56"></span><span class="particle p57"></span><span class="particle p58"></span><span class="particle p59"></span><span class="particle p60"></span><span class="particle p61"></span><span class="particle p62"></span><span class="particle p63"></span><span class="particle p64"></span><span class="particle p65"></span><span class="particle p66"></span><span class="particle p67"></span><span class="particle p68"></span><span class="particle p69"></span><span class="particle p70"></span><span class="particle p71"></span><span class="particle p72"></span><span class="particle p73"></span><span class="particle p74"></span><span class="particle p75"></span><span class="particle p76"></span><span class="particle p77"></span><span class="particle p78"></span><span class="particle p79"></span><span class="particle p80"></span><span class="particle p81"></span><span class="particle p82"></span><span class="particle p83"></span><span class="particle p84"></span><span class="particle p85"></span><span class="particle p86"></span><span class="particle p87"></span><span class="particle p88"></span><span class="particle p89"></span><span class="particle p90"></span><span class="particle p91"></span><span class="particle p92"></span><span class="particle p93"></span><span class="particle p94"></span><span class="particle p95"></span><span class="particle p96"></span><span class="particle p97"></span><span class="particle p98"></span><span class="particle p99"></span><span class="particle p100"></span></div><div class="big-num">{pct}%</div><div class="big-label">完成しました</div></div>', unsafe_allow_html=True)
                     time.sleep(0.15)
                 loader.empty()
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
