@@ -53,16 +53,16 @@ st.markdown("""
 
 /* ===== 結果カード内部 ===== */
 .complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37;}
-.complete-bar .label {font-size: 16px; font-weight: 500; color: #010519; margin: 0;}
-.complete-bar .stats {font-size: 32px; font-weight: 700; color: #010519; margin: 0;}
-.complete-bar .stats small {font-size: 18px; color: #888;}
+.complete-bar .label {font-size: clamp(13px, 3.5vw, 16px); font-weight: 500; color: #010519; margin: 0;}
+.complete-bar .stats {font-size: clamp(18px, 5vw, 26px); font-weight: 700; color: #010519; margin: 0;}
+.complete-bar .stats small {font-size: clamp(11px, 3vw, 15px); color: #888;}
 
 .metric-grid-3 {display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px;}
 .metric-grid-2 {display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px;}
 .metric {background: #f5f5f7; border-radius: 10px; padding: 8px 10px;}
 .metric.dark {background: #d4af37;}
-.metric .label {font-size: 15px; color: #888; margin: 0; letter-spacing: 0.05em; font-weight: 500;}
-.metric .value {font-size: 38px; font-weight: 700; margin: 2px 0 0; color: #010519;}
+.metric .label {font-size: clamp(11px, 3vw, 14px); color: #888; margin: 0; letter-spacing: 0.05em; font-weight: 500;}
+.metric .value {font-size: clamp(16px, 5vw, 28px); font-weight: 700; margin: 2px 0 0; color: #010519; word-break: break-all;}
 .metric.dark .label, .metric.dark .value {color: #010519 !important;}
 
 /* ===== テーブル ===== */
