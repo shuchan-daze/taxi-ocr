@@ -1824,6 +1824,9 @@ def _parse_meter_vision(meter_img):
     # 各再構成行から時刻と金額を抽出
     rows = []
     no = 1
+    # デバッグ出力: 再構成された各行を Streamlit Cloud ログに出す
+    for i, line in enumerate(reconstructed_lines):
+        print(f"[METER LINE {i+1}] {line}")
     for line in reconstructed_lines:
         time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', line)
         if not time_match:
