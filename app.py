@@ -1729,7 +1729,7 @@ def _parse_meter_vision(client_vision, meter_img):
 
     lines = full_text.split('\n')
     time_pat = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
-    amt_pat = re.compile(r'[¥\\]\s*(\d{1,2})[,\s]\s*(\d{3})')
+    amt_pat = re.compile(r'[¥\\]\s*([\d,\s]+?)(?:円|M|H|\s+\d{4}|\s*$)')
     rows = []
     for i, line in enumerate(lines):
         tm = time_pat.search(line)
@@ -1739,10 +1739,11 @@ def _parse_meter_vision(client_vision, meter_img):
             am = amt_pat.search(lines[j])
             if am:
                 h, mi = tm.group(2).split(':')
+                amount = int(am.group(1).replace(',', '').replace(' ', ''))
                 rows.append({
                     'no': int(tm.group(1)),
                     'time': f'{int(h):02d}:{mi}',
-                    'amount': int(am.group(1)) * 1000 + int(am.group(2)),
+                    'amount': amount,
                 })
                 break
     rows.sort(key=lambda r: r['no'])
@@ -1862,7 +1863,7 @@ def build_report(meter_data, nippou_data):
                 'memo': memo, 'state': 'ok',
             })
             output.append({
-                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'no': f'{meter_no}+', 'passengers': passengers, 'time': meter_row['time'],
                 'gen': overage, 'mi': 0,
                 'memo': 'メーター超過', 'state': 'special',
             })
@@ -2190,6 +2191,12 @@ if st.session_state.get('result_rows'):
         if r.get('state') == 'charter':
             continue
         no = r.get('no')
+        # メーター超過の "22+" のような string は元の meter_no に正規化して合算
+        if isinstance(no, str) and no.endswith('+'):
+            try:
+                no = int(no.rstrip('+'))
+            except ValueError:
+                continue
         if no in meter_amounts:
             sum_by_no[no] = sum_by_no.get(no, 0) + int(r.get('gen') or 0) + int(r.get('mi') or 0)
     integrity_issues = []
