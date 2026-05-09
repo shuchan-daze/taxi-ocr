@@ -2071,15 +2071,21 @@ def _parse_meter_vision(client_vision, meter_img):
 def parse_meter(client, meter_img):
     """Stage 1 ディスパッチャ: Vision API 優先、失敗時のみ Claude にフォールバック。"""
     vc = get_vision_client()
+    print(f'[PARSE_METER] vision client available: {vc is not None}')
     if vc is not None:
         try:
             result = _parse_meter_vision(vc, meter_img)
             if result is not None:
+                print(f'[PARSE_METER] vision parser returned {len(result.get("rows", []))} rows → using vision')
                 for r in result.get('rows', []):
                     print(f"[METER LINE No.{r['no']}] {r['time']} ¥{r['amount']:,} (vision)")
                 return result
+            else:
+                print('[PARSE_METER] vision parser returned None → falling back to claude')
         except Exception as e:
-            print(f'[VISION] failed, falling back to Claude: {type(e).__name__}: {e}')
+            print(f'[PARSE_METER] vision exception → falling back to claude: {type(e).__name__}: {e}')
+    else:
+        print('[PARSE_METER] no vision client → using claude')
     return _parse_meter_claude(client, meter_img)
 
 
