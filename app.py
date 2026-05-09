@@ -8,7 +8,6 @@ import json
 import os
 import re
 import time
-import pandas as pd
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', layout='centered', initial_sidebar_state='collapsed')
@@ -1447,6 +1446,14 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .detail-table tr.special td:first-child {border-left: 4px solid #d97706 !important;}
 .detail-table tr.charter td {background: #dbeafe !important; color: #1e3a8a !important;}
 .detail-table tr.charter td:first-child {border-left: 4px solid #2563eb !important;}
+[class*="st-key-edit_card_"] {background: #f9fafb !important; border: 1px solid #e5e7eb !important; border-radius: 10px !important; padding: 12px 16px !important; margin-bottom: 10px !important;}
+[class*="st-key-edit_card_"] .edit-card-meta {color: #1f2937; font-size: 14px; font-weight: 600; line-height: 38px;}
+[class*="st-key-edit_card_"] .edit-card-state {color: #6b7280; font-size: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.08);}
+[class*="st-key-edit_card_"] .edit-card-state.state-mismatch {color: #b91c1c; font-weight: 600;}
+[class*="st-key-edit_card_"] .edit-card-state.state-special {color: #b45309; font-weight: 600;}
+[class*="st-key-edit_card_"] .edit-card-state.state-charter {color: #1d4ed8; font-weight: 600;}
+[class*="st-key-edit_card_"] label {color: #374151 !important; font-size: 12px !important; font-weight: 600 !important;}
+[class*="st-key-edit_card_"] input {color: #111827 !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -2035,48 +2042,39 @@ if st.session_state.get('result_rows'):
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
 
     if not valid:
-        st.warning(f'⚠️ 整合性チェック失敗: 出力合計とメーター合計が ¥{abs(diff):,} ずれています。下のテーブルで編集して「合計を再計算」を押してください。')
-        df = pd.DataFrame([
-            {'No': r['no'], '人数': r['passengers'], '時刻': r['time'],
-             '現収': r['gen'], '未収': r['mi'], '摘要': r['memo'], '状態': r['state']}
-            for r in rows
-        ])
-        editor_height = min(900, max(500, 38 + 35 * len(rows)))
-        edited = st.data_editor(
-            df,
-            use_container_width=True,
-            num_rows='dynamic',
-            height=editor_height,
-            column_order=['人数', '時刻', '現収', '未収', '摘要'],
-            column_config={
-                'No': None,
-                '状態': None,
-                '人数': st.column_config.NumberColumn('人数', width='small', format='%d'),
-                '時刻': st.column_config.TextColumn('時刻', width='small'),
-                '現収': st.column_config.NumberColumn('現収', width='medium', format='%d'),
-                '未収': st.column_config.NumberColumn('未収', width='medium', format='%d'),
-                '摘要': st.column_config.TextColumn('摘要', width='medium'),
-            },
-            key='result_editor',
-        )
+        st.warning(f'⚠️ 整合性チェック失敗: 出力合計とメーター合計が ¥{abs(diff):,} ずれています。下の各行を編集して「合計を再計算」を押してください。')
+        edited_rows = []
+        for i, r in enumerate(rows):
+            with st.container(key=f'edit_card_{i}'):
+                c1, c2, c3 = st.columns([1, 1.5, 1])
+                with c1:
+                    st.markdown(f'<div class="edit-card-meta">No.{r["no"]}</div>', unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f'<div class="edit-card-meta">時刻 {r["time"] or "-"}</div>', unsafe_allow_html=True)
+                with c3:
+                    passengers = st.number_input('人数', value=int(r['passengers'] or 0), min_value=0, step=1, key=f'edit_p_{i}')
+                c4, c5 = st.columns(2)
+                with c4:
+                    gen = st.number_input('現収', value=int(r['gen'] or 0), min_value=0, step=100, key=f'edit_g_{i}')
+                with c5:
+                    mi = st.number_input('未収', value=int(r['mi'] or 0), min_value=0, step=100, key=f'edit_m_{i}')
+                memo = st.text_input('摘要', value=r['memo'] or '', key=f'edit_memo_{i}')
+                state = r['state'] or 'ok'
+                state_class = f'state-{state}' if state in ('mismatch', 'special', 'charter') else ''
+                st.markdown(f'<div class="edit-card-state {state_class}">状態: {state}</div>', unsafe_allow_html=True)
+            edited_rows.append({
+                'no': r['no'],
+                'passengers': int(passengers),
+                'time': r['time'],
+                'gen': int(gen),
+                'mi': int(mi),
+                'memo': memo,
+                'state': r['state'],
+            })
         if st.button('💾 合計を再計算', use_container_width=True, key='recalc_btn'):
-            edited2 = edited.copy()
-            for col in ('現収', '未収', '人数'):
-                edited2[col] = pd.to_numeric(edited2[col], errors='coerce').fillna(0)
-            recalced = []
-            for _, row in edited2.iterrows():
-                recalced.append({
-                    'no': row.get('No', 0),
-                    'passengers': int(row['人数']),
-                    'time': row.get('時刻', ''),
-                    'gen': int(row['現収']),
-                    'mi': int(row['未収']),
-                    'memo': row.get('摘要', ''),
-                    'state': row.get('状態', 'ok'),
-                })
-            ken, nin, gen, mi, sou, tax, net = aggregate_totals(recalced)
+            ken, nin, gen, mi, sou, tax, net = aggregate_totals(edited_rows)
             render_summary(ken, nin, gen, mi, sou, tax, net)
-            render_detail_table(recalced)
+            render_detail_table(edited_rows)
     else:
         ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
         render_summary(ken, nin, gen, mi, sou, tax, net)
