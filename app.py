@@ -1435,6 +1435,11 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [class*="st-key-del_"] button {background: rgba(0,0,0,0.6) !important; color: white !important; border: 1px solid rgba(255,255,255,0.3) !important; border-radius: 6px !important; padding: 4px 10px !important; min-height: auto !important; line-height: 1.2 !important; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);}
 [class*="st-key-del_"] button:hover {background: rgba(220,38,38,0.85) !important; border-color: rgba(255,255,255,0.5) !important;}
 [class*="st-key-del_"] button p {font-size: 12px !important; margin: 0 !important; color: white !important;}
+.detail-table {width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px;}
+.detail-table th, .detail-table td {padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.15); text-align: left; color: white;}
+.detail-table th {background: rgba(255,255,255,0.06); font-weight: 600;}
+.detail-table tr.mismatch td {background: #fee2e2 !important; color: #7f1d1d !important;}
+.detail-table tr.mismatch td:first-child {border-left: 4px solid #dc2626 !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1637,7 +1642,13 @@ if len(imgs) == 2:
 （上記は記入例。実際の値に置き換えること。必ず半角コロン「:」とアラビア数字のみ使用。）
 
 ## 明細
-マークダウンテーブル。列: No / 人数 / 降車時刻 / 現収 / 未収 / 摘要
+マークダウンテーブル。列: No / 人数 / 降車時刻 / 現収 / 未収 / 摘要 / 状態
+
+【状態列の判定ルール】
+- 「ok」: その行の金額が、日報に書かれている金額と一致する
+- 「mismatch」: その行の金額が、日報の記載と異なる（メーター値を採用したが、要確認）
+- メーター超過で1行を2行に分割した場合：客分の行は「ok」、超過分の行は「mismatch」
+- 状態列は必ず「ok」または「mismatch」のいずれか半角英字で出力すること（記号や絵文字は使わない）
 
 ※消費税は総収÷11を10円単位で四捨五入。税抜運収は総収マイナス消費税。"""
                 res = client.messages.create(
@@ -1693,7 +1704,28 @@ if len(imgs) == 2:
                 
                 table_match = re.search(r'## 明細\s*(.+)', text, re.DOTALL)
                 if table_match:
-                    st.markdown(table_match.group(1))
+                    raw_table = table_match.group(1).strip()
+                    table_lines = [ln.strip() for ln in raw_table.split('\n') if ln.strip().startswith('|')]
+                    if len(table_lines) >= 2:
+                        header_cells = [c.strip() for c in table_lines[0].strip('|').split('|')]
+                        data_lines = [ln for ln in table_lines[1:] if not re.fullmatch(r'\|[\s\-:|]+\|', ln)]
+                        state_idx = next((i for i, h in enumerate(header_cells) if '状態' in h or 'state' in h.lower()), -1)
+                        html_parts = ['<table class="detail-table"><thead><tr>']
+                        for h in header_cells:
+                            html_parts.append(f'<th>{h}</th>')
+                        html_parts.append('</tr></thead><tbody>')
+                        for line in data_lines:
+                            cells = [c.strip() for c in line.strip('|').split('|')]
+                            is_mismatch = state_idx >= 0 and state_idx < len(cells) and 'mismatch' in cells[state_idx].lower()
+                            row_class = ' class="mismatch"' if is_mismatch else ''
+                            html_parts.append(f'<tr{row_class}>')
+                            for c in cells:
+                                html_parts.append(f'<td>{c}</td>')
+                            html_parts.append('</tr>')
+                        html_parts.append('</tbody></table>')
+                        st.markdown(''.join(html_parts), unsafe_allow_html=True)
+                    else:
+                        st.markdown(raw_table)
                 
                 st.markdown('</div>', unsafe_allow_html=True)
                 
