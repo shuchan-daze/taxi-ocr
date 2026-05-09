@@ -3,6 +3,8 @@ import anthropic
 import base64
 from PIL import Image, ExifTags
 from pillow_heif import register_heif_opener
+from google.cloud import vision
+from google.oauth2 import service_account
 import io
 import json
 import os
@@ -1541,12 +1543,72 @@ def to_b64(img):
     return base64.standard_b64encode(buf.getvalue()).decode()
 
 
+def _img_to_bytes(img, max_size=3000, quality=95):
+    """PIL Image を JPEG bytes に変換（Vision API 用）"""
+    img_copy = img.copy()
+    img_copy.thumbnail((max_size, max_size))
+    buf = io.BytesIO()
+    img_copy.save(buf, format='JPEG', quality=quality)
+    return buf.getvalue()
+
+
+# ============================================================
+# 1.5 Google Vision API クライアント取得
+# ============================================================
+#
+# 認証元の優先順:
+#   1) st.secrets["gcp_service_account"]（Streamlit Cloud）
+#   2) ローカルの key.json
+#   3) 取得不能なら None（Claude にフォールバック）
+# ============================================================
+
+@st.cache_resource
+def get_vision_client():
+    try:
+        if 'gcp_service_account' in st.secrets:
+            info = dict(st.secrets['gcp_service_account'])
+            credentials = service_account.Credentials.from_service_account_info(info)
+            return vision.ImageAnnotatorClient(credentials=credentials)
+    except Exception:
+        pass
+    if os.path.exists('key.json'):
+        try:
+            credentials = service_account.Credentials.from_service_account_file('key.json')
+            return vision.ImageAnnotatorClient(credentials=credentials)
+        except Exception:
+            return None
+    return None
+
+
 # ============================================================
 # 2. 画像識別
 # ============================================================
 
+def _identify_meter_via_vision(img):
+    """Vision API で「営業明細書」等のキーワードを検出。検出されれば 'meter'、それ以外は None。"""
+    vc = get_vision_client()
+    if vc is None:
+        return None
+    try:
+        image = vision.Image(content=_img_to_bytes(img, max_size=2000, quality=85))
+        response = vc.text_detection(image=image)
+        if response.error.message:
+            return None
+        text = response.full_text_annotation.text if response.full_text_annotation else ''
+        if any(kw in text for kw in ['営業明細書', '明細書', 'メーター']):
+            return 'meter'
+        return None
+    except Exception:
+        return None
+
+
 def identify_image(client, img):
-    """画像を判定して 'meter' / 'nippou' / 'unclear' を返す"""
+    """画像を判定して 'meter' / 'nippou' / 'unclear' を返す。
+    Vision API で 'meter' 確定なら早期リターン、それ以外は Claude で判定。"""
+    v = _identify_meter_via_vision(img)
+    if v == 'meter':
+        return 'meter'
+
     res = client.messages.create(
         model='claude-opus-4-5', max_tokens=20, temperature=0,
         messages=[{'role':'user','content':[
@@ -1606,15 +1668,67 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 # 4. Stage 1 - メーター明細書のみを読み取る（金額確定）
 # ============================================================
 #
+# 【ハイブリッド構成】
+#   1) Google Vision API で OCR → 正規表現で構造化（高精度・機械印字向け）
+#   2) Vision で行抽出に失敗した場合のみ Claude にフォールバック
+#
 # 【契約】
 # - 入力：メーター明細書1枚のみ（日報は渡さない）
-# - 出力：rows = [{no, time, amount}, ...], total
+# - 出力：rows = [{no, time, amount}, ...], total, source（'vision' or 'claude'）
 # - この関数の出力金額は、以降のすべての処理で「真実」として扱う。
 #   build_report ではこの金額を改変せずに使用する。
 # ============================================================
 
-def parse_meter(client, meter_img):
-    """Stage 1: メーター明細書のみから行リスト（時刻＋金額）を抽出。"""
+def _parse_meter_vision(meter_img):
+    """Vision API による OCR + 正規表現抽出。失敗時は ValueError / RuntimeError。"""
+    vc = get_vision_client()
+    if vc is None:
+        raise RuntimeError('Vision API クライアントが取得できません')
+
+    image = vision.Image(content=_img_to_bytes(meter_img, max_size=3000, quality=95))
+    response = vc.document_text_detection(image=image)
+    if response.error.message:
+        raise RuntimeError(f'Vision API error: {response.error.message}')
+
+    full_text = response.full_text_annotation.text if response.full_text_annotation else ''
+    if not full_text.strip():
+        raise ValueError('Vision API: テキスト未検出')
+
+    rows = []
+    no_counter = 1
+    for line in full_text.split('\n'):
+        line = line.strip()
+        time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', line)
+        if not time_match:
+            continue
+        candidates = []
+        # 1) カンマ付き金額（X,XXX）を優先
+        for m in re.finditer(r'[¥￥]?(\d{1,2},\d{3})', line):
+            candidates.append(int(m.group(1).replace(',', '')))
+        # 2) カンマ無しの3〜5桁数字（時刻の数値とは重複しない範囲のみ）
+        if not candidates:
+            t_h = int(time_match.group(1))
+            t_m = int(time_match.group(2))
+            for m in re.finditer(r'\b(\d{3,5})\b', line):
+                v = int(m.group(1))
+                if 200 <= v <= 100000 and v != t_h and v != t_m:
+                    candidates.append(v)
+        if not candidates:
+            continue
+        amount = max(candidates)  # 同行に複数あれば最大値（運賃が最大値であることが多い）
+        time_str = f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
+        rows.append({'no': no_counter, 'time': time_str, 'amount': amount})
+        no_counter += 1
+
+    if not rows:
+        raise ValueError(f'Vision API: 行抽出失敗。先頭テキスト: {full_text[:200]}')
+
+    total = sum(r['amount'] for r in rows)
+    return {'rows': rows, 'total': total, 'source': 'vision', 'raw_text': full_text}
+
+
+def _parse_meter_claude(client, meter_img):
+    """[フォールバック] Claude API でメーター明細を読み取る。"""
     res = client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role':'user','content':[
@@ -1675,7 +1789,24 @@ JSON 形式のみ（前後に余計なテキスト・コードブロック記号
     m = re.search(r'\{.*\}', text, re.DOTALL)
     if not m:
         raise ValueError(f'メーター明細のJSONが見つかりません。応答: {text[:300]}')
-    return json.loads(m.group(0))
+    data = json.loads(m.group(0))
+    data['source'] = 'claude'
+    return data
+
+
+def parse_meter(client, meter_img):
+    """Stage 1 ディスパッチャ: Vision API を優先、失敗時は Claude にフォールバック。"""
+    vc = get_vision_client()
+    if vc is not None:
+        try:
+            return _parse_meter_vision(meter_img)
+        except (ValueError, RuntimeError):
+            # Vision で抽出できなかった場合は Claude にフォールバック（黙ってリトライ）
+            pass
+        except Exception:
+            # 想定外のエラーは Claude にフォールバック（運用継続を優先）
+            pass
+    return _parse_meter_claude(client, meter_img)
 
 
 # ============================================================
@@ -2203,6 +2334,9 @@ if st.session_state.get('result_rows'):
 
     # ========== Stage 1: メーター明細生データ ==========
     with st.expander('🔧 Stage 1: メーター明細生データ'):
+        source = meter_data.get('source', 'unknown')
+        source_label = {'vision': '🔵 Google Vision API', 'claude': '🟣 Claude API（フォールバック）'}.get(source, source)
+        st.markdown(f'**読み取り元**: {source_label}')
         meter_rows_disp = meter_data.get('rows', [])
         if meter_rows_disp:
             parts = ['<table class="detail-table"><thead><tr><th>No</th><th>時刻</th><th>金額</th></tr></thead><tbody>']
@@ -2213,8 +2347,13 @@ if st.session_state.get('result_rows'):
             st.markdown(f'**合計**: ¥{meter_data.get("total", 0):,}（{len(meter_rows_disp)}行）')
         else:
             st.info('メーター明細データなし')
+        if 'raw_text' in meter_data:
+            st.markdown('**Vision API 生テキスト:**')
+            st.code(meter_data['raw_text'][:2000])
         st.markdown('**生 JSON:**')
-        st.json(meter_data)
+        # raw_text は重複表示を避けるため除外
+        meter_data_disp = {k: v for k, v in meter_data.items() if k != 'raw_text'}
+        st.json(meter_data_disp)
 
     # ========== Stage 2: 日報分類生データ ==========
     with st.expander('🔧 Stage 2: 日報分類生データ'):
