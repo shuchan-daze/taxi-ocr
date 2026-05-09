@@ -1474,15 +1474,7 @@ def _parse_meter_vision(client_vision, meter_img):
 
 
 def parse_meter(client, meter_img):
-    """Stage 1 ディスパッチャ: Vision API 優先、失敗時のみ Claude にフォールバック。"""
-    vc = get_vision_client()
-    if vc is not None:
-        try:
-            result = _parse_meter_vision(vc, meter_img)
-            if result is not None:
-                return result
-        except Exception:
-            pass
+    """Stage 1: Claude でメーターレシートを OCR（Vision API より精度が高いため）。"""
     return _parse_meter_claude(client, meter_img)
 
 
