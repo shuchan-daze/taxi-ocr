@@ -1601,20 +1601,55 @@ def _img_to_bytes(img, max_size=3000, quality=95):
 
 @st.cache_resource
 def get_vision_client():
+    """Returns the Vision API client. Failure detail is stored in session_state to surface in UI.
+    Note: @st.cache_resource は client インスタンスをキャッシュするので、再認証は走らない。"""
+    err_chain = []
+
+    # 1) Streamlit Secrets を試行
+    secrets_has_key = False
     try:
-        if 'gcp_service_account' in st.secrets:
+        secrets_has_key = 'gcp_service_account' in st.secrets
+    except Exception as e:
+        err_chain.append(f'st.secrets アクセス失敗: {type(e).__name__}: {e}')
+
+    if secrets_has_key:
+        try:
             info = dict(st.secrets['gcp_service_account'])
             credentials = service_account.Credentials.from_service_account_info(info)
-            return vision.ImageAnnotatorClient(credentials=credentials)
-    except Exception:
-        pass
+            client = vision.ImageAnnotatorClient(credentials=credentials)
+            return client
+        except Exception as e:
+            err_chain.append(f'secrets 認証失敗: {type(e).__name__}: {e}')
+    else:
+        err_chain.append('st.secrets に "gcp_service_account" セクションが存在しない')
+
+    # 2) ローカル key.json を試行
     if os.path.exists('key.json'):
         try:
             credentials = service_account.Credentials.from_service_account_file('key.json')
-            return vision.ImageAnnotatorClient(credentials=credentials)
-        except Exception:
-            return None
+            client = vision.ImageAnnotatorClient(credentials=credentials)
+            return client
+        except Exception as e:
+            err_chain.append(f'key.json 認証失敗: {type(e).__name__}: {e}')
+    else:
+        err_chain.append('ローカル key.json も存在しない')
+
+    # 失敗内容を session_state に残し、サーバ stdout にも出力
+    msg = ' / '.join(err_chain)
+    try:
+        st.session_state['_vision_auth_error'] = msg
+    except Exception:
+        pass
+    print(f'[VISION] auth failed: {msg}')
     return None
+
+
+def _get_vision_auth_error():
+    """get_vision_client() が記録した認証失敗理由を返す（無ければ空文字）"""
+    try:
+        return st.session_state.get('_vision_auth_error', '')
+    except Exception:
+        return ''
 
 
 # ============================================================
@@ -1723,9 +1758,10 @@ def _parse_meter_vision(meter_img):
     """
     vc = get_vision_client()
     if vc is None:
+        auth_err = _get_vision_auth_error() or 'Vision client 取得失敗（理由不明）'
         return {
             'success': False, 'stage': 'auth',
-            'reason': 'Vision client 取得失敗（st.secrets["gcp_service_account"] 未設定、または認証情報が無効）',
+            'reason': f'Vision client 取得失敗: {auth_err}',
             'raw_text': None,
         }
 
@@ -2351,6 +2387,23 @@ if st.session_state.get('result_rows'):
     diff = st.session_state.result_diff
     meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
     nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
+
+    # Vision API 失敗時は最上部に目立つバナーを表示（expanderを開かなくても見える）
+    _diag = meter_data.get('_vision_diag') or {}
+    if _diag and not _diag.get('success'):
+        _stage_jp = {
+            'auth': '🔐 認証段階（Vision client 取得）',
+            'api_call': '📡 API呼び出し段階',
+            'api_response': '⚠️ API応答段階',
+            'ocr': '👁️ OCR段階（テキスト未検出）',
+            'parser': '🔍 Parser段階（行抽出失敗）',
+        }.get(_diag.get('failed_stage'), _diag.get('failed_stage', '不明段階'))
+        st.error(
+            f'### 🟣 Vision API が動作せず Claude にフォールバック中\n\n'
+            f'**失敗段階**: {_stage_jp}\n\n'
+            f'**理由**: {_diag.get("reason", "不明")}\n\n'
+            f'_詳細は下の「🔧 Stage 1: メーター明細生データ」expander を開いて確認できます。_'
+        )
 
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
 
