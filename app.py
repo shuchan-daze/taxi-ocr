@@ -2489,6 +2489,35 @@ if st.session_state.get('result_rows'):
     meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
     nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
 
+    # ========== 乖離チェック（写真誤りの検知） ==========
+    _meter_rows = meter_data.get('rows', [])
+    _rides = nippou_data.get('rides', [])
+    _extras = nippou_data.get('extras', [])
+
+    _meter_count = len(_meter_rows)
+    # 日報側件数: rides + 貸切（メーター外売上）
+    _nippou_count = len(_rides) + sum(1 for e in _extras if e.get('case') == 'charter')
+    _row_diff = abs(_meter_count - _nippou_count)
+
+    # 日報に対応付いたメーター行の合計金額（日報がカバーした金額）
+    # 貸切は別系統の売上のため比較から除外（誤発火防止）
+    _meter_total = int(meter_data.get('total') or sum(int(r.get('amount', 0)) for r in _meter_rows))
+    _matched_nos = {r.get('meter_no') for r in _rides if r.get('meter_no') is not None}
+    _matched_meter_amt = sum(int(r.get('amount', 0)) for r in _meter_rows if r['no'] in _matched_nos)
+    _nippou_total = _matched_meter_amt
+
+    _gap_rate = abs(_meter_total - _nippou_total) / _meter_total if _meter_total > 0 else 0.0
+    _amount_diff = abs(_meter_total - _nippou_total)
+
+    if _row_diff >= 3 or _gap_rate >= 0.30:
+        st.error(
+            f'### ⚠️ メーターレシートと日報の内容が大きく乖離しています\n\n'
+            f'- メーター: **{_meter_count}件** / 日報: **{_nippou_count}件**（{_row_diff}件の差）\n'
+            f'- 金額差: **¥{_amount_diff:,}**（{_gap_rate*100:.0f}%の乖離）\n\n'
+            f'写真が正しいか確認して、必要であれば再アップしてください。'
+        )
+        st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_btn', use_container_width=True)
+
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
 
     if not valid:
