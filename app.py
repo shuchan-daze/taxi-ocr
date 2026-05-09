@@ -1535,11 +1535,15 @@ def is_meter(client, img):
     )
     return 'はい' in res.content[0].text
 
-if 'uploader_key' not in st.session_state:
-    st.session_state.uploader_key = 0
+def reset_app():
+    st.session_state.uploader_counter = st.session_state.get('uploader_counter', 0) + 1
+    st.session_state.kept_files = []
+
+if 'uploader_counter' not in st.session_state:
+    st.session_state.uploader_counter = 0
 if 'kept_files' not in st.session_state:
     st.session_state.kept_files = []
-new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f'uploader_{st.session_state.uploader_key}')
+new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
 
 if new_files:
     existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
@@ -1550,7 +1554,7 @@ if new_files:
             st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
             added = True
     if added:
-        st.session_state.uploader_key += 1
+        st.session_state.uploader_counter += 1
         st.rerun()
 
 imgs = []
@@ -1687,14 +1691,9 @@ if len(imgs) == 2:
                 st.markdown('</div>', unsafe_allow_html=True)
                 
                 st.markdown('<br>', unsafe_allow_html=True)
-                reset_clicked = st.button('🔄 新しい日報を作成', use_container_width=True)
+                st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
         except Exception as e:
             st.error(f'エラー: {e}')
-            reset_clicked = False
-        if reset_clicked:
-            st.session_state.uploader_key += 1
-            st.session_state.kept_files = []
-            st.rerun()
 elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
     st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
