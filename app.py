@@ -781,14 +781,6 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     border-radius: 50%;
     background: rgba(255,255,255,0.25);
 }
-/* 粒子の動きを不規則に：nth-child で7種類のイージング曲線をローテーション */
-.particle:nth-child(7n)   {animation-timing-function: cubic-bezier(0.30, 0.10, 0.70, 0.90) !important;}
-.particle:nth-child(7n+1) {animation-timing-function: cubic-bezier(0.62, 0.04, 0.32, 1.00) !important;}
-.particle:nth-child(7n+2) {animation-timing-function: cubic-bezier(0.20, 0.45, 0.85, 0.55) !important;}
-.particle:nth-child(7n+3) {animation-timing-function: cubic-bezier(0.85, 0.05, 0.18, 0.98) !important;}
-.particle:nth-child(7n+4) {animation-timing-function: cubic-bezier(0.45, 0.65, 0.55, 0.35) !important;}
-.particle:nth-child(7n+5) {animation-timing-function: cubic-bezier(0.55, 0.00, 0.45, 1.00) !important;}
-.particle:nth-child(7n+6) {animation-timing-function: cubic-bezier(0.10, 0.30, 0.92, 0.72) !important;}
 @keyframes warp1 {
   0% {transform: translate(0,0) scale(1); opacity: 0; filter: blur(4px); width: 4.9px; height: 4.9px; box-shadow: 0 0 8px rgba(255,255,255,0.40), 0 0 16px rgba(212,175,55,0.30);}
   10% {opacity: 0.85; filter: blur(2.4px);}
@@ -1862,9 +1854,7 @@ observer.observe(document.body, {childList: true, subtree: true});
 </script>
 ''', height=0)
 
-# ============================================================
-# 1. 画像準備
-# ============================================================
+# 画像準備
 
 def fix_orientation(img):
     try:
@@ -1887,9 +1877,7 @@ def to_b64(img):
     return base64.standard_b64encode(buf.getvalue()).decode()
 
 
-# ============================================================
-# 2. 画像識別
-# ============================================================
+# 画像識別
 
 def identify_image(client, img):
     """画像を判定して 'meter' / 'nippou' / 'unclear' を返す。"""
@@ -1917,9 +1905,7 @@ unclear'''}
     return 'unclear'
 
 
-# ============================================================
-# 3. 鮮明度チェック
-# ============================================================
+# 鮮明度チェック
 
 def check_clarity(client, meter_img, nippou_img):
     """両画像が読み取り可能な品質か判定。返値: (ok: bool, reason: str)"""
@@ -1948,16 +1934,8 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
     return False, (m.group(1).strip() if m else '画像が不鮮明です')
 
 
-# ============================================================
-# 4. Stage 1 - メーター明細書を Claude で OCR して構造化
-# ============================================================
-#
-# 【契約】
-# - 入力：メーター明細書1枚のみ（日報は渡さない）
-# - 出力：{'rows': [{no, time, amount}, ...]}
-# - この関数の出力金額は、以降のすべての処理で「真実」として扱う。
-#   build_report ではこの金額を改変せずに使用する。
-# ============================================================
+# Stage 1: メーター明細書を OCR → {'rows': [{no, time, amount}, ...]}
+# 出力金額は build_report で「真実」として使用される。
 
 def _parse_meter_claude(client, meter_img):
     """メーターレシート画像を Claude に直接送って JSON で返させる。"""
@@ -2104,20 +2082,15 @@ def parse_meter(client, meter_img):
     return _parse_meter_claude(client, meter_img)
 
 
-# ============================================================
-# 5. Stage 2 - 日報を Claude で分類（金額には触れない）
-# ============================================================
-#
-# 【契約】
-# - 入力：日報1枚 + Stage 1 のメーター行リスト（テキストとしてプロンプトに添付）
-# - 出力：{'rides': [{meter_no, passengers, kind, memo, case, overage_amount?}, ...]}
-# - 各 ride は通常乗客行に対応。から回し（取り消し線つき +金額のみの行）は
-#   独立した ride にせず、直前の通常行を case='overage' に更新する。
-# ============================================================
+# Stage 2: 日報のみから乗客行を分類 → {'rides': [...]}
+# meter_data に依存せず、meter_no は日報の上から 1 始まり連番で割当。
+# AI は金額を読まない（金額は Stage 1 のメーター値を build_report が使用）。
 
 def classify_nippou(client, nippou_img):
-    """Stage 2: 日報を Claude で分類。各通常乗客行を JSON 配列で返す。
-    meter_data に依存せず日報のみで完結する（meter_no は 1 始まり連番として割当）。"""
+    """Stage 2: 日報を Claude で分類し、{rides: [...]} を返す。
+    各 ride は通常乗客行に対応。case='normal' か 'overage'（から回し時）。
+    から回し行（取り消し線つき +金額のみ）は独立 ride にせず、直前の通常行
+    の case を 'overage' に変更し overage_amount をセットする。"""
     prompt = """これはタクシー乗務員の手書き日報です。
 日報の各行を上から順に処理し、以下のルールで JSON 配列を返してください。
 
@@ -2160,19 +2133,9 @@ def classify_nippou(client, nippou_img):
     return {'rides': rides}
 
 
-# ============================================================
-# 6. Stage 3 - 純 Python でデータ統合（AIは関与しない）
-# ============================================================
-#
-# 【不変条件】
-# - 通常乗車・障害者割引行の金額は meter_data['rows'][n]['amount'] を必ず使用。
-#   AI（classify_nippou）が出力した値は kind/memo/case/passengers のみ参照。
-# - メーター超過時:
-#     客分 = meter_amount - overage_amount  （引き算で算出）
-#     超過分 = overage_amount               （日報の +〇〇 そのまま）
-#     検算: 客分 + 超過分 == meter_amount   （Python が保証）
-# - 貸切・障害者割引現金は nippou_data['extras'] からそのまま使用（メーター外）。
-# ============================================================
+# Stage 3: 純 Python でメーター×日報を統合（AIは関与しない）
+# 通常行は meter_amount をそのまま gen/mi に振り分け。
+# overage 行は客分 (meter - overage) と超過分 (overage) の 2 行に分割。
 
 def build_report(meter_data, nippou_data):
     """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。
@@ -2216,9 +2179,7 @@ def build_report(meter_data, nippou_data):
     return output
 
 
-# ============================================================
-# 7. 整合性チェック
-# ============================================================
+# 整合性チェック
 
 def validate(report_rows, meter_data, nippou_data):
     """合計の整合性チェック。返値: (ok: bool, diff: int)"""
@@ -2228,9 +2189,7 @@ def validate(report_rows, meter_data, nippou_data):
     return diff == 0, diff
 
 
-# ============================================================
 # Loader 演出ヘルパー
-# ============================================================
 
 def _particles_html():
     return ''.join(f'<span class="particle p{i}"></span>' for i in range(1, 101))
@@ -2254,9 +2213,7 @@ def loader_steps(loader, pcts, label, sleep=0.15, anim_class=''):
         anim_class = ''  # 最初のステップだけアニメーション、以降は静的に
 
 
-# ============================================================
-# 8. 表示ヘルパー
-# ============================================================
+# 表示ヘルパー
 
 def render_summary(ken, nin, gen, mi, sou, tax, net):
     fmt = lambda x: f'¥{int(x):,}'
@@ -2315,9 +2272,7 @@ def aggregate_totals(rows):
     return ken, nin, gen, mi, sou, int(tax), net
 
 
-# ============================================================
 # パイプライン本体
-# ============================================================
 
 def run_pipeline(client, imgs, loader):
     """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff, meter_data, nippou_data)"""
@@ -2365,9 +2320,7 @@ def run_pipeline(client, imgs, loader):
     return report_rows, valid, diff, meter_data, nippou_data
 
 
-# ============================================================
 # Reset / state
-# ============================================================
 
 _RESULT_KEYS = ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou')
 
@@ -2441,9 +2394,7 @@ if len(imgs) == 2:
 elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
     st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
-# ============================================================
 # 結果表示（result_rows が session_state にある時）
-# ============================================================
 
 if st.session_state.get('result_rows'):
     rows = st.session_state.result_rows
