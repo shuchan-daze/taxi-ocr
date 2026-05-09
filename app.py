@@ -2014,7 +2014,7 @@ def _parse_meter_vision(client_vision, meter_img):
         tm = time_pat.search(line)
         if not tm:
             continue
-        for j in range(i + 1, min(i + 3, len(lines))):
+        for j in range(i, min(i + 3, len(lines))):
             am = amt_pat.search(lines[j])
             if am:
                 h, mi = tm.group(2).split(':')
