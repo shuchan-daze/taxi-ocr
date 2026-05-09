@@ -1940,27 +1940,18 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 
 def _parse_meter_claude(client, meter_img):
     """メーターレシート画像を Claude に直接送って JSON で返させる。"""
-    prompt = """このタクシーメーターのレシート画像を読み取る。
+    prompt = """このレシートの各行を上から順に読んで、まず全行をテキストで書き出せ：
 
-手順：
-1. レシートの各行を上から順に1行ずつ読む
-2. 各行の形式は「行番号.時刻 ¥金額円 コード」
-3. 行番号と金額を絶対に隣の行と混同しないこと
-4. 読み取った内容を以下のJSON形式のみで返せ
+行1: no=1, time=10:32, amount=4100
+行2: no=2, time=10:50, amount=1000
+...（全行）
 
-{"rows": [
-  {"no": 1, "time": "10:32", "amount": 4100},
-  {"no": 2, "time": "10:50", "amount": 1000}
-]}
+全行書き出した後に、以下のJSONのみを出力せよ：
+{"rows":[{"no":1,"time":"10:32","amount":4100},...]}
 
-厳守：
-・隣接する行の金額を入れ替えない
-・no=4の金額はno=4の行から、no=5の金額はno=5の行から読む
-・¥1,800と¥1,500を混同しない
-・¥1,100と¥5,700を混同しない
-・JSON以外のテキストを出力しない"""
+JSON以外の余計なテキストは最後のJSON以外不要。"""
     res = client.messages.create(
-        model='claude-opus-4-5', max_tokens=4000, temperature=0,
+        model='claude-sonnet-4-6-20251001', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
             {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(meter_img)}},
             {'type': 'text', 'text': prompt},
