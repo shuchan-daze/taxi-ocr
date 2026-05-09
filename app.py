@@ -69,7 +69,12 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
 }
 .stButton button:hover {background: #c89f2e !important; transform: translateY(-1px);}
 .stImage img {border-radius: 12px;}
-.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37;}
+.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37; scroll-margin-top: 20px;}
+.result-card.slide-in {animation: slideInFromAbove 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;}
+@keyframes slideInFromAbove {
+    from {opacity: 0; transform: translateY(-20px);}
+    to {opacity: 1; transform: translateY(0);}
+}
 .complete-bar .label {font-size: 14px; font-weight: 500; color: #010519; margin: 0;}
 .complete-bar .stats {font-size: 18px; font-weight: 500; color: #010519; margin: 0;}
 .complete-bar .stats small {font-size: 11px; color: #888;}
@@ -1558,6 +1563,115 @@ const observer = new MutationObserver(() => {
   if (!overlay && audioStarted) stopJazzDrums();
 });
 observer.observe(document.body, {childList: true, subtree: true});
+
+// === Particle randomization + intro overlay (parent.document に対して動作) ===
+(function() {
+  const W = window.parent || window;
+  const D = W.document;
+  if (!D || W.__taxi_anim_inited) return;
+  W.__taxi_anim_inited = true;
+
+  function randomDir() {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 250 + Math.random() * 800;
+    return [Math.cos(angle) * distance, Math.sin(angle) * distance];
+  }
+
+  function animateParticle(p) {
+    if (!p.isConnected) return;
+    p.style.animation = 'none';
+    p.style.willChange = 'transform, opacity';
+    const [dx, dy] = randomDir();
+    const duration = 1500 + Math.random() * 2500;
+    const start = performance.now();
+    const startScale = 0.7 + Math.random() * 0.6;
+    const endScale = startScale + 0.3 + Math.random() * 0.7;
+
+    function step(now) {
+      if (!p.isConnected) return;
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      const fadeIn = t < 0.12 ? t / 0.12 : 1;
+      const fadeOut = t > 0.7 ? (1 - t) / 0.3 : 1;
+      const opacity = Math.min(fadeIn, fadeOut);
+      const eased = 1 - Math.pow(1 - t, 2.5);
+      const x = dx * eased;
+      const y = dy * eased;
+      const sc = startScale + (endScale - startScale) * eased;
+      p.style.transform = `translate(${x}px, ${y}px) scale(${sc})`;
+      p.style.opacity = opacity;
+      if (t < 1) {
+        W.requestAnimationFrame(step);
+      } else {
+        // 終わったら新しいランダム軌道で再開
+        W.requestAnimationFrame(() => animateParticle(p));
+      }
+    }
+    W.requestAnimationFrame(step);
+  }
+
+  function attachToOverlay(overlay) {
+    if (!overlay || overlay.__particles_started) return;
+    overlay.__particles_started = true;
+    const ps = overlay.querySelectorAll('.particle');
+    ps.forEach((p, i) => {
+      // 初動を散らす
+      setTimeout(() => animateParticle(p), Math.random() * 800);
+    });
+  }
+
+  // 既存の overlay も初期化
+  D.querySelectorAll('.big-overlay').forEach(attachToOverlay);
+
+  // 新しく追加された overlay を監視
+  const mo = new MutationObserver((muts) => {
+    for (const m of muts) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.classList?.contains('big-overlay')) attachToOverlay(node);
+        else node.querySelectorAll?.('.big-overlay').forEach(attachToOverlay);
+      }
+    }
+  });
+  mo.observe(D.body, {childList: true, subtree: true});
+
+  // === イントロ演出（セッション内で初回のみ）===
+  try {
+    if (!W.sessionStorage.getItem('taxi_intro_shown')) {
+      W.sessionStorage.setItem('taxi_intro_shown', '1');
+      const intro = D.createElement('div');
+      intro.className = 'big-overlay entering';
+      intro.style.zIndex = '99998';  // メインの overlay より一段下
+      const particles = D.createElement('div');
+      particles.className = 'particles';
+      for (let i = 1; i <= 100; i++) {
+        const sp = D.createElement('span');
+        sp.className = 'particle p' + i;
+        particles.appendChild(sp);
+      }
+      intro.appendChild(particles);
+      const num = D.createElement('div');
+      num.className = 'big-num';
+      num.textContent = 'TAXI';
+      intro.appendChild(num);
+      const lbl = D.createElement('div');
+      lbl.className = 'big-label';
+      lbl.textContent = 'DAILY REPORT';
+      intro.appendChild(lbl);
+      D.body.appendChild(intro);
+      attachToOverlay(intro);
+      // 0.75s 後に exiting → 削除
+      setTimeout(() => {
+        intro.classList.remove('entering');
+        intro.classList.add('exiting');
+        setTimeout(() => intro.remove(), 320);
+      }, 750);
+    }
+  } catch (e) {
+    // sessionStorage 不可環境でも他機能を壊さない
+    console.warn('intro skipped:', e);
+  }
+})();
 </script>
 ''', height=0)
 
@@ -2355,12 +2469,14 @@ if st.session_state.get('result_rows'):
     st.markdown('<br>', unsafe_allow_html=True)
     st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
 
-    # 結果が新しく生成されたターンのみ「✓ 完成」を画面トップへスムーススクロール
+    # 結果が新しく生成されたターンのみ slide-in アニメ→スクロール
     if st.session_state.get('_pending_scroll'):
         st.session_state._pending_scroll = False
         components.html('''
 <script>
 setTimeout(() => {
+    const card = parent.document.querySelector('.result-card');
+    if (card) card.classList.add('slide-in');
     const target = parent.document.querySelector('.complete-bar');
     if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
 }, 120);
