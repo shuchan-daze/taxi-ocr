@@ -2047,14 +2047,15 @@ if st.session_state.get('result_rows'):
             use_container_width=True,
             num_rows='dynamic',
             height=editor_height,
+            column_order=['人数', '時刻', '現収', '未収', '摘要'],
             column_config={
-                'No': st.column_config.NumberColumn('No', width='small', format='%d'),
+                'No': None,
+                '状態': None,
                 '人数': st.column_config.NumberColumn('人数', width='small', format='%d'),
                 '時刻': st.column_config.TextColumn('時刻', width='small'),
                 '現収': st.column_config.NumberColumn('現収', width='medium', format='%d'),
                 '未収': st.column_config.NumberColumn('未収', width='medium', format='%d'),
-                '摘要': st.column_config.TextColumn('摘要', width='large'),
-                '状態': st.column_config.TextColumn('状態', width='small'),
+                '摘要': st.column_config.TextColumn('摘要', width='medium'),
             },
             key='result_editor',
         )
