@@ -1471,6 +1471,11 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [data-testid="stExpander"] h3 {color: white !important;}
 [data-testid="stExpander"] summary p {color: #d4af37 !important;}
 [data-testid="stExpander"] {background: rgba(255,255,255,0.05); border: 1px solid rgba(212,175,55,0.3); border-radius: 12px;}
+[data-testid="stExpander"] pre {background: #f5f5f5 !important; color: #1a1a1a !important; padding: 10px !important; border-radius: 6px !important;}
+[data-testid="stExpander"] pre * {color: #1a1a1a !important; background-color: transparent !important;}
+[data-testid="stExpander"] code {color: #1a1a1a !important; background: #f5f5f5 !important;}
+[data-testid="stExpander"] [data-testid="stCodeBlock"] {background: #f5f5f5 !important;}
+[data-testid="stExpander"] [data-testid="stCodeBlock"] * {color: #1a1a1a !important;}
 [data-testid="stColumn"]:has([class*="st-key-del_"]) {position: relative;}
 [class*="st-key-del_"] {position: absolute !important; bottom: 12px; right: 12px; width: auto !important; z-index: 10;}
 [class*="st-key-del_"] button {background: rgba(0,0,0,0.6) !important; color: white !important; border: 1px solid rgba(255,255,255,0.3) !important; border-radius: 6px !important; padding: 4px 10px !important; min-height: auto !important; line-height: 1.2 !important; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);}
@@ -1786,14 +1791,27 @@ def _parse_meter_vision(meter_img):
         return {'success': False, 'stage': 'ocr',
                 'reason': 'OCRテキストが空', 'raw_text': ''}
 
-    pattern = re.compile(r'(\d+)\.\s*(\d{1,2}:\d{2})[^\n¥]*¥([\d,]+)円')
+    # 実際の Vision 出力は時刻行と金額行が別々に出てくる：
+    #   時刻行: "18.18:48" / "19.19:28 * 4"
+    #   次の行: "¥1,100M 1000" / "\5, 700M 1000"（¥が\に化け、円がMに化け、カンマ後にスペース等が入る）
+    lines = full_text.split('\n')
+    time_pattern = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
+    amount_pattern = re.compile(r'[¥\\]?\s*(\d{1,2})[,\s]\s*(\d{3})')
     rows = []
-    for m in pattern.finditer(full_text):
-        no = int(m.group(1))
-        h, mi = m.group(2).split(':')
-        time_str = f"{int(h):02d}:{mi}"
-        amount = int(m.group(3).replace(',', ''))
-        rows.append({'no': no, 'time': time_str, 'amount': amount})
+    for i, line in enumerate(lines):
+        tm = time_pattern.search(line)
+        if not tm:
+            continue
+        # 直後の数行から金額を探す（最大2行先まで）
+        for j in range(i + 1, min(i + 3, len(lines))):
+            am = amount_pattern.search(lines[j])
+            if am:
+                no = int(tm.group(1))
+                h, mi = tm.group(2).split(':')
+                time_str = f"{int(h):02d}:{mi}"
+                amount = int(am.group(1)) * 1000 + int(am.group(2))
+                rows.append({'no': no, 'time': time_str, 'amount': amount})
+                break
     rows.sort(key=lambda r: r['no'])
 
     # デバッグ出力: 抽出した各行を Streamlit Cloud ログに
