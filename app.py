@@ -1603,16 +1603,23 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 
 
 # ============================================================
-# 4. メーター明細を読み取る
+# 4. Stage 1 - メーター明細書のみを読み取る（金額確定）
+# ============================================================
+#
+# 【契約】
+# - 入力：メーター明細書1枚のみ（日報は渡さない）
+# - 出力：rows = [{no, time, amount}, ...], total
+# - この関数の出力金額は、以降のすべての処理で「真実」として扱う。
+#   build_report ではこの金額を改変せずに使用する。
 # ============================================================
 
 def parse_meter(client, meter_img):
-    """メーター明細書から行リストを取得。返値: dict {rows: [...], total: int}"""
+    """Stage 1: メーター明細書のみから行リスト（時刻＋金額）を抽出。"""
     res = client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role':'user','content':[
             {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(meter_img)}},
-            {'type':'text','text':'''メーター明細書（営業明細書）の全行を読み取ってJSONで出力してください。
+            {'type':'text','text':'''メーター明細書（営業明細書）の全行を読み取って JSON で出力してください。
 
 【厳密ルール】
 - 金額は桁ごとに慎重に読み取る（千の位・百の位・十の位を順に確認）。
@@ -1643,41 +1650,71 @@ JSON 形式のみ（前後に余計なテキスト・コードブロック記号
 
 
 # ============================================================
-# 5. 日報を読み取る
+# 5. Stage 2 - 日報のみを読み取り「分類情報」のみ取得（金額には触れない）
+# ============================================================
+#
+# 【契約】
+# - 入力：日報1枚 + Stage 1 のメーター行リスト（テキストとしてプロンプトに添付）
+# - 出力：rides = [{meter_no, passengers, kind, memo, case, overage_amount?}, ...]
+#         extras = [{case, passengers, kind, memo, amount, linked_meter_no?}, ...]
+# - AI は通常の現収/未収欄の金額を「読まない・出力しない」契約。
+#   日報から金額を抽出する例外は以下の3つのみ：
+#     1. メーター超過の「+〇〇」追記の値（overage_amount）
+#     2. 貸切金額（charter の amount）
+#     3. 障害者割引の割引現金行（discount_cash の amount）
+#
+# 【設計意図】
+# Stage 1 で確定した金額が、Stage 2 のプロンプトに「参考テキスト」として
+# 含まれる。AI は対応関係（meter_no）と分類（kind/memo/case）のみを返す。
+# 金額計算と統合は build_report（純Python）で行う。
 # ============================================================
 
-def parse_nippou(client, nippou_img, meter_data):
-    """日報を読み取り、メーター明細との対応＋特殊ケースを取得。返値: dict {rides: [...], extras: [...]}"""
+def classify_nippou(client, nippou_img, meter_data):
+    """Stage 2: 日報のみから分類情報を抽出。AIには金額判断をさせない。"""
     meter_summary = '\n'.join(f"  No.{r['no']}: {r['time']} ¥{r['amount']:,}" for r in meter_data.get('rows', []))
     res = client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role':'user','content':[
             {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(nippou_img)}},
             {'type':'text','text':f'''これはタクシー乗務員の手書き日報です。
-別途読み取り済みのメーター明細書（営業明細書）の行リストは以下：
+別途、メーター明細書（営業明細書）から下記の行リストを既に読み取り済みです。
+このリストの各行に対応する日報の補助情報（人数・現収/未収・摘要・特殊ケース）を出力してください。
+
+【メーター明細リスト（このリストの金額は確定済みです）】
 {meter_summary}
 
 【あなたのタスク】
-日報の各行を読み取り、メーター明細書のどの行に対応するかを判定し、各行の補助情報（人数・現収/未収・摘要・特殊ケース）を取得してください。
+- 日報の各行を読み取り、上のメーター明細のどの No に対応するかを判定する。
+- 各行の補助情報（人数・現収/未収・摘要・ケース）を出力する。
+- メーター明細にない貸切や、別行で計上された障割現金は extras として出力する。
 
-【金額の扱い - 最重要】
-日報の現収/未収欄に書かれた数字そのものは出力しないでください（金額はメーター明細を採用するため）。
-ただし以下の例外のみ、日報から金額を読み取って出力します：
-- メーター超過の「+〇〇」追記の値（例: +100 → overage_amount: 100）
-- 貸切の金額（メーター明細にない料金体系）
-- 障害者割引の割引額（日報に別行で「現金」として計上されている場合）
+【★金額判断禁止★ - これは契約です】
+あなたは日報の現収/未収欄に書かれた金額を読み取る必要はありません。出力もしません。
+（金額は上のメーター明細リストの値を Python コードが自動で割り当てます）
 
-【現収/未収判定】
+例外として、日報からのみ読み取れる以下の3種類の金額のみ出力します：
+1. メーター超過の「+〇〇」追記の値（overage_amount）
+2. 貸切の金額（charter の amount）
+3. 障害者割引の割引現金行の金額（discount_cash の amount）
+
+通常の現収/未収欄の金額（メーター明細と同じ値が書かれているはずの数字）は、絶対に出力しない・参考にもしない。
+
+【現収/未収判定（金額に触れずに判定する）】
 摘要を最優先で判断：
 - 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 「未収」
 - 摘要が空欄、または「現金」 → 「現収」
 - 訂正線（取り消し線）で消された数字や記載は無視
 
-【「+〇〇」記号の認識（メーター超過時）】
+【ケース判定】
+- "normal": 通常乗車
+- "overage": 「+〇〇」「メーター超過」「消し忘れ」「超過」等の追記がある
+- "disabled": 摘要に「障割」記載がある
+
+【「+〇〇」記号の認識（overage 時のみ・誤読厳禁）】
 - 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
 - 「+」の先頭の小さな記号を絶対に見落とさない。
-- 通常の現収/未収欄とは別に、行の付近に小さく書かれた数字は超過分の候補。
-- 超過額は固定値ではなく、毎回異なる金額（+50、+100、+200、+300 など）。
+- 通常の現収/未収欄とは別に、行の付近に小さく書かれた数字を超過分として読む。
+- 超過額は固定値ではなく、毎回異なる（+50、+100、+200、+300 など）。
 
 【出力 - JSON のみ。前後に余計なテキスト・コードブロック記号なし】
 {{
@@ -1719,22 +1756,18 @@ def parse_nippou(client, nippou_img, meter_data):
 }}
 
 【フィールド】
-- meter_no: 対応するメーター明細の番号（1始まり）
-- passengers: 人数（読み取り）
+- meter_no: 対応するメーター明細の番号（1始まり、必須）
+- passengers: 人数（日報から読み取り）
 - kind: "現収" または "未収"
 - memo: 摘要（Visa, Uber, 現金, 障割, 等）
-- case:
-  * "normal": 通常乗車
-  * "overage": メーター超過（日報に+〇〇追記あり）。overage_amount に超過分の値を記入
-  * "disabled": 障害者割引（摘要に「障割」記載）
-- extras: メーター明細にない追加行
-  * "charter": 貸切（メーター明細に該当無し）。amount に金額
-  * "discount_cash": 障害者割引の割引現金行（日報に別行で計上）。amount に割引額、linked_meter_no で関連付け
+- case: "normal" / "overage" / "disabled"
+- overage_amount: case が "overage" の場合のみ整数。それ以外は null
+- extras: メーター明細にない追加行のみ（charter / discount_cash）
 
 【厳守】
-- rides の数 ≦ メーター明細行数。マッチしない日報行は extras に入れる（charter/discount_cash どちらでもなければ無視）。
-- 全ての値が JSON として valid であること（クォート・カンマ・null など）。
-- メーター明細と1対1対応する rides を必ず meter_no 昇順で出力。'''}
+- rides は全メーター行を1対1でカバーすること（メーターN行 → rides ちょうどN個）。
+- rides は meter_no 昇順で出力。
+- 全ての値が JSON として valid であること（クォート・カンマ・null など）。'''}
         ]}]
     )
     text = res.content[0].text.strip()
@@ -1745,26 +1778,40 @@ def parse_nippou(client, nippou_img, meter_data):
 
 
 # ============================================================
-# 6. データ統合
+# 6. Stage 3 - 純 Python でデータ統合（AIは関与しない）
+# ============================================================
+#
+# 【不変条件】
+# - 通常乗車・障害者割引行の金額は meter_data['rows'][n]['amount'] を必ず使用。
+#   AI（classify_nippou）が出力した値は kind/memo/case/passengers のみ参照。
+# - メーター超過時:
+#     客分 = meter_amount - overage_amount  （引き算で算出）
+#     超過分 = overage_amount               （日報の +〇〇 そのまま）
+#     検算: 客分 + 超過分 == meter_amount   （Python が保証）
+# - 貸切・障害者割引現金は nippou_data['extras'] からそのまま使用（メーター外）。
 # ============================================================
 
 def build_report(meter_data, nippou_data):
-    """メーターを主、日報を補助として最終データを構築"""
+    """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。"""
     meter_rows = {r['no']: r for r in meter_data.get('rows', [])}
     nippou_by_meter = {r['meter_no']: r for r in nippou_data.get('rides', [])}
     output = []
 
     for meter_no in sorted(meter_rows.keys()):
         meter_row = meter_rows[meter_no]
+        meter_amount = int(meter_row['amount'])  # ← Stage 1 の値。絶対不変。
         n = nippou_by_meter.get(meter_no, {})
-        passengers = n.get('passengers') or 1
+        passengers = int(n.get('passengers') or 1)
         kind = n.get('kind') or '現収'
         memo = n.get('memo') or ''
         case = n.get('case') or 'normal'
 
         if case == 'overage':
             overage = int(n.get('overage_amount') or 0)
-            client_amount = meter_row['amount'] - overage
+            client_amount = meter_amount - overage
+            # 検算: 客分 + 超過 = メーター額（必ず成立）
+            assert client_amount + overage == meter_amount, \
+                f'overage split invariant broken: {client_amount} + {overage} != {meter_amount}'
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
                 'gen': client_amount if kind == '現収' else 0,
@@ -1780,24 +1827,25 @@ def build_report(meter_data, nippou_data):
             display_memo = memo if '障割' in memo else (f'障割 {memo}'.strip() if memo else '障割')
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
-                'gen': meter_row['amount'] if kind == '現収' else 0,
-                'mi': meter_row['amount'] if kind == '未収' else 0,
+                'gen': meter_amount if kind == '現収' else 0,
+                'mi': meter_amount if kind == '未収' else 0,
                 'memo': display_memo, 'state': 'ok',
             })
-        else:
+        else:  # normal
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
-                'gen': meter_row['amount'] if kind == '現収' else 0,
-                'mi': meter_row['amount'] if kind == '未収' else 0,
+                'gen': meter_amount if kind == '現収' else 0,
+                'mi': meter_amount if kind == '未収' else 0,
                 'memo': memo, 'state': 'ok',
             })
 
+    # 貸切・障割現金（メーターにない追加行）は extras から
     next_no = (max(meter_rows.keys()) + 1) if meter_rows else 1
     for extra in nippou_data.get('extras', []):
         case = extra.get('case')
         amount = int(extra.get('amount') or 0)
         kind = extra.get('kind') or '現収'
-        passengers = extra.get('passengers') or 0
+        passengers = int(extra.get('passengers') or 0)
         memo = extra.get('memo') or ''
         if case == 'charter':
             output.append({
@@ -1944,7 +1992,7 @@ def run_pipeline(client, imgs, loader):
     meter_data = parse_meter(client, meter_img)
 
     loader_steps(loader, [60, 70, 80], '日報を読み取り中')
-    nippou_data = parse_nippou(client, nippou_img, meter_data)
+    nippou_data = classify_nippou(client, nippou_img, meter_data)
 
     loader_steps(loader, [88, 94, 100], '統合中')
     report_rows = build_report(meter_data, nippou_data)
