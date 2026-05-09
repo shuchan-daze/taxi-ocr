@@ -3,6 +3,8 @@ import anthropic
 import base64
 from PIL import Image, ExifTags
 from pillow_heif import register_heif_opener
+from google.cloud import vision
+from google.oauth2 import service_account
 import io
 import json
 import os
@@ -1695,8 +1697,70 @@ def _parse_meter_claude(client, meter_img):
     return data
 
 
+@st.cache_resource
+def get_vision_client():
+    """Google Vision API クライアント取得。secrets / key.json から認証。失敗時 None。"""
+    try:
+        if 'gcp_service_account' in st.secrets:
+            info = dict(st.secrets['gcp_service_account'])
+            credentials = service_account.Credentials.from_service_account_info(info)
+            return vision.ImageAnnotatorClient(credentials=credentials)
+    except Exception:
+        pass
+    if os.path.exists('key.json'):
+        try:
+            credentials = service_account.Credentials.from_service_account_file('key.json')
+            return vision.ImageAnnotatorClient(credentials=credentials)
+        except Exception:
+            return None
+    return None
+
+
+def _parse_meter_vision(client_vision, meter_img):
+    buf = io.BytesIO()
+    meter_img.save(buf, format='JPEG', quality=95)
+    image = vision.Image(content=buf.getvalue())
+    response = client_vision.document_text_detection(image=image)
+    if response.error.message:
+        return None
+    full_text = response.full_text_annotation.text
+    if not full_text.strip():
+        return None
+
+    lines = full_text.split('\n')
+    time_pat = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
+    amt_pat = re.compile(r'[¥\\]\s*(\d{1,2})[,\s]\s*(\d{3})')
+    rows = []
+    for i, line in enumerate(lines):
+        tm = time_pat.search(line)
+        if not tm:
+            continue
+        for j in range(i + 1, min(i + 3, len(lines))):
+            am = amt_pat.search(lines[j])
+            if am:
+                h, mi = tm.group(2).split(':')
+                rows.append({
+                    'no': int(tm.group(1)),
+                    'time': f'{int(h):02d}:{mi}',
+                    'amount': int(am.group(1)) * 1000 + int(am.group(2)),
+                })
+                break
+    rows.sort(key=lambda r: r['no'])
+    return {'rows': rows, 'total': sum(r['amount'] for r in rows)} if rows else None
+
+
 def parse_meter(client, meter_img):
-    """Stage 1 ディスパッチャ: Claude でメーター明細を読み取る。"""
+    """Stage 1 ディスパッチャ: Vision API 優先、失敗時のみ Claude にフォールバック。"""
+    vc = get_vision_client()
+    if vc is not None:
+        try:
+            result = _parse_meter_vision(vc, meter_img)
+            if result is not None:
+                for r in result.get('rows', []):
+                    print(f"[METER LINE No.{r['no']}] {r['time']} ¥{r['amount']:,} (vision)")
+                return result
+        except Exception as e:
+            print(f'[VISION] failed, falling back to Claude: {type(e).__name__}: {e}')
     return _parse_meter_claude(client, meter_img)
 
 
