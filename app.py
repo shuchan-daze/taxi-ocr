@@ -289,15 +289,28 @@ a[href*="streamlit.io/cloud"],
 .styles_viewerBadge__1yB5_ {display: none !important;}
 
 .help-fab {
-    position: fixed; bottom: 16px; right: 16px; z-index: 9998;
-    background: rgba(212,175,55,0.95); color: #010519;
-    padding: 10px 16px; border-radius: 20px;
-    font-size: 13px; font-weight: 600; cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    border: none; user-select: none;
+    position: fixed;
+    bottom: 0;
+    right: 16px;
+    z-index: 9998;
+    background: rgba(38, 39, 48, 0.95);
+    color: white;
+    padding: 8px 14px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+    border: none;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
+.help-fab:hover {background: rgba(38, 39, 48, 1);}
+.help-fab::before {content: '?'; font-weight: 600; opacity: 0.8;}
 .help-content {
-    display: none; position: fixed; bottom: 70px; right: 16px;
+    display: none; position: fixed; bottom: 50px; right: 16px;
     z-index: 9998; background: white; color: #010519;
     padding: 20px; border-radius: 16px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
@@ -310,6 +323,23 @@ a[href*="streamlit.io/cloud"],
 .help-content ol, .help-content ul {padding-left: 20px; margin: 0;}
 .help-content li {margin-bottom: 6px;}
 
+
+/* Streamlit Cloud Manage app バナーを強制非表示 */
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"],
+.viewerBadge_container__1QSob,
+.viewerBadge_link__1S137,
+.viewerBadge_text__1JaDK,
+[data-testid="stToolbar"],
+iframe[title*="streamlit"],
+div[class*="viewerBadge"],
+div[class*="ManageAppButton"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -320,7 +350,7 @@ st.markdown("""
   <div class="divider"></div>
 </div>
 <input type="checkbox" id="help-toggle" class="help-toggle" style="display:none;">
-<label for="help-toggle" class="help-fab">？ 使い方</label>
+<label for="help-toggle" class="help-fab">使い方</label>
 <div class="help-content">
   <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ なぜこのアプリが生まれたか ━━</p>
   <p style="margin: 0 0 14px; font-size: 13px;">乗務後の日報。手書き日報を見ながらメーター明細と照合し、エクセルへ転記。たった一人のドライバーが、毎日<b>30分以上</b>を費やす作業。これを365日続けると<b>年間180時間以上</b>。タクシー業界全体では<b>気が遠くなる労働時間</b>がこの単純作業に消えています。</p>
