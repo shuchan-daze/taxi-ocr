@@ -1532,16 +1532,23 @@ def is_meter(client, img):
 
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = 0
+if 'removed_ids' not in st.session_state:
+    st.session_state.removed_ids = set()
 files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f'uploader_{st.session_state.uploader_key}')
 
+active_files = [f for f in (files or []) if f.file_id not in st.session_state.removed_ids]
+
 imgs = []
-if files:
-    cols = st.columns(len(files))
-    for i, f in enumerate(files):
+if active_files:
+    cols = st.columns(len(active_files))
+    for i, f in enumerate(active_files):
         img = fix_orientation(Image.open(f))
         imgs.append(img)
         with cols[i]:
             st.image(img, use_container_width=True)
+            if st.button('✕ この写真を削除', key=f'del_{f.file_id}', use_container_width=True):
+                st.session_state.removed_ids.add(f.file_id)
+                st.rerun()
 
 if len(imgs) == 2:
     if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
@@ -1667,6 +1674,7 @@ if len(imgs) == 2:
                 st.markdown('<br>', unsafe_allow_html=True)
                 if st.button('🔄 新しい日報を作成', use_container_width=True):
                     st.session_state.uploader_key += 1
+                    st.session_state.removed_ids = set()
                     st.rerun()
         except Exception as e:
             st.error(f'エラー: {e}')
