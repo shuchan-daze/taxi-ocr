@@ -1784,18 +1784,17 @@ def _parse_meter_vision(meter_img):
     full_text = response.full_text_annotation.text if response.full_text_annotation else ''
     if not full_text.strip():
         return {'success': False, 'stage': 'ocr',
-                'reason': 'Vision API は応答したが OCR テキストが空', 'raw_text': ''}
+                'reason': 'OCRテキストが空', 'raw_text': ''}
 
-    # レシート書式専用パターン
     pattern = re.compile(r'(\d+)\.\s*(\d{1,2}:\d{2})[^\n¥]*¥([\d,]+)円')
-
     rows = []
     for m in pattern.finditer(full_text):
         no = int(m.group(1))
-        h, mm = m.group(2).split(':')
-        time_str = f'{int(h):02d}:{mm}'
+        h, mi = m.group(2).split(':')
+        time_str = f"{int(h):02d}:{mi}"
         amount = int(m.group(3).replace(',', ''))
         rows.append({'no': no, 'time': time_str, 'amount': amount})
+    rows.sort(key=lambda r: r['no'])
 
     # デバッグ出力: 抽出した各行を Streamlit Cloud ログに
     for r in rows:
