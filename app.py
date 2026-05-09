@@ -318,6 +318,17 @@ div[class*="ManageAppButton"] {
 
 
 
+
+[data-testid="stExpander"] {background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(212,175,55,0.3) !important; border-radius: 12px !important;}
+[data-testid="stExpander"] summary {color: #d4af37 !important;}
+[data-testid="stExpander"] summary p {color: #d4af37 !important;}
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
+[data-testid="stExpander"] p,
+[data-testid="stExpander"] li,
+[data-testid="stExpander"] strong,
+[data-testid="stExpander"] b {color: white !important;}
+[data-testid="stExpander"] blockquote {color: #d4af37 !important; border-left-color: #d4af37 !important;}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -330,11 +341,6 @@ st.markdown("""
   <div class="divider"></div>
 </div>
 """, unsafe_allow_html=True)
-
-with st.expander("？ このアプリについて・使い方"):
-    st.markdown("""
-**━━ なぜこのアプリが生まれたか ━━**
-
 乗務後の日報。手書き日報を見ながらメーター明細と照合し、エクセルへ転記。たった一人のドライバーが、毎日**30分以上**を費やす作業。365日続けると**年間180時間以上**。タクシー業界全体では**気が遠くなる労働時間**がこの単純作業に消えています。
 
 **━━ AIが代わりにやります ━━**
@@ -406,6 +412,11 @@ def show_overlay(loader, pct, label):
 
 
 files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True)
+
+with st.expander("？ このアプリについて・使い方"):
+    st.markdown("""
+**━━ なぜこのアプリが生まれたか ━━**
+
 
 imgs = []
 if files:
