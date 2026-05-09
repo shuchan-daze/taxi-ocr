@@ -289,15 +289,8 @@ a[href*="streamlit.io/cloud"],
 .styles_viewerBadge__1yB5_ {display: none !important;}
 
 
-.help-content {
-    display: none; position: fixed; bottom: 130px; right: 16px;
-    z-index: 9998; background: white; color: #010519;
-    padding: 20px; border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    max-width: 280px; max-height: 70vh; overflow-y: auto;
-    font-size: 14px; line-height: 1.7;
-}
-.help-toggle:checked ~ .help-content {display: block;}
+
+
 .help-content h3 {color: #010519; font-size: 15px; margin: 0 0 8px;}
 .help-content p, .help-content li, .help-content b {color: #010519 !important;}
 .help-content ol, .help-content ul {padding-left: 20px; margin: 0;}
@@ -321,11 +314,22 @@ div[class*="ManageAppButton"] {
 }
 
 
+
+
+
+
+</style>
+""", unsafe_allow_html=True)
+
+
+import streamlit.components.v1 as components
+components.html("""
+<style>
 .help-fab {
     position: fixed;
-    bottom: 60px;
+    bottom: 80px;
     right: 16px;
-    z-index: 999999;
+    z-index: 2147483647;
     background: #d4af37;
     color: #010519;
     padding: 14px 24px;
@@ -339,46 +343,62 @@ div[class*="ManageAppButton"] {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    letter-spacing: 0.05em;
 }
-.help-fab:hover {background: #c89f2e; transform: translateY(-2px);}
-.help-fab::before {content: '？'; font-size: 17px; font-weight: 700;}
-
+.help-fab:hover {background: #c89f2e;}
+.help-content {
+    display: none;
+    position: fixed;
+    bottom: 150px;
+    right: 16px;
+    z-index: 2147483647;
+    background: white;
+    color: #010519;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    max-width: 280px;
+    max-height: 70vh;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.7;
+}
+.help-content.show {display: block;}
+.help-content p, .help-content li, .help-content b {color: #010519;}
 </style>
-""", unsafe_allow_html=True)
+<button class="help-fab" onclick="
+  var c = window.parent.document.getElementById('hc');
+  if (c) c.classList.toggle('show');
+">？ 使い方</button>
+<div id="hc" class="help-content">
+  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ なぜこのアプリが ━━</p>
+  <p style="margin: 0 0 14px; font-size: 13px;">乗務後の日報。手書き日報をメーター明細と照合し、エクセルへ転記。毎日<b>30分以上</b>、年間<b>180時間以上</b>の単純作業。</p>
+  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ AIが代わりに ━━</p>
+  <ul style="padding-left: 18px; margin: 0 0 14px; font-size: 13px;">
+    <li><b>手書き文字</b>を一文字ずつ解読</li>
+    <li>滲んだ数字も<b>文脈から推測</b></li>
+    <li>2枚の画像を突き合わせ整合性確認</li>
+    <li>業務ルールに従って<b>論理的に判断</b></li>
+    <li>消費税・税抜運収まで<b>自動計算</b></li>
+  </ul>
+  <p style="margin: 0 0 14px; font-size: 13px;">これはOCRではなく<b>AIが画像を「理解」</b>している。数年前まで「研究段階」だった技術です。</p>
+  <p style="margin: 0 0 14px; font-size: 13px; padding: 10px; background: rgba(212,175,55,0.1); border-left: 3px solid #d4af37;"><b>30分の作業が数秒に。</b></p>
+  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ プライバシー ━━</p>
+  <p style="margin: 0 0 14px; font-size: 13px;">写真はこのアプリのサーバーには保存されません。AI処理元（Anthropic）に一時送信されますが、<b>学習に使われず30日以内に自動削除</b>されます。</p>
+  <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600;">使い方</p>
+  <ol style="padding-left: 18px; margin: 0; font-size: 13px;">
+    <li>写真2枚をアップ</li>
+    <li>「日報を完成させる」を押す</li>
+    <li>待つ。完成。以上。</li>
+  </ol>
+  <p style="margin: 12px 0 0; font-size: 11px; color: #888; text-align: right;">— 怒りの山本</p>
+</div>
+""", height=0)
 
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-</div>
-<input type="checkbox" id="help-toggle" class="help-toggle" style="display:none;">
-<label for="help-toggle" class="help-fab">使い方</label>
-<div class="help-content">
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ なぜこのアプリが生まれたか ━━</p>
-  <p style="margin: 0 0 14px; font-size: 13px;">乗務後の日報。手書き日報を見ながらメーター明細と照合し、エクセルへ転記。たった一人のドライバーが、毎日<b>30分以上</b>を費やす作業。これを365日続けると<b>年間180時間以上</b>。タクシー業界全体では<b>気が遠くなる労働時間</b>がこの単純作業に消えています。</p>
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ AIが代わりにやります ━━</p>
-  <p style="margin: 0 0 14px; font-size: 13px;">最先端AI「Claude」が、あなたの代わりに：</p>
-  <ul style="padding-left: 18px; margin: 0 0 14px; font-size: 13px;">
-    <li><b>手書き文字</b>を一文字ずつ解読</li>
-    <li>滲んだ数字、潰れた漢字も<b>文脈から推測</b></li>
-    <li>2枚の画像を突き合わせ<b>金額の真実</b>を確定</li>
-    <li>現収か未収か、業務ルールに従って<b>論理的に判断</b></li>
-    <li>消費税・税抜運収まで<b>自動計算</b></li>
-  </ul>
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ 何がすごいか ━━</p>
-  <p style="margin: 0 0 14px; font-size: 13px;">これはOCR（文字読み取り）ではありません。<b>AIが画像を「理解」している</b>のです。崩れた手書き文字を見て「これは1900円」と判断し、メーター明細と照合して整合性を確認する。これは数年前まで「研究段階」だった技術です。</p>
-  <p style="margin: 0 0 14px; font-size: 13px; padding: 10px 12px; background: rgba(212,175,55,0.1); border-left: 3px solid #d4af37; border-radius: 4px;"><b>30分の作業が、わずか数秒に。</b><br>これがAIの真価です。</p>
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ プライバシーへの配慮 ━━</p>
-  <p style="margin: 0 0 14px; font-size: 13px;">アップロードした写真は<b>このアプリのサーバーには保存されません</b>。AI処理のためにAI提供元（Anthropic社）に一時的に送信されますが、<b>学習には使われず、30日以内に自動削除</b>されます。日報の中身が永続的に外部に残ることはなく、個人情報・売上情報は適切に管理されています。</p>
-  <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600;">使い方</p>
-  <ol style="padding-left: 18px; margin: 0; font-size: 13px;">
-    <li>写真2枚をアップ（日報＋営業明細書）</li>
-    <li>「日報を完成させる」を押す</li>
-    <li>待つ。完成。以上。</li>
-  </ol>
-  <p style="margin: 12px 0 0; font-size: 11px; color: #888; text-align: right;">— 怒りの山本</p>
 </div>
 """, unsafe_allow_html=True)
 
