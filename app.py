@@ -2065,7 +2065,15 @@ def _parse_meter_vision(client_vision, meter_img):
             rows.append({'no': no, 'time': time_str, 'amount': amount})
 
     rows.sort(key=lambda r: r['no'])
-    return {'rows': rows, 'total': sum(r['amount'] for r in rows)} if rows else None
+    if not rows:
+        return None
+    # デバッグ: 18/19 行付近の word を抽出
+    debug_words_18_19 = [(y, x, t) for y, x, t in words if '18' in t or '19' in t or '1,1' in t or '5,7' in t]
+    return {
+        'rows': rows,
+        'total': sum(r['amount'] for r in rows),
+        '_debug_words_18_19': debug_words_18_19,
+    }
 
 
 def parse_meter(client, meter_img):
@@ -2589,8 +2597,19 @@ if st.session_state.get('result_rows'):
         else:
             st.info('メーター明細データなし')
 
+        # 18/19 行付近の Vision word データ（bbox パーサーがどう読んだかの確認）
+        debug_words = meter_data.get('_debug_words_18_19')
+        if debug_words is not None:
+            st.markdown('**🔍 18/19 関連 word（Y, X, text）:**')
+            if debug_words:
+                st.write(debug_words)
+            else:
+                st.caption('（"18" / "19" / "1,1" / "5,7" を含む word は検出されませんでした）')
+        else:
+            st.caption('（Vision パスを通っていないため bbox word データはありません）')
+
         st.markdown('**生 JSON:**')
-        st.json(meter_data)
+        st.json({k: v for k, v in meter_data.items() if k != '_debug_words_18_19'})
 
     # ========== Stage 2: 日報分類生データ ==========
     with st.expander('🔧 Stage 2: 日報分類生データ'):
