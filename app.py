@@ -1751,128 +1751,72 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 #   build_report ではこの金額を改変せずに使用する。
 # ============================================================
 
-def _extract_meter_no(line):
-    """行頭からメーター明細の行番号を抽出。
-    対応パターン: 'No.4', 'No 4', 'No4', '4.', '4)', '4 ' など。
-    抽出できなければ None。"""
-    # "No.4" / "No 4" / "No4"（大小文字無視）
-    m = re.match(r'^\s*no\.?\s*(\d{1,2})\b', line, re.IGNORECASE)
-    if m:
-        return int(m.group(1))
-    # "4." または "4)"
-    m = re.match(r'^\s*(\d{1,2})[\.\)]', line)
-    if m:
-        return int(m.group(1))
-    # "4 " 形式（後続が「:数字」でない＝時刻の hour 部分と誤認しない）
-    m = re.match(r'^\s*(\d{1,2})(?!:\d)\s+', line)
-    if m:
-        return int(m.group(1))
-    return None
-
-
 def _parse_meter_vision(meter_img):
-    """Vision API による OCR + 正規表現抽出。
-    成功時: {'success': True, 'rows': [...], 'total': N, 'source': 'vision', 'raw_text': str}
+    """Stage 1: Vision API でメーター明細を OCR、1行=1件として抽出。
+    各行に HH:MM 形式の時刻と金額が両方含まれていれば 1 件として抽出する。
+    no は1始まりの連番（レシートに印字された No は読まない）。
+
+    成功時: {'success': True, 'rows': [{'no':1,'time':'10:32','amount':4100},...], 'total': N,
+             'source': 'vision', 'raw_text': str}
     失敗時: {'success': False, 'stage': 'auth'|'api_call'|'api_response'|'ocr'|'parser', 'reason': str, 'raw_text': str|None}
     """
     vc = get_vision_client()
     if vc is None:
         auth_err = _get_vision_auth_error() or 'Vision client 取得失敗（理由不明）'
-        return {
-            'success': False, 'stage': 'auth',
-            'reason': f'Vision client 取得失敗: {auth_err}',
-            'raw_text': None,
-        }
+        return {'success': False, 'stage': 'auth',
+                'reason': f'Vision client 取得失敗: {auth_err}', 'raw_text': None}
 
     try:
         image = vision.Image(content=_img_to_bytes(meter_img, max_size=3000, quality=95))
         response = vc.document_text_detection(image=image)
     except Exception as e:
-        return {
-            'success': False, 'stage': 'api_call',
-            'reason': f'Vision API 呼び出し例外: {type(e).__name__}: {e}',
-            'raw_text': None,
-        }
+        return {'success': False, 'stage': 'api_call',
+                'reason': f'Vision API 呼び出し例外: {type(e).__name__}: {e}', 'raw_text': None}
 
     if response.error.message:
-        return {
-            'success': False, 'stage': 'api_response',
-            'reason': f'Vision API エラー応答: {response.error.message}',
-            'raw_text': None,
-        }
+        return {'success': False, 'stage': 'api_response',
+                'reason': f'Vision API エラー応答: {response.error.message}', 'raw_text': None}
 
     full_text = response.full_text_annotation.text if response.full_text_annotation else ''
     if not full_text.strip():
-        return {
-            'success': False, 'stage': 'ocr',
-            'reason': 'Vision API は応答したが OCR テキストが空',
-            'raw_text': '',
-        }
+        return {'success': False, 'stage': 'ocr',
+                'reason': 'Vision API は応答したが OCR テキストが空', 'raw_text': ''}
 
     rows = []
-    no_counter = 1
-    seen_nos = set()
-    skipped_lines = 0
-    total_lines = 0
-    extracted_count = 0  # OCR から no を抽出できた行数（デバッグ用）
+    no = 1
     for line in full_text.split('\n'):
         line = line.strip()
         if not line:
             continue
-        total_lines += 1
         time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', line)
         if not time_match:
-            skipped_lines += 1
             continue
-        candidates = []
-        # 1) カンマ付き金額（X,XXX）を優先
-        for m in re.finditer(r'[¥￥]?(\d{1,2},\d{3})', line):
-            candidates.append(int(m.group(1).replace(',', '')))
-        # 2) カンマ無しの3〜5桁数字（時刻の数値とは重複しない範囲のみ）
-        if not candidates:
+        # 金額抽出: カンマ付き（X,XXX）優先、無ければ 3〜5 桁数字をフォールバック
+        amount = None
+        m = re.search(r'[¥￥]?(\d{1,2},\d{3})', line)
+        if m:
+            amount = int(m.group(1).replace(',', ''))
+        else:
             t_h = int(time_match.group(1))
             t_m = int(time_match.group(2))
-            for m in re.finditer(r'\b(\d{3,5})\b', line):
-                v = int(m.group(1))
+            for m2 in re.finditer(r'\b(\d{3,5})\b', line):
+                v = int(m2.group(1))
                 if 200 <= v <= 100000 and v != t_h and v != t_m:
-                    candidates.append(v)
-        if not candidates:
-            skipped_lines += 1
+                    amount = v if amount is None else max(amount, v)
+        if amount is None:
             continue
-        amount = max(candidates)  # 同行に複数あれば最大値（運賃が最大値であることが多い）
         time_str = f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
-
-        # 行番号の決定: OCR から抽出 → 失敗時は未使用の連番をフォールバック採番
-        extracted_no = _extract_meter_no(line)
-        if extracted_no is not None and extracted_no not in seen_nos:
-            no = extracted_no
-            extracted_count += 1
-        else:
-            while no_counter in seen_nos:
-                no_counter += 1
-            no = no_counter
-            no_counter += 1
-        seen_nos.add(no)
-
         rows.append({'no': no, 'time': time_str, 'amount': amount})
+        no += 1
 
     if not rows:
-        return {
-            'success': False, 'stage': 'parser',
-            'reason': f'Parser: 「HH:MM と金額」を同一行で抽出できる行がありませんでした（処理対象 {total_lines} 行、スキップ {skipped_lines} 行）。レシート形式が時刻と金額を別行に分けている可能性があります。',
-            'raw_text': full_text,
-        }
-
-    # OCR が行を順不同で返した場合に備え、no で昇順ソートして整合性を保つ
-    rows.sort(key=lambda r: r['no'])
+        return {'success': False, 'stage': 'parser',
+                'reason': 'Parser: 「HH:MM と金額」を同一行で抽出できる行がありませんでした',
+                'raw_text': full_text}
 
     total = sum(r['amount'] for r in rows)
-    return {
-        'success': True,
-        'rows': rows, 'total': total,
-        'source': 'vision', 'raw_text': full_text,
-        'no_extracted': extracted_count,  # 何行で no を OCR から抽出できたか（デバッグ）
-    }
+    return {'success': True, 'rows': rows, 'total': total,
+            'source': 'vision', 'raw_text': full_text}
 
 
 def _parse_meter_claude(client, meter_img):
@@ -1973,163 +1917,64 @@ def parse_meter(client, meter_img):
 
 
 # ============================================================
-# 5. Stage 2 - 日報のみを読み取り「分類情報」のみ取得（金額には触れない）
+# 5. Stage 2 - 日報を Claude で分類（金額には触れない）
 # ============================================================
 #
 # 【契約】
 # - 入力：日報1枚 + Stage 1 のメーター行リスト（テキストとしてプロンプトに添付）
-# - 出力：rides = [{meter_no, passengers, kind, memo, case, overage_amount?}, ...]
-#         extras = [{case, passengers, kind, memo, amount, linked_meter_no?}, ...]
-# - AI は通常の現収/未収欄の金額を「読まない・出力しない」契約。
-#   日報から金額を抽出する例外は以下の3つのみ：
-#     1. メーター超過の「+〇〇」追記の値（overage_amount）
-#     2. 貸切金額（charter の amount）
-#     3. 障害者割引の割引現金行（discount_cash の amount）
-#
-# 【設計意図】
-# Stage 1 で確定した金額が、Stage 2 のプロンプトに「参考テキスト」として
-# 含まれる。AI は対応関係（meter_no）と分類（kind/memo/case）のみを返す。
-# 金額計算と統合は build_report（純Python）で行う。
+# - 出力：{'rides': [{meter_no, passengers, kind, memo, case, overage_amount?}, ...]}
+# - 各 ride は通常乗客行に対応。から回し（取り消し線つき +金額のみの行）は
+#   独立した ride にせず、直前の通常行を case='overage' に更新する。
 # ============================================================
 
 def classify_nippou(client, nippou_img, meter_data):
-    """Stage 2: 日報のみから分類情報を抽出。AIには金額判断をさせない。"""
+    """Stage 2: 日報を Claude で分類。各通常乗客行を JSON 配列で返す。"""
     meter_summary = '\n'.join(f"  No.{r['no']}: {r['time']} ¥{r['amount']:,}" for r in meter_data.get('rows', []))
-    res = client.messages.create(
-        model='claude-opus-4-5', max_tokens=4000, temperature=0,
-        messages=[{'role':'user','content':[
-            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(nippou_img)}},
-            {'type':'text','text':f'''これはタクシー乗務員の手書き日報です。
-別途、メーター明細書（営業明細書）から下記の行リストを既に読み取り済みです。
-このリストの各行に対応する日報の補助情報（人数・現収/未収・摘要・特殊ケース）を出力してください。
+    prompt = f"""これはタクシー乗務員の手書き日報です。
+別途、メーター明細書から下記の行リストを既に読み取り済みです。
 
-【メーター明細リスト（このリストの金額は確定済みです）】
+【メーター明細リスト】
 {meter_summary}
 
-【あなたのタスク】
-- 日報の各行を読み取り、上のメーター明細のどの No に対応するかを判定する。
-- 各行の補助情報（人数・現収/未収・摘要・ケース）を出力する。
-- メーター明細にない貸切や、別行で計上された障割現金は extras として出力する。
+日報の各行を上から順に処理し、以下のルールで JSON 配列を返してください。
 
-【★金額判断禁止★ - これは契約です】
-あなたは日報の現収/未収欄に書かれた金額を読み取る必要はありません。出力もしません。
-（金額は上のメーター明細リストの値を Python コードが自動で割り当てます）
+【通常行】
+{{"meter_no": 連番（1始まり）, "passengers": 人数（数字）, "kind": "現収" or "未収", "memo": "Visa/Suica/Uber/交通系/現金 等", "case": "normal"}}
 
-例外として、日報からのみ読み取れる以下の3種類の金額のみ出力します：
-1. メーター超過の「+〇〇」追記の値（overage_amount）
-2. 貸切の金額（charter の amount）
-3. 障害者割引の割引現金行の金額（discount_cash の amount）
-
-通常の現収/未収欄の金額（メーター明細と同じ値が書かれているはずの数字）は、絶対に出力しない・参考にもしない。
-
-【現収/未収判定（金額に触れずに判定する）】
-摘要を最優先で判断：
-- 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 「未収」
+【現収/未収判定】
+- 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 必ず「未収」
 - 摘要が空欄、または「現金」 → 「現収」
-- 訂正線（取り消し線）で消された数字や記載は無視
 
-【ケース判定】
-- "normal": 通常乗車
-- "overage": 「+〇〇」「メーター超過」「消し忘れ」「超過」等の追記がある
-- "disabled": 摘要に「障割」記載がある
+【から回し行の判定】
+- 乗車区間が取り消し線（横線・斜線・×印）で消されており、現収欄に「+100」「+200」のように「+金額」だけ書かれた行は「から回し」（メーター消し忘れ）。
+- この行は ride として出力しない。
+- 代わりに、この行の直前の通常行の case を "overage" に変更し、overage_amount にその金額（数値）をセットする。
 
-【「+〇〇」記号の認識（overage 時のみ・誤読厳禁）】
-
-★最初に行うこと★
-日報を読む前に、まず日報全体をスキャンして「+」記号や「メーター超過」「消し忘れ」「超過」の文字、または通常の現収/未収欄とは別の場所に小さく書かれた数字がないか、すべての行で目視確認してください。
-この事前スキャンを怠ると、メーター超過の見落としが発生します。
-
-【検出パターン】
-- 「+100」「+200」「+300」のような「+」付きの小額数字
-- 行の余白や端、摘要欄の隅に小さく書かれた数字
-- 「メーター超過」「消し忘れ」「超過」「コボシ」「から回し」などの文字（書き方は人による）
-- メーター明細の金額より日報の現収/未収欄の金額が小さく、その差額が小さく追記されているケース
-
-【★最重要：取り消し線つき「から回し」行の認識★】
-日報の中に、以下の特徴を持つ行が登場することがあります：
-- 乗車区間（行先）の欄に取り消し線（横線・斜線・×印）が引かれており、通常の乗客行として成立しない
-- 現収欄（または欄外）に「+100」「+200」のように「+金額」だけが書かれている
-- 人数や時刻など他の情報も無いか、塗り潰されている
-
-これは「から回し（メーター消し忘れ）」を示す **メタ的な追記行** であり、独立した乗客行ではありません。処理ルール：
-
-1. その取り消し線行は **独立した rides エントリにしないこと**（meter_no を割り当てない、新たな meter_no として ride を出力しない）。
-2. 直前（または時系列で隣接する）通常乗客行を特定し、その ride を以下のように更新：
-   - `case`: "overage"
-   - `overage_amount`: 取り消し線行に書かれた「+金額」の値（例: +100 → 100）
-3. 取り消し線行の「+金額」は overage_amount にのみ使用する。memo や金額として通常の現収欄の値に転記しない。
-
-例：
-- 日報の N 行目: 通常の乗客行（例「1,600 Visa 未収」）
-- 日報の N+1 行目: 取り消し線で消された行で、現収欄に「+100」のみ
-→ N 行目を case="overage", overage_amount=100 として出力。N+1 行目は ride にも extras にも含めない。
-
-【誤読防止】
-- 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
-- 「+」の先頭の小さな記号を絶対に見落とさない（鉛筆で薄く書かれている場合も）。
-- 超過額は固定値ではなく、毎回異なる（+50、+100、+200、+300 など）。
-- メーター明細リストとあなたが推定する「客分（日報の現収/未収欄の金額）」の差を計算し、その差が日報のどこかに小さく書かれていないか必ず確認する。差額が見つかれば overage_amount として記録する。
-- 取り消し線行を見逃して通常乗客行として扱わない。逆に、取り消し線でない行を「から回し」と誤判定して overage を勝手に作らない。
-
-【出力 - JSON のみ。前後に余計なテキスト・コードブロック記号なし】
-{{
-  "rides": [
-    {{
-      "meter_no": 1,
-      "passengers": 2,
-      "kind": "現収",
-      "memo": "現金",
-      "case": "normal",
-      "overage_amount": null
-    }},
-    {{
-      "meter_no": 2,
-      "passengers": 1,
-      "kind": "未収",
-      "memo": "Visa",
-      "case": "overage",
-      "overage_amount": 100
-    }}
-  ],
-  "extras": [
-    {{
-      "case": "charter",
-      "passengers": 1,
-      "kind": "現収",
-      "memo": "貸切 △△商事",
-      "amount": 12000
-    }},
-    {{
-      "case": "discount_cash",
-      "passengers": 0,
-      "kind": "現収",
-      "memo": "障割現金",
-      "amount": 160,
-      "linked_meter_no": 5
-    }}
-  ]
-}}
-
-【フィールド】
-- meter_no: 対応するメーター明細の番号（1始まり、必須）
-- passengers: 人数（日報から読み取り）
-- kind: "現収" または "未収"
-- memo: 摘要（Visa, Uber, 現金, 障割, 等）
-- case: "normal" / "overage" / "disabled"
-- overage_amount: case が "overage" の場合のみ整数。それ以外は null
-- extras: メーター明細にない追加行のみ（charter / discount_cash）
+【出力例】
+[
+  {{"meter_no": 1, "passengers": 2, "kind": "未収", "memo": "アプリ", "case": "normal"}},
+  {{"meter_no": 2, "passengers": 1, "kind": "現収", "memo": "現金", "case": "normal"}},
+  {{"meter_no": 21, "passengers": 2, "kind": "未収", "memo": "Visa", "case": "overage", "overage_amount": 100}}
+]
 
 【厳守】
-- rides は全メーター行を1対1でカバーすること（メーターN行 → rides ちょうどN個）。
-- rides は meter_no 昇順で出力。
-- 全ての値が JSON として valid であること（クォート・カンマ・null など）。'''}
+- JSON 配列のみを返す。前後に余計なテキスト・コードブロック記号・思考過程は付けない。
+- 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
+- 取り消し線行を独立した ride として出力しない。
+- 通常の現収/未収欄の金額は読み取らない・出力しない（金額はメーター明細リストの値を Python が自動で割り当てる）。"""
+    res = client.messages.create(
+        model='claude-opus-4-5', max_tokens=4000, temperature=0,
+        messages=[{'role': 'user', 'content': [
+            {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(nippou_img)}},
+            {'type': 'text', 'text': prompt},
         ]}]
     )
     text = res.content[0].text.strip()
-    m = re.search(r'\{.*\}', text, re.DOTALL)
+    m = re.search(r'\[.*\]', text, re.DOTALL)
     if not m:
-        raise ValueError(f'日報のJSONが見つかりません。応答: {text[:300]}')
-    return json.loads(m.group(0))
+        raise ValueError(f'日報のJSON配列が見つかりません。応答: {text[:300]}')
+    rides = json.loads(m.group(0))
+    return {'rides': rides}
 
 
 # ============================================================
