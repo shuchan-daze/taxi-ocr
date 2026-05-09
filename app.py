@@ -288,29 +288,9 @@ a[href*="streamlit.io/cloud"],
 .viewerBadge_link__1S137,
 .styles_viewerBadge__1yB5_ {display: none !important;}
 
-.help-fab {
-    position: fixed;
-    bottom: 0;
-    right: 16px;
-    z-index: 9998;
-    background: rgba(38, 39, 48, 0.95);
-    color: white;
-    padding: 8px 14px;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    font-size: 13px;
-    font-weight: 400;
-    cursor: pointer;
-    border: none;
-    user-select: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-.help-fab:hover {background: rgba(38, 39, 48, 1);}
-.help-fab::before {content: '?'; font-weight: 600; opacity: 0.8;}
+
 .help-content {
-    display: none; position: fixed; bottom: 50px; right: 16px;
+    display: none; position: fixed; bottom: 130px; right: 16px;
     z-index: 9998; background: white; color: #010519;
     padding: 20px; border-radius: 16px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
@@ -339,6 +319,30 @@ div[class*="ManageAppButton"] {
     opacity: 0 !important;
     pointer-events: none !important;
 }
+
+
+.help-fab {
+    position: fixed;
+    bottom: 60px;
+    right: 16px;
+    z-index: 999999;
+    background: #d4af37;
+    color: #010519;
+    padding: 14px 24px;
+    border-radius: 28px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    user-select: none;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 0.05em;
+}
+.help-fab:hover {background: #c89f2e; transform: translateY(-2px);}
+.help-fab::before {content: '？'; font-size: 17px; font-weight: 700;}
 
 </style>
 """, unsafe_allow_html=True)
