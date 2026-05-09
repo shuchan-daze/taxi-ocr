@@ -1680,26 +1680,55 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 # ============================================================
 
 def _parse_meter_vision(meter_img):
-    """Vision API による OCR + 正規表現抽出。失敗時は ValueError / RuntimeError。"""
+    """Vision API による OCR + 正規表現抽出。
+    成功時: {'success': True, 'rows': [...], 'total': N, 'source': 'vision', 'raw_text': str}
+    失敗時: {'success': False, 'stage': 'auth'|'api_call'|'api_response'|'ocr'|'parser', 'reason': str, 'raw_text': str|None}
+    """
     vc = get_vision_client()
     if vc is None:
-        raise RuntimeError('Vision API クライアントが取得できません')
+        return {
+            'success': False, 'stage': 'auth',
+            'reason': 'Vision client 取得失敗（st.secrets["gcp_service_account"] 未設定、または認証情報が無効）',
+            'raw_text': None,
+        }
 
-    image = vision.Image(content=_img_to_bytes(meter_img, max_size=3000, quality=95))
-    response = vc.document_text_detection(image=image)
+    try:
+        image = vision.Image(content=_img_to_bytes(meter_img, max_size=3000, quality=95))
+        response = vc.document_text_detection(image=image)
+    except Exception as e:
+        return {
+            'success': False, 'stage': 'api_call',
+            'reason': f'Vision API 呼び出し例外: {type(e).__name__}: {e}',
+            'raw_text': None,
+        }
+
     if response.error.message:
-        raise RuntimeError(f'Vision API error: {response.error.message}')
+        return {
+            'success': False, 'stage': 'api_response',
+            'reason': f'Vision API エラー応答: {response.error.message}',
+            'raw_text': None,
+        }
 
     full_text = response.full_text_annotation.text if response.full_text_annotation else ''
     if not full_text.strip():
-        raise ValueError('Vision API: テキスト未検出')
+        return {
+            'success': False, 'stage': 'ocr',
+            'reason': 'Vision API は応答したが OCR テキストが空',
+            'raw_text': '',
+        }
 
     rows = []
     no_counter = 1
+    skipped_lines = 0
+    total_lines = 0
     for line in full_text.split('\n'):
         line = line.strip()
+        if not line:
+            continue
+        total_lines += 1
         time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', line)
         if not time_match:
+            skipped_lines += 1
             continue
         candidates = []
         # 1) カンマ付き金額（X,XXX）を優先
@@ -1714,6 +1743,7 @@ def _parse_meter_vision(meter_img):
                 if 200 <= v <= 100000 and v != t_h and v != t_m:
                     candidates.append(v)
         if not candidates:
+            skipped_lines += 1
             continue
         amount = max(candidates)  # 同行に複数あれば最大値（運賃が最大値であることが多い）
         time_str = f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
@@ -1721,10 +1751,18 @@ def _parse_meter_vision(meter_img):
         no_counter += 1
 
     if not rows:
-        raise ValueError(f'Vision API: 行抽出失敗。先頭テキスト: {full_text[:200]}')
+        return {
+            'success': False, 'stage': 'parser',
+            'reason': f'Parser: 「HH:MM と金額」を同一行で抽出できる行がありませんでした（処理対象 {total_lines} 行、スキップ {skipped_lines} 行）。レシート形式が時刻と金額を別行に分けている可能性があります。',
+            'raw_text': full_text,
+        }
 
     total = sum(r['amount'] for r in rows)
-    return {'rows': rows, 'total': total, 'source': 'vision', 'raw_text': full_text}
+    return {
+        'success': True,
+        'rows': rows, 'total': total,
+        'source': 'vision', 'raw_text': full_text,
+    }
 
 
 def _parse_meter_claude(client, meter_img):
@@ -1795,18 +1833,33 @@ JSON 形式のみ（前後に余計なテキスト・コードブロック記号
 
 
 def parse_meter(client, meter_img):
-    """Stage 1 ディスパッチャ: Vision API を優先、失敗時は Claude にフォールバック。"""
-    vc = get_vision_client()
-    if vc is not None:
-        try:
-            return _parse_meter_vision(meter_img)
-        except (ValueError, RuntimeError):
-            # Vision で抽出できなかった場合は Claude にフォールバック（黙ってリトライ）
-            pass
-        except Exception:
-            # 想定外のエラーは Claude にフォールバック（運用継続を優先）
-            pass
-    return _parse_meter_claude(client, meter_img)
+    """Stage 1 ディスパッチャ: Vision API を優先、失敗時は Claude にフォールバック。
+    結果には _vision_diag フィールドが必ず付与され、Vision の試行結果（成功/失敗段階・理由・raw_text）が記録される。"""
+    vision_result = _parse_meter_vision(meter_img)
+
+    if vision_result.get('success'):
+        # success=True なら Vision 経由の結果をそのまま返す。診断もポジティブに記録。
+        vision_result['_vision_diag'] = {
+            'attempted': True,
+            'success': True,
+            'failed_stage': None,
+            'reason': '成功',
+            'raw_text': vision_result.get('raw_text', ''),
+            'rows_extracted': len(vision_result.get('rows', [])),
+        }
+        return vision_result
+
+    # Vision 失敗 → Claude フォールバック
+    claude_result = _parse_meter_claude(client, meter_img)
+    claude_result['_vision_diag'] = {
+        'attempted': True,
+        'success': False,
+        'failed_stage': vision_result.get('stage', 'unknown'),
+        'reason': vision_result.get('reason', '不明'),
+        'raw_text': vision_result.get('raw_text'),
+        'rows_extracted': 0,
+    }
+    return claude_result
 
 
 # ============================================================
@@ -2337,6 +2390,27 @@ if st.session_state.get('result_rows'):
         source = meter_data.get('source', 'unknown')
         source_label = {'vision': '🔵 Google Vision API', 'claude': '🟣 Claude API（フォールバック）'}.get(source, source)
         st.markdown(f'**読み取り元**: {source_label}')
+
+        # Vision 試行の診断情報を表示（フォールバック理由など）
+        diag = meter_data.get('_vision_diag') or {}
+        if diag:
+            stage_jp = {
+                'auth': '認証段階（Vision client 取得）',
+                'api_call': 'API呼び出し段階',
+                'api_response': 'API応答段階',
+                'ocr': 'OCR段階',
+                'parser': 'Parser段階',
+                'unknown': '不明段階',
+            }
+            if diag.get('success'):
+                st.success(f'✅ Vision API 成功: {diag.get("rows_extracted", 0)} 行抽出')
+            else:
+                stage_label = stage_jp.get(diag.get('failed_stage'), diag.get('failed_stage', '不明'))
+                st.warning(f'⚠️ Vision API 失敗 → Claude フォールバック\n\n'
+                           f'**失敗段階**: {stage_label}\n\n'
+                           f'**理由**: {diag.get("reason", "不明")}')
+
+        # 抽出済み行のテーブル
         meter_rows_disp = meter_data.get('rows', [])
         if meter_rows_disp:
             parts = ['<table class="detail-table"><thead><tr><th>No</th><th>時刻</th><th>金額</th></tr></thead><tbody>']
@@ -2347,12 +2421,19 @@ if st.session_state.get('result_rows'):
             st.markdown(f'**合計**: ¥{meter_data.get("total", 0):,}（{len(meter_rows_disp)}行）')
         else:
             st.info('メーター明細データなし')
-        if 'raw_text' in meter_data:
-            st.markdown('**Vision API 生テキスト:**')
-            st.code(meter_data['raw_text'][:2000])
+
+        # Vision の生テキスト（成功時 / 失敗時の両方で利用可能なら表示）
+        raw_text = meter_data.get('raw_text') or diag.get('raw_text')
+        if raw_text:
+            st.markdown('**Vision API 生テキスト（OCR結果）:**')
+            st.code(raw_text[:3000])
+            st.caption(f'文字数: {len(raw_text)}、行数（空行除く）: {len([l for l in raw_text.split(chr(10)) if l.strip()])}')
+        elif diag and not diag.get('success'):
+            st.caption('（Vision API の生テキストは取得できていません）')
+
+        # 生 JSON（raw_text は除外して見やすく）
         st.markdown('**生 JSON:**')
-        # raw_text は重複表示を避けるため除外
-        meter_data_disp = {k: v for k, v in meter_data.items() if k != 'raw_text'}
+        meter_data_disp = {k: v for k, v in meter_data.items() if k not in ('raw_text', '_vision_diag')}
         st.json(meter_data_disp)
 
     # ========== Stage 2: 日報分類生データ ==========
