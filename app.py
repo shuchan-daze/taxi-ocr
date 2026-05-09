@@ -1530,7 +1530,9 @@ def is_meter(client, img):
     )
     return 'はい' in res.content[0].text
 
-files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True)
+if 'uploader_key' not in st.session_state:
+    st.session_state.uploader_key = 0
+files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f'uploader_{st.session_state.uploader_key}')
 
 imgs = []
 if files:
@@ -1664,6 +1666,7 @@ if len(imgs) == 2:
                 
                 st.markdown('<br>', unsafe_allow_html=True)
                 if st.button('🔄 新しい日報を作成', use_container_width=True):
+                    st.session_state.uploader_key += 1
                     st.rerun()
         except Exception as e:
             st.error(f'エラー: {e}')
