@@ -1687,14 +1687,16 @@ if len(imgs) == 2:
                 st.markdown('</div>', unsafe_allow_html=True)
                 
                 st.markdown('<br>', unsafe_allow_html=True)
-                if st.button('🔄 新しい日報を作成', use_container_width=True):
-                    st.session_state.uploader_key += 1
-                    st.session_state.kept_files = []
-                    st.rerun()
+                reset_clicked = st.button('🔄 新しい日報を作成', use_container_width=True)
         except Exception as e:
             st.error(f'エラー: {e}')
-elif files and len(files) != 2:
-    st.warning(f'2枚選択してください（現在{len(files)}枚）')
+            reset_clicked = False
+        if reset_clicked:
+            st.session_state.uploader_key += 1
+            st.session_state.kept_files = []
+            st.rerun()
+elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
+    st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
 with st.expander('？ このアプリについて・使い方'):
     st.markdown('''
