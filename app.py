@@ -2016,48 +2016,32 @@ def _parse_meter_vision(client_vision, meter_img):
                     x = word.bounding_box.vertices[0].x
                     words.append((y, x, text))
 
-    # Y座標でソートし、15px以内を同一行としてグループ化
-    words.sort()
-    rows_raw, current_y, current_row = [], None, []
-    for y, x, text in words:
-        if current_y is None or abs(y - current_y) > 15:
-            if current_row:
-                rows_raw.append(sorted(current_row))
-            current_row = [(x, text)]
-            current_y = y
-        else:
-            current_row.append((x, text))
-    if current_row:
-        rows_raw.append(sorted(current_row))
-
-    # 各行から行番号・時刻・金額を抽出
+    # 行番号・時刻・金額をそれぞれ Y 順で並べ、i 番目どうしを対応付ける
     no_pat = re.compile(r'^(\d+)\.$')
     time_pat = re.compile(r'^(\d{1,2}):(\d{2})$')
     amt_pat = re.compile(r'[¥\\]([\d,]+)')
 
+    # 行番号リスト（Y順）
+    no_list = sorted([(y, int(no_pat.match(t).group(1)))
+                      for y, x, t in words if no_pat.match(t)])
+
+    # 時刻リスト（Y順）
+    time_list = sorted([(y, t) for y, x, t in words if time_pat.match(t)])
+
+    # 金額リスト（Y順）
+    amt_list = sorted([(y, int(amt_pat.search(t).group(1).replace(',', '')))
+                       for y, x, t in words if amt_pat.search(t)])
+
+    # 順番で対応付け（1番目の行番号 → 1番目の時刻 → 1番目の金額）
     rows = []
-    for row in rows_raw:
-        no = time_str = amount = None
-        yen_x = None
-
-        for x, t in row:
-            if not no and no_pat.match(t):
-                no = int(no_pat.match(t).group(1))
-            elif not time_str and time_pat.match(t):
-                m = time_pat.match(t)
-                time_str = f'{int(m.group(1)):02d}:{m.group(2)}'
-            elif t in ('¥', '\\', '￥'):
-                yen_x = x
-            elif yen_x is not None and re.match(r'[\d,]+$', t):
-                amount = int(t.replace(',', ''))
-                yen_x = None
-            elif amt_pat.search(t):
-                amount = int(amt_pat.search(t).group(1).replace(',', ''))
-
-        if no and time_str and amount:
+    for i, (_, no) in enumerate(no_list):
+        if i < len(time_list) and i < len(amt_list):
+            _, time_raw = time_list[i]
+            m = time_pat.match(time_raw)
+            time_str = f'{int(m.group(1)):02d}:{m.group(2)}'
+            amount = amt_list[i][1]
             rows.append({'no': no, 'time': time_str, 'amount': amount})
 
-    rows.sort(key=lambda r: r['no'])
     if not rows:
         return None
     # デバッグ: 18/19 行付近の word を抽出
