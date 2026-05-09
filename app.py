@@ -1963,11 +1963,7 @@ def _parse_meter_claude(client, meter_img):
     m = re.search(r'\{.*\}', text, re.DOTALL)
     if not m:
         raise ValueError(f'メーター明細のJSONが見つかりません。応答: {text[:300]}')
-    data = json.loads(m.group(0))
-    # デバッグ出力
-    for r in data.get('rows', []):
-        print(f"[METER LINE No.{r.get('no')}] {r.get('time')} ¥{int(r.get('amount', 0)):,}")
-    return data
+    return json.loads(m.group(0))
 
 
 @st.cache_resource
@@ -2029,31 +2025,19 @@ def _parse_meter_vision(client_vision, meter_img):
 
     if not rows:
         return None
-    return {
-        'rows': rows,
-        'total': sum(r['amount'] for r in rows),
-        '_raw_text': full_text,
-    }
+    return {'rows': rows, 'total': sum(r['amount'] for r in rows)}
 
 
 def parse_meter(client, meter_img):
     """Stage 1 ディスパッチャ: Vision API 優先、失敗時のみ Claude にフォールバック。"""
     vc = get_vision_client()
-    print(f'[PARSE_METER] vision client available: {vc is not None}')
     if vc is not None:
         try:
             result = _parse_meter_vision(vc, meter_img)
             if result is not None:
-                print(f'[PARSE_METER] vision parser returned {len(result.get("rows", []))} rows → using vision')
-                for r in result.get('rows', []):
-                    print(f"[METER LINE No.{r['no']}] {r['time']} ¥{r['amount']:,} (vision)")
                 return result
-            else:
-                print('[PARSE_METER] vision parser returned None → falling back to claude')
-        except Exception as e:
-            print(f'[PARSE_METER] vision exception → falling back to claude: {type(e).__name__}: {e}')
-    else:
-        print('[PARSE_METER] no vision client → using claude')
+        except Exception:
+            pass
     return _parse_meter_claude(client, meter_img)
 
 
@@ -2395,7 +2379,7 @@ if st.session_state.get('result_rows'):
     meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
     nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
 
-    # ========== メーターレシート品質チェック（読み取り破綻の検知） ==========
+    # メーターレシート品質チェック
     _meter_rows = meter_data.get('rows', [])
     _meter_no_list = [int(r.get('no', 0)) for r in _meter_rows]
 
@@ -2433,7 +2417,7 @@ if st.session_state.get('result_rows'):
         )
         st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_meter_btn', use_container_width=True)
 
-    # ========== 乖離チェック（写真誤りの検知） ==========
+    # 乖離チェック（写真誤り検知）
     _rides = nippou_data.get('rides', [])
     _extras = nippou_data.get('extras', [])
 
@@ -2495,7 +2479,7 @@ if st.session_state.get('result_rows'):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ========== 値の破壊検出（Stage 1 vs 最終出力の整合性チェック）==========
+    # 値の破壊検出（Stage1 vs 最終出力の整合性）
     meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
     discount_by_no = {}
     for extra in nippou_data.get('extras', []):
@@ -2544,7 +2528,7 @@ if st.session_state.get('result_rows'):
         st.markdown(''.join(parts), unsafe_allow_html=True)
         st.caption('差が出ている No について、下のデバッグセクションで Stage 1 の値と最終出力の値を照合してください。')
 
-    # ========== Stage 1: メーター明細生データ ==========
+    # Stage 1: メーター明細生データ
     with st.expander('🔧 Stage 1: メーター明細生データ'):
         meter_rows_disp = meter_data.get('rows', [])
         if meter_rows_disp:
@@ -2556,20 +2540,10 @@ if st.session_state.get('result_rows'):
             st.markdown(f'**合計**: ¥{sum(int(r.get("amount", 0)) for r in meter_rows_disp):,}（{len(meter_rows_disp)}行）')
         else:
             st.info('メーター明細データなし')
-
-        # Vision の生 OCR テキスト（full_text_annotation.text）をそのまま表示
-        raw_text = meter_data.get('_raw_text')
-        if raw_text is not None:
-            st.markdown('**📄 Vision API 生 OCR テキスト（full_text_annotation.text）:**')
-            st.code(raw_text)
-            st.caption(f'文字数: {len(raw_text)}、行数: {len(raw_text.splitlines())}')
-        else:
-            st.caption('（Vision パスを通っていないため raw_text なし）')
-
         st.markdown('**生 JSON:**')
-        st.json({k: v for k, v in meter_data.items() if k != '_raw_text'})
+        st.json(meter_data)
 
-    # ========== Stage 2: 日報分類生データ ==========
+    # Stage 2: 日報分類生データ
     with st.expander('🔧 Stage 2: 日報分類生データ'):
         rides = nippou_data.get('rides', [])
         if rides:
@@ -2607,7 +2581,7 @@ if st.session_state.get('result_rows'):
         st.markdown('**生 JSON:**')
         st.json(nippou_data)
 
-    # ========== Stage 3: build_report 入出力 ==========
+    # Stage 3: build_report 入出力
     with st.expander('🔧 Stage 3: build_report 入出力'):
         st.markdown('**No ごとの突き合わせ（Stage1金額 vs テーブル出力）:**')
         parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1金額</th><th>出力 gen</th><th>出力 mi</th><th>出力合計</th><th>state</th><th>memo</th></tr></thead><tbody>']
