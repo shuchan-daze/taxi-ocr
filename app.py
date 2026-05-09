@@ -1752,10 +1752,13 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 # ============================================================
 
 def _parse_meter_vision(meter_img):
-    """Stage 1: Vision API でメーター明細を OCR、bounding box の Y 座標で行を再構成。
-    full_text_annotation.pages → blocks → paragraphs → words の word 単位データを使い、
-    Y 座標が近い word（±Y_THRESHOLD px 以内）を同じ行としてグループ化する。
-    これにより文字列改行に依存せず、隣の行の数字を拾う問題を構造的に防ぐ。
+    """Stage 1: Vision API で OCR したテキストに、レシート書式専用の正規表現を当てる。
+
+    レシート書式: 「N.HH:MM [...] ¥X,XXX円」
+    パターン: r'(\\d+)\\.\\s*(\\d{1,2}:\\d{2})[^\\n¥]*¥([\\d,]+)円'
+    - グループ1: レシート印字の行番号 N
+    - グループ2: 時刻 HH:MM
+    - グループ3: 金額（カンマ含む）
 
     成功時: {'success': True, 'rows': [{'no':1,'time':'10:32','amount':4100},...], 'total': N,
              'source': 'vision', 'raw_text': str}
@@ -1778,81 +1781,29 @@ def _parse_meter_vision(meter_img):
         return {'success': False, 'stage': 'api_response',
                 'reason': f'Vision API エラー応答: {response.error.message}', 'raw_text': None}
 
-    annotation = response.full_text_annotation
-    if not annotation or not annotation.pages:
+    full_text = response.full_text_annotation.text if response.full_text_annotation else ''
+    if not full_text.strip():
         return {'success': False, 'stage': 'ocr',
-                'reason': 'Vision API は応答したが page データなし',
-                'raw_text': (annotation.text if annotation else '') or ''}
+                'reason': 'Vision API は応答したが OCR テキストが空', 'raw_text': ''}
 
-    # 全 word を bbox 付きで収集（text + 左上 X/Y 座標）
-    words = []
-    for page in annotation.pages:
-        for block in page.blocks:
-            for paragraph in block.paragraphs:
-                for word in paragraph.words:
-                    word_text = ''.join(symbol.text for symbol in word.symbols)
-                    if not word_text.strip():
-                        continue
-                    vertices = word.bounding_box.vertices
-                    if not vertices:
-                        continue
-                    # vertices[0] は左上（document_text_detection の標準仕様）
-                    words.append({'text': word_text, 'x': vertices[0].x, 'y': vertices[0].y})
+    # レシート書式専用パターン
+    pattern = re.compile(r'(\d+)\.\s*(\d{1,2}:\d{2})[^\n¥]*¥([\d,]+)円')
 
-    if not words:
-        return {'success': False, 'stage': 'ocr',
-                'reason': 'Vision API は応答したが word 単位データを取得できませんでした',
-                'raw_text': annotation.text or ''}
-
-    # Y 座標で行クラスタリング: Y 昇順にソート → 連続する Y のギャップが
-    # Y_THRESHOLD 以下なら同じ行と見なす
-    Y_THRESHOLD = 20
-    words.sort(key=lambda w: w['y'])
-    groups = []
-    for w in words:
-        if groups and (w['y'] - groups[-1][-1]['y']) <= Y_THRESHOLD:
-            groups[-1].append(w)
-        else:
-            groups.append([w])
-
-    # 各グループ内を X 昇順でソートして「行」を再構成
-    reconstructed_lines = []
-    for group in groups:
-        group.sort(key=lambda w: w['x'])
-        reconstructed_lines.append(' '.join(w['text'] for w in group))
-
-    # 各再構成行から時刻と金額を抽出
     rows = []
-    no = 1
-    # デバッグ出力: 再構成された各行を Streamlit Cloud ログに出す
-    for i, line in enumerate(reconstructed_lines):
-        print(f"[METER LINE {i+1}] {line}")
-    for line in reconstructed_lines:
-        time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', line)
-        if not time_match:
-            continue
-        amount = None
-        m = re.search(r'[¥￥]?(\d{1,2},\d{3})', line)
-        if m:
-            amount = int(m.group(1).replace(',', ''))
-        else:
-            t_h = int(time_match.group(1))
-            t_m = int(time_match.group(2))
-            for m2 in re.finditer(r'\b(\d{3,5})\b', line):
-                v = int(m2.group(1))
-                if 200 <= v <= 100000 and v != t_h and v != t_m:
-                    amount = v if amount is None else max(amount, v)
-        if amount is None:
-            continue
-        time_str = f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
+    for m in pattern.finditer(full_text):
+        no = int(m.group(1))
+        h, mm = m.group(2).split(':')
+        time_str = f'{int(h):02d}:{mm}'
+        amount = int(m.group(3).replace(',', ''))
         rows.append({'no': no, 'time': time_str, 'amount': amount})
-        no += 1
 
-    full_text = '\n'.join(reconstructed_lines)
+    # デバッグ出力: 抽出した各行を Streamlit Cloud ログに
+    for r in rows:
+        print(f"[METER LINE No.{r['no']}] {r['time']} ¥{r['amount']:,}")
 
     if not rows:
         return {'success': False, 'stage': 'parser',
-                'reason': f'Parser: bounding box ベースで {len(reconstructed_lines)} 行を再構成しましたが、「HH:MM と金額」を抽出できる行がありませんでした',
+                'reason': 'Parser: 「N.HH:MM ... ¥X,XXX円」形式の行を抽出できませんでした',
                 'raw_text': full_text}
 
     total = sum(r['amount'] for r in rows)
