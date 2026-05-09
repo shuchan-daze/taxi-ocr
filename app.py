@@ -1420,6 +1420,16 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .p98 {top: 53%; left: 85%; width: 3.9px; height: 3.9px; box-shadow: 0 0 8px rgba(255,255,255,0.40), 0 0 16px rgba(212,175,55,0.30); animation: warp98 2.84s cubic-bezier(0.5, 0, 0.95, 0.4) infinite; animation-delay: -2.19s;}
 .p99 {top: 23%; left: 43%; width: 2.8px; height: 2.8px; box-shadow: 0 0 4px rgba(255,255,255,0.30), 0 0 8px rgba(212,175,55,0.20); animation: warp99 3.23s cubic-bezier(0.5, 0, 0.95, 0.4) infinite; animation-delay: -0.74s;}
 .p100 {top: 50%; left: 19%; width: 3.5px; height: 3.5px; box-shadow: 0 0 8px rgba(255,255,255,0.40), 0 0 16px rgba(212,175,55,0.30); animation: warp100 3.32s cubic-bezier(0.5, 0, 0.95, 0.4) infinite; animation-delay: -2.06s;}
+[data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
+[data-testid="stExpander"] p,
+[data-testid="stExpander"] li,
+[data-testid="stExpander"] strong,
+[data-testid="stExpander"] b,
+[data-testid="stExpander"] h1,
+[data-testid="stExpander"] h2,
+[data-testid="stExpander"] h3 {color: white !important;}
+[data-testid="stExpander"] summary p {color: #d4af37 !important;}
+[data-testid="stExpander"] {background: rgba(255,255,255,0.05); border: 1px solid rgba(212,175,55,0.3); border-radius: 12px;}
 </style>
 """, unsafe_allow_html=True)
 
