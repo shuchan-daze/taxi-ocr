@@ -33,7 +33,7 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
     background: #fafafa !important;
     border: 2px dashed #ddd !important;
     border-radius: 14px !important;
-    padding: 1rem !important;
+    padding: 0.5rem !important;
 }
 [data-testid="stFileUploaderDropzoneInstructions"] small,
 [data-testid="stFileUploaderDropzoneInstructions"] span small,
@@ -51,9 +51,8 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
     margin-top: 4px;
 }
 [data-testid="stFileUploader"] label {color: #010519 !important; font-weight: 500 !important;}
-[data-testid="stFileUploaderDropzoneInstructions"] {color: #010519 !important;}
+[data-testid="stFileUploaderDropzoneInstructions"] {color: #010519 !important; padding: 0 !important; margin: 0 !important;}
 [data-testid="stFileUploaderDropzoneInstructions"] * {color: #010519 !important;}
-[data-testid="stFileUploader"] button {color: #010519 !important; background: white !important; border: 1px solid #010519 !important;}
 
 .stButton button {
     background: #d4af37 !important;
@@ -101,14 +100,6 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     color: #888 !important;
     line-height: 1 !important;
 }
-[data-testid="stFileUploaderDropzoneInstructions"] {
-    padding: 0 !important;
-    margin: 0 !important;
-}
-[data-testid="stFileUploader"] section {
-    padding: 0.5rem !important;
-}
-
 [data-testid="stFileUploader"] button {
     background: #010519 !important;
     color: white !important;
