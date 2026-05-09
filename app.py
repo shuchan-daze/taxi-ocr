@@ -2006,7 +2006,7 @@ def _parse_meter_vision(client_vision, meter_img):
         return None
 
     lines = full_text.split('\n')
-    time_pat = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
+    time_pat = re.compile(r'^(\d+)[.,]\s*(\d{1,2}:\d{2})')
     amt_pat = re.compile(r'[¥\\]\s*([\d,]+(?:\s\d{3}(?!\d))?)')
 
     rows = []
