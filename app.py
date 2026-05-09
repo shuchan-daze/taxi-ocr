@@ -2158,20 +2158,66 @@ if st.session_state.get('result_rows'):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # デバッグ表示（メーター明細の読み取り結果と日報の分類結果）
-    with st.expander('🔧 メーター明細の読み取り結果（デバッグ）'):
-        meter_rows = meter_data.get('rows', [])
-        if meter_rows:
+    # ========== 値の破壊検出（Stage 1 vs 最終出力の整合性チェック）==========
+    meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
+    discount_by_no = {}
+    for extra in nippou_data.get('extras', []):
+        if extra.get('case') == 'discount_cash':
+            ln = extra.get('linked_meter_no')
+            if ln in meter_amounts:
+                discount_by_no[ln] = discount_by_no.get(ln, 0) + int(extra.get('amount') or 0)
+    sum_by_no = {}
+    for r in rows:
+        if r.get('state') == 'charter':
+            continue
+        no = r.get('no')
+        if no in meter_amounts:
+            sum_by_no[no] = sum_by_no.get(no, 0) + int(r.get('gen') or 0) + int(r.get('mi') or 0)
+    integrity_issues = []
+    for no, meter_amt in sorted(meter_amounts.items()):
+        expected = meter_amt + discount_by_no.get(no, 0)
+        actual = sum_by_no.get(no, 0)
+        if expected != actual:
+            integrity_issues.append({
+                'no': no, 'meter': meter_amt, 'discount': discount_by_no.get(no, 0),
+                'expected': expected, 'actual': actual,
+            })
+
+    if integrity_issues:
+        st.error(f'🚨 値の破壊を検出（{len(integrity_issues)}件）: Stage 1 で読み取った金額とテーブル出力が一致していません')
+        parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1メーター額</th><th>+割引</th><th>期待値</th><th>テーブル合計</th><th>差</th></tr></thead><tbody>']
+        for it in integrity_issues:
+            diff_v = it['actual'] - it['expected']
+            disc_disp = f'¥{it["discount"]:,}' if it['discount'] else '-'
+            parts.append(
+                f'<tr class="mismatch"><td>{it["no"]}</td>'
+                f'<td>¥{it["meter"]:,}</td>'
+                f'<td>{disc_disp}</td>'
+                f'<td>¥{it["expected"]:,}</td>'
+                f'<td>¥{it["actual"]:,}</td>'
+                f'<td>{diff_v:+,}</td></tr>'
+            )
+        parts.append('</tbody></table>')
+        st.markdown(''.join(parts), unsafe_allow_html=True)
+        st.caption('差が出ている No について、下のデバッグセクションで Stage 1 の値と最終出力の値を照合してください。')
+
+    # ========== Stage 1: メーター明細生データ ==========
+    with st.expander('🔧 Stage 1: メーター明細生データ'):
+        meter_rows_disp = meter_data.get('rows', [])
+        if meter_rows_disp:
             parts = ['<table class="detail-table"><thead><tr><th>No</th><th>時刻</th><th>金額</th></tr></thead><tbody>']
-            for r in meter_rows:
+            for r in meter_rows_disp:
                 parts.append(f'<tr><td>{r["no"]}</td><td>{r["time"]}</td><td>¥{r["amount"]:,}</td></tr>')
             parts.append('</tbody></table>')
             st.markdown(''.join(parts), unsafe_allow_html=True)
-            st.markdown(f'**合計**: ¥{meter_data.get("total", 0):,}（{len(meter_rows)}行）')
+            st.markdown(f'**合計**: ¥{meter_data.get("total", 0):,}（{len(meter_rows_disp)}行）')
         else:
             st.info('メーター明細データなし')
+        st.markdown('**生 JSON:**')
+        st.json(meter_data)
 
-    with st.expander('🔧 日報の分類結果（デバッグ）'):
+    # ========== Stage 2: 日報分類生データ ==========
+    with st.expander('🔧 Stage 2: 日報分類生データ'):
         rides = nippou_data.get('rides', [])
         if rides:
             parts = ['<table class="detail-table"><thead><tr><th>meter_no</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>overage</th></tr></thead><tbody>']
@@ -2204,6 +2250,42 @@ if st.session_state.get('result_rows'):
                 )
             parts.append('</tbody></table>')
             st.markdown(''.join(parts), unsafe_allow_html=True)
+
+        st.markdown('**生 JSON:**')
+        st.json(nippou_data)
+
+    # ========== Stage 3: build_report 入出力 ==========
+    with st.expander('🔧 Stage 3: build_report 入出力'):
+        st.markdown('**No ごとの突き合わせ（Stage1金額 vs テーブル出力）:**')
+        parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1金額</th><th>出力 gen</th><th>出力 mi</th><th>出力合計</th><th>state</th><th>memo</th></tr></thead><tbody>']
+        for r in rows:
+            no = r.get('no')
+            meter_amt = meter_amounts.get(no)
+            meter_amt_disp = f'¥{meter_amt:,}' if isinstance(meter_amt, int) else '-'
+            gen_v = int(r.get('gen') or 0)
+            mi_v = int(r.get('mi') or 0)
+            total = gen_v + mi_v
+            cls = ''
+            if r.get('state') == 'mismatch':
+                cls = ' class="mismatch"'
+            elif r.get('state') == 'special':
+                cls = ' class="special"'
+            elif r.get('state') == 'charter':
+                cls = ' class="charter"'
+            parts.append(
+                f'<tr{cls}><td>{no}</td>'
+                f'<td>{meter_amt_disp}</td>'
+                f'<td>¥{gen_v:,}</td>'
+                f'<td>¥{mi_v:,}</td>'
+                f'<td>¥{total:,}</td>'
+                f'<td>{r.get("state", "")}</td>'
+                f'<td>{r.get("memo", "")}</td></tr>'
+            )
+        parts.append('</tbody></table>')
+        st.markdown(''.join(parts), unsafe_allow_html=True)
+
+        st.markdown('**report_rows 生 JSON:**')
+        st.json(rows)
 
     st.markdown('<br>', unsafe_allow_html=True)
     st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
