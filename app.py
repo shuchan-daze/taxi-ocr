@@ -34,7 +34,8 @@ st.markdown("""
 .result-card h1, .result-card h2, .result-card h3, .result-card h4 {color: #010519 !important;}
 
 /* ===== ファイルアップローダー ===== */
-[data-testid="stFileUploader"] section {background: #fafafa; border: 2px dashed #ddd; border-radius: 14px; padding: 0.5rem; display: flex; flex-direction: row-reverse; align-items: center; gap: 12px;}
+[data-testid="stFileUploader"] section {background: #fafafa; border: 2px dashed #ddd; border-radius: 14px; padding: 0.5rem; display: flex; flex-direction: row; align-items: center; gap: 12px;}
+[data-testid="stFileUploader"] section > button {margin-left: auto !important; order: 99 !important;}
 [data-testid="stFileUploader"] label {color: #010519; font-weight: 500;}
 [data-testid="stFileUploaderDropzoneInstructions"] {padding: 0; margin: 0;}
 [data-testid="stFileUploaderDropzoneInstructions"] span {font-size: 9px; color: #888; line-height: 1;}
