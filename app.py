@@ -199,6 +199,28 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     letter-spacing: 0.2em;
     font-weight: 400 !important;
 }
+.booster-bar {
+    position: relative;
+    margin-top: 22px;
+    width: min(60%, 380px);
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: 0 0 16px rgba(212,175,55,0.18);
+}
+.booster-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(212,175,55,0.9), rgba(244,214,120,1));
+    box-shadow: 0 0 10px rgba(212,175,55,0.7);
+    transition: width 0.06s linear;
+}
+.booster-fill.flash {
+    background: white !important;
+    box-shadow: 0 0 28px rgba(255,255,255,0.95), 0 0 60px rgba(212,175,55,0.7) !important;
+    transition: none !important;
+}
 
 .particles {
     position: absolute;
@@ -1571,39 +1593,55 @@ observer.observe(document.body, {childList: true, subtree: true});
   if (!D || W.__taxi_anim_inited) return;
   W.__taxi_anim_inited = true;
 
-  function randomDir() {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 250 + Math.random() * 800;
-    return [Math.cos(angle) * distance, Math.sin(angle) * distance];
-  }
-
+  // === 粒子: 真にランダム（位置/速度/サイズ/透明度/方向 + sin波/ランダムウォーク混在） ===
   function animateParticle(p) {
     if (!p.isConnected) return;
     p.style.animation = 'none';
     p.style.willChange = 'transform, opacity';
-    const [dx, dy] = randomDir();
-    const duration = 1500 + Math.random() * 2500;
+
+    // 1サイクルごとに完全に独立したランダムパラメータを生成
+    const variant = Math.floor(Math.random() * 3);  // 0:直線 / 1:sin波 / 2:ランダムウォーク
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 250 + Math.random() * 900;
+    const duration = 1400 + Math.random() * 2600;
+    const startScale = 0.6 + Math.random() * 0.7;
+    const endScale = startScale + (Math.random() * 1.0);
+    const baseOpacity = 0.55 + Math.random() * 0.45;
+    const sinFreq = 1.5 + Math.random() * 4;
+    const sinAmp = 30 + Math.random() * 90;
+    const perpAng = angle + Math.PI / 2;
+    let walkX = 0, walkY = 0;
     const start = performance.now();
-    const startScale = 0.7 + Math.random() * 0.6;
-    const endScale = startScale + 0.3 + Math.random() * 0.7;
 
     function step(now) {
       if (!p.isConnected) return;
-      const elapsed = now - start;
-      const t = Math.min(1, elapsed / duration);
+      const t = Math.min(1, (now - start) / duration);
+      let x, y;
+      const eased = 1 - Math.pow(1 - t, 2.5);
+      const main = distance * eased;
+      if (variant === 0) {
+        x = Math.cos(angle) * main;
+        y = Math.sin(angle) * main;
+      } else if (variant === 1) {
+        const perp = Math.sin(t * sinFreq * Math.PI) * sinAmp * (1 - t * 0.5);
+        x = Math.cos(angle) * main + Math.cos(perpAng) * perp;
+        y = Math.sin(angle) * main + Math.sin(perpAng) * perp;
+      } else {
+        walkX += (Math.random() - 0.5) * 6;
+        walkY += (Math.random() - 0.5) * 6;
+        x = Math.cos(angle) * main + walkX;
+        y = Math.sin(angle) * main + walkY;
+      }
       const fadeIn = t < 0.12 ? t / 0.12 : 1;
       const fadeOut = t > 0.7 ? (1 - t) / 0.3 : 1;
-      const opacity = Math.min(fadeIn, fadeOut);
-      const eased = 1 - Math.pow(1 - t, 2.5);
-      const x = dx * eased;
-      const y = dy * eased;
+      const opacity = Math.min(fadeIn, fadeOut) * baseOpacity;
       const sc = startScale + (endScale - startScale) * eased;
       p.style.transform = `translate(${x}px, ${y}px) scale(${sc})`;
       p.style.opacity = opacity;
       if (t < 1) {
         W.requestAnimationFrame(step);
       } else {
-        // 終わったら新しいランダム軌道で再開
+        // 新しい完全ランダム軌道で再開
         W.requestAnimationFrame(() => animateParticle(p));
       }
     }
@@ -1613,11 +1651,83 @@ observer.observe(document.body, {childList: true, subtree: true});
   function attachToOverlay(overlay) {
     if (!overlay || overlay.__particles_started) return;
     overlay.__particles_started = true;
-    const ps = overlay.querySelectorAll('.particle');
-    ps.forEach((p, i) => {
-      // 初動を散らす
+    overlay.querySelectorAll('.particle').forEach((p) => {
       setTimeout(() => animateParticle(p), Math.random() * 800);
     });
+    // ブースターバー / 滑らか pct のループも起動
+    onNewOverlay(overlay);
+  }
+
+  // === 滑らか pct + ブースターバー駆動 ===
+  let displayedPct = 0;
+  let targetPct = 0;
+  let lastCycle = 0;
+  let lastTs = null;
+  let loopFrame = null;
+
+  function tickLoader(ts) {
+    const overlay = D.querySelector('.big-overlay');
+    if (!overlay) {
+      // overlay 消失時は状態リセット、ループ停止
+      loopFrame = null;
+      displayedPct = 0;
+      targetPct = 0;
+      lastCycle = 0;
+      lastTs = null;
+      return;
+    }
+    if (lastTs === null) lastTs = ts;
+    const dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+
+    if (displayedPct < targetPct) {
+      const speed = 50;  // %/sec
+      displayedPct = Math.min(targetPct, displayedPct + speed * dt);
+    } else if (displayedPct > targetPct) {
+      // 目標が下がった（リセット）場合は瞬時に
+      displayedPct = targetPct;
+    }
+
+    const num = overlay.querySelector('.big-num');
+    if (num) num.textContent = Math.round(displayedPct) + '%';
+
+    const fill = overlay.querySelector('.booster-fill');
+    if (fill) {
+      const cycleProgress = (displayedPct % 10) * 10;  // 0-100
+      fill.style.width = cycleProgress + '%';
+      const cycle = Math.floor(displayedPct / 10);
+      if (cycle > lastCycle) {
+        lastCycle = cycle;
+        // 満タン瞬間にフラッシュ → 短時間で次サイクルへリセット
+        fill.classList.add('flash');
+        fill.style.width = '100%';
+        setTimeout(() => {
+          if (fill.isConnected) {
+            fill.classList.remove('flash');
+            fill.style.width = ((displayedPct % 10) * 10) + '%';
+          }
+        }, 160);
+      }
+    }
+
+    loopFrame = W.requestAnimationFrame(tickLoader);
+  }
+
+  function onNewOverlay(overlay) {
+    const attr = overlay.getAttribute('data-pct');
+    if (attr === null) return;  // intro overlay 等は data-pct なし
+    const pct = parseInt(attr, 10) || 0;
+    // 既存セッションの続きか、新規かを判定
+    if (pct < displayedPct - 5) {
+      // pct が大きく下がった = 新セッション。リセット
+      displayedPct = Math.max(0, pct - 8);
+      lastCycle = Math.floor(displayedPct / 10);
+    }
+    targetPct = pct;
+    if (!loopFrame) {
+      lastTs = null;
+      loopFrame = W.requestAnimationFrame(tickLoader);
+    }
   }
 
   // 既存の overlay も初期化
@@ -2088,8 +2198,12 @@ def _particles_html():
 def show_loader(loader, pct, label, anim_class=''):
     cls = f'big-overlay {anim_class}'.strip()
     loader.markdown(
-        f'<div class="{cls}"><div class="particles">{_particles_html()}</div>'
-        f'<div class="big-num">{pct}%</div><div class="big-label">{label}</div></div>',
+        f'<div class="{cls}" data-pct="{pct}">'
+        f'<div class="particles">{_particles_html()}</div>'
+        f'<div class="big-num">{pct}%</div>'
+        f'<div class="big-label">{label}</div>'
+        f'<div class="booster-bar"><div class="booster-fill"></div></div>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
