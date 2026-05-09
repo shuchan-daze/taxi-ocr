@@ -2175,75 +2175,42 @@ def classify_nippou(client, nippou_img):
 # ============================================================
 
 def build_report(meter_data, nippou_data):
-    """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。"""
+    """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。
+    case は 'normal'（1行）と 'overage'（2行に分割）のみ扱う。"""
     meter_rows = {r['no']: r for r in meter_data.get('rows', [])}
     nippou_by_meter = {r['meter_no']: r for r in nippou_data.get('rides', [])}
     output = []
 
     for meter_no in sorted(meter_rows.keys()):
         meter_row = meter_rows[meter_no]
-        meter_amount = int(meter_row['amount'])  # ← Stage 1 の値。絶対不変。
+        meter_amount = int(meter_row['amount'])
         n = nippou_by_meter.get(meter_no, {})
         passengers = int(n.get('passengers') or 1)
         kind = n.get('kind') or '現収'
         memo = n.get('memo') or ''
         case = n.get('case') or 'normal'
+        time_str = meter_row['time']
 
         if case == 'overage':
             overage = int(n.get('overage_amount') or 0)
             client_amount = meter_amount - overage
-            # 検算: 客分 + 超過 = メーター額（必ず成立）
-            assert client_amount + overage == meter_amount, \
-                f'overage split invariant broken: {client_amount} + {overage} != {meter_amount}'
             output.append({
-                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'no': meter_no, 'passengers': passengers, 'time': time_str,
                 'gen': client_amount if kind == '現収' else 0,
                 'mi': client_amount if kind == '未収' else 0,
                 'memo': memo, 'state': 'ok',
             })
             output.append({
-                'no': f'{meter_no}+', 'passengers': passengers, 'time': meter_row['time'],
+                'no': f'{meter_no}+', 'passengers': passengers, 'time': time_str,
                 'gen': overage, 'mi': 0,
                 'memo': 'メーター超過', 'state': 'special',
             })
-        elif case == 'disabled':
-            display_memo = memo if '障割' in memo else (f'障割 {memo}'.strip() if memo else '障割')
+        else:
             output.append({
-                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
-                'gen': meter_amount if kind == '現収' else 0,
-                'mi': meter_amount if kind == '未収' else 0,
-                'memo': display_memo, 'state': 'ok',
-            })
-        else:  # normal
-            output.append({
-                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'no': meter_no, 'passengers': passengers, 'time': time_str,
                 'gen': meter_amount if kind == '現収' else 0,
                 'mi': meter_amount if kind == '未収' else 0,
                 'memo': memo, 'state': 'ok',
-            })
-
-    # 貸切・障割現金（メーターにない追加行）は extras から
-    next_no = (max(meter_rows.keys()) + 1) if meter_rows else 1
-    for extra in nippou_data.get('extras', []):
-        case = extra.get('case')
-        amount = int(extra.get('amount') or 0)
-        kind = extra.get('kind') or '現収'
-        passengers = int(extra.get('passengers') or 0)
-        memo = extra.get('memo') or ''
-        if case == 'charter':
-            output.append({
-                'no': next_no, 'passengers': passengers, 'time': '',
-                'gen': amount if kind == '現収' else 0,
-                'mi': amount if kind == '未収' else 0,
-                'memo': memo or '貸切', 'state': 'charter',
-            })
-            next_no += 1
-        elif case == 'discount_cash':
-            linked = extra.get('linked_meter_no') or next_no
-            output.append({
-                'no': linked, 'passengers': 0, 'time': '',
-                'gen': amount, 'mi': 0,
-                'memo': memo or '障割現金', 'state': 'ok',
             })
 
     return output
@@ -2255,12 +2222,8 @@ def build_report(meter_data, nippou_data):
 
 def validate(report_rows, meter_data, nippou_data):
     """合計の整合性チェック。返値: (ok: bool, diff: int)"""
-    output_total = sum((r['gen'] or 0) + (r['mi'] or 0) for r in report_rows)
-    expected = meter_data.get('total') or sum(r['amount'] for r in meter_data.get('rows', []))
-    for extra in nippou_data.get('extras', []):
-        amt = int(extra.get('amount') or 0)
-        if extra.get('case') in ('charter', 'discount_cash'):
-            expected += amt
+    output_total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in report_rows)
+    expected = meter_data.get('total') or sum(r.get('amount', 0) for r in meter_data.get('rows', []))
     diff = output_total - expected
     return diff == 0, diff
 
@@ -2406,12 +2369,19 @@ def run_pipeline(client, imgs, loader):
 # Reset / state
 # ============================================================
 
+_RESULT_KEYS = ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou')
+
+
+def _clear_results():
+    """結果系の session_state を全削除"""
+    for k in _RESULT_KEYS:
+        st.session_state.pop(k, None)
+
+
 def reset_app():
     st.session_state.uploader_counter = st.session_state.get('uploader_counter', 0) + 1
     st.session_state.kept_files = []
-    for k in ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou'):
-        if k in st.session_state:
-            del st.session_state[k]
+    _clear_results()
 
 if 'uploader_counter' not in st.session_state:
     st.session_state.uploader_counter = 0
@@ -2450,7 +2420,6 @@ if len(imgs) == 2:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
             report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
-            # フェードアウト演出
             show_loader(loader, 100, '完成しました', anim_class='exiting')
             time.sleep(0.3)
             loader.empty()
@@ -2459,22 +2428,16 @@ if len(imgs) == 2:
             st.session_state.result_diff = diff
             st.session_state.result_meter = meter_data
             st.session_state.result_nippou = nippou_data
-            st.session_state._pending_scroll = True  # 結果表示後に自動スクロール
-        except RuntimeError as e:
-            loader.empty()
-            for k in ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou'):
-                st.session_state.pop(k, None)
-            st.error(str(e))
-        except json.JSONDecodeError as e:
-            loader.empty()
-            for k in ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou'):
-                st.session_state.pop(k, None)
-            st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
+            st.session_state._pending_scroll = True
         except Exception as e:
             loader.empty()
-            for k in ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou'):
-                st.session_state.pop(k, None)
-            st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
+            _clear_results()
+            if isinstance(e, RuntimeError):
+                st.error(str(e))
+            elif isinstance(e, json.JSONDecodeError):
+                st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
+            else:
+                st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
 elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
     st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
