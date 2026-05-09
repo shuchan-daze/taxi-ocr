@@ -4,8 +4,11 @@ import base64
 from PIL import Image, ExifTags
 from pillow_heif import register_heif_opener
 import io
+import json
 import os
 import re
+import time
+import pandas as pd
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', layout='centered', initial_sidebar_state='collapsed')
@@ -1514,6 +1517,10 @@ observer.observe(document.body, {childList: true, subtree: true});
 </script>
 ''', height=0)
 
+# ============================================================
+# 1. 画像準備
+# ============================================================
+
 def fix_orientation(img):
     try:
         for orientation in ExifTags.TAGS.keys():
@@ -1529,24 +1536,433 @@ def fix_orientation(img):
     return img
 
 def to_b64(img):
-    img.thumbnail((2000,2000))
+    img.thumbnail((3000, 3000))
     buf = io.BytesIO()
-    img.save(buf, format='JPEG', quality=85)
+    img.save(buf, format='JPEG', quality=95)
     return base64.standard_b64encode(buf.getvalue()).decode()
 
-def is_meter(client, img):
+
+# ============================================================
+# 2. 画像識別
+# ============================================================
+
+def identify_image(client, img):
+    """画像を判定して 'meter' / 'nippou' / 'unclear' を返す"""
     res = client.messages.create(
-        model='claude-opus-4-5', max_tokens=10,
+        model='claude-opus-4-5', max_tokens=20, temperature=0,
         messages=[{'role':'user','content':[
             {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(img)}},
-            {'type':'text','text':'この画像に「営業明細書」という文字がありますか？「はい」か「いいえ」だけ答えてください。'}
+            {'type':'text','text':'''この画像を判定してください。
+
+- メーター明細書（営業明細書）：機械印字、時刻と金額の2列構造、ヘッダに「営業明細書」または「明細」表記
+- 日報：手書き、複数列（人数・時刻・現収・未収・摘要等）
+- どちらでもない／判別不能：unclear
+
+回答は以下のいずれか1単語のみで（前後に余計な語なし）：
+meter
+nippou
+unclear'''}
         ]}]
     )
-    return 'はい' in res.content[0].text
+    answer = res.content[0].text.strip().lower()
+    if 'meter' in answer:
+        return 'meter'
+    if 'nippou' in answer or '日報' in answer:
+        return 'nippou'
+    return 'unclear'
+
+
+# ============================================================
+# 3. 鮮明度チェック
+# ============================================================
+
+def check_clarity(client, meter_img, nippou_img):
+    """両画像が読み取り可能な品質か判定。返値: (ok: bool, reason: str)"""
+    res = client.messages.create(
+        model='claude-opus-4-5', max_tokens=200, temperature=0,
+        messages=[{'role':'user','content':[
+            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(meter_img)}},
+            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(nippou_img)}},
+            {'type':'text','text':'''1枚目はメーター明細書、2枚目は日報です。
+
+各画像が読み取り可能な品質か確認してください：
+- メーター明細書：時刻と金額の桁が一つひとつはっきり判別できるか
+- 日報：手書き数字、現収/未収欄、摘要が判読できるか
+
+結果は以下のいずれかの形式のみで出力（前後に余計な文字なし）：
+clarity: ok
+または
+clarity: ng
+reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か）>'''}
+        ]}]
+    )
+    text = res.content[0].text.strip()
+    if 'clarity: ok' in text.lower() or 'clarity:ok' in text.lower():
+        return True, ''
+    m = re.search(r'reason:\s*(.+)', text, re.DOTALL)
+    return False, (m.group(1).strip() if m else '画像が不鮮明です')
+
+
+# ============================================================
+# 4. メーター明細を読み取る
+# ============================================================
+
+def parse_meter(client, meter_img):
+    """メーター明細書から行リストを取得。返値: dict {rows: [...], total: int}"""
+    res = client.messages.create(
+        model='claude-opus-4-5', max_tokens=4000, temperature=0,
+        messages=[{'role':'user','content':[
+            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(meter_img)}},
+            {'type':'text','text':'''メーター明細書（営業明細書）の全行を読み取ってJSONで出力してください。
+
+【厳密ルール】
+- 金額は桁ごとに慎重に読み取る（千の位・百の位・十の位を順に確認）。
+- 紛らわしい数字ペア（3/2、8/2、5/4、1/5、6/0、7/1、9/4、8/3）に最大限注意。
+- 文脈で推測しない。あくまで画像上の文字を読む。
+- 全ての行を漏れなく出力（行を抜かさない）。
+
+【出力】
+JSON 形式のみ（前後に余計なテキスト・コードブロック記号なし）：
+{
+  "rows": [
+    {"no": 1, "time": "10:32", "amount": 4100},
+    {"no": 2, "time": "10:50", "amount": 1000}
+  ],
+  "total": 5100
+}
+
+- amount は整数（カンマ・¥・円なし）
+- time は HH:MM 形式
+- total は全 amount の合計（検算用）'''}
+        ]}]
+    )
+    text = res.content[0].text.strip()
+    m = re.search(r'\{.*\}', text, re.DOTALL)
+    if not m:
+        raise ValueError(f'メーター明細のJSONが見つかりません。応答: {text[:300]}')
+    return json.loads(m.group(0))
+
+
+# ============================================================
+# 5. 日報を読み取る
+# ============================================================
+
+def parse_nippou(client, nippou_img, meter_data):
+    """日報を読み取り、メーター明細との対応＋特殊ケースを取得。返値: dict {rides: [...], extras: [...]}"""
+    meter_summary = '\n'.join(f"  No.{r['no']}: {r['time']} ¥{r['amount']:,}" for r in meter_data.get('rows', []))
+    res = client.messages.create(
+        model='claude-opus-4-5', max_tokens=4000, temperature=0,
+        messages=[{'role':'user','content':[
+            {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(nippou_img)}},
+            {'type':'text','text':f'''これはタクシー乗務員の手書き日報です。
+別途読み取り済みのメーター明細書（営業明細書）の行リストは以下：
+{meter_summary}
+
+【あなたのタスク】
+日報の各行を読み取り、メーター明細書のどの行に対応するかを判定し、各行の補助情報（人数・現収/未収・摘要・特殊ケース）を取得してください。
+
+【金額の扱い - 最重要】
+日報の現収/未収欄に書かれた数字そのものは出力しないでください（金額はメーター明細を採用するため）。
+ただし以下の例外のみ、日報から金額を読み取って出力します：
+- メーター超過の「+〇〇」追記の値（例: +100 → overage_amount: 100）
+- 貸切の金額（メーター明細にない料金体系）
+- 障害者割引の割引額（日報に別行で「現金」として計上されている場合）
+
+【現収/未収判定】
+摘要を最優先で判断：
+- 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 「未収」
+- 摘要が空欄、または「現金」 → 「現収」
+- 訂正線（取り消し線）で消された数字や記載は無視
+
+【「+〇〇」記号の認識（メーター超過時）】
+- 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
+- 「+」の先頭の小さな記号を絶対に見落とさない。
+- 通常の現収/未収欄とは別に、行の付近に小さく書かれた数字は超過分の候補。
+- 超過額は固定値ではなく、毎回異なる金額（+50、+100、+200、+300 など）。
+
+【出力 - JSON のみ。前後に余計なテキスト・コードブロック記号なし】
+{{
+  "rides": [
+    {{
+      "meter_no": 1,
+      "passengers": 2,
+      "kind": "現収",
+      "memo": "現金",
+      "case": "normal",
+      "overage_amount": null
+    }},
+    {{
+      "meter_no": 2,
+      "passengers": 1,
+      "kind": "未収",
+      "memo": "Visa",
+      "case": "overage",
+      "overage_amount": 100
+    }}
+  ],
+  "extras": [
+    {{
+      "case": "charter",
+      "passengers": 1,
+      "kind": "現収",
+      "memo": "貸切 △△商事",
+      "amount": 12000
+    }},
+    {{
+      "case": "discount_cash",
+      "passengers": 0,
+      "kind": "現収",
+      "memo": "障割現金",
+      "amount": 160,
+      "linked_meter_no": 5
+    }}
+  ]
+}}
+
+【フィールド】
+- meter_no: 対応するメーター明細の番号（1始まり）
+- passengers: 人数（読み取り）
+- kind: "現収" または "未収"
+- memo: 摘要（Visa, Uber, 現金, 障割, 等）
+- case:
+  * "normal": 通常乗車
+  * "overage": メーター超過（日報に+〇〇追記あり）。overage_amount に超過分の値を記入
+  * "disabled": 障害者割引（摘要に「障割」記載）
+- extras: メーター明細にない追加行
+  * "charter": 貸切（メーター明細に該当無し）。amount に金額
+  * "discount_cash": 障害者割引の割引現金行（日報に別行で計上）。amount に割引額、linked_meter_no で関連付け
+
+【厳守】
+- rides の数 ≦ メーター明細行数。マッチしない日報行は extras に入れる（charter/discount_cash どちらでもなければ無視）。
+- 全ての値が JSON として valid であること（クォート・カンマ・null など）。
+- メーター明細と1対1対応する rides を必ず meter_no 昇順で出力。'''}
+        ]}]
+    )
+    text = res.content[0].text.strip()
+    m = re.search(r'\{.*\}', text, re.DOTALL)
+    if not m:
+        raise ValueError(f'日報のJSONが見つかりません。応答: {text[:300]}')
+    return json.loads(m.group(0))
+
+
+# ============================================================
+# 6. データ統合
+# ============================================================
+
+def build_report(meter_data, nippou_data):
+    """メーターを主、日報を補助として最終データを構築"""
+    meter_rows = {r['no']: r for r in meter_data.get('rows', [])}
+    nippou_by_meter = {r['meter_no']: r for r in nippou_data.get('rides', [])}
+    output = []
+
+    for meter_no in sorted(meter_rows.keys()):
+        meter_row = meter_rows[meter_no]
+        n = nippou_by_meter.get(meter_no, {})
+        passengers = n.get('passengers') or 1
+        kind = n.get('kind') or '現収'
+        memo = n.get('memo') or ''
+        case = n.get('case') or 'normal'
+
+        if case == 'overage':
+            overage = int(n.get('overage_amount') or 0)
+            client_amount = meter_row['amount'] - overage
+            output.append({
+                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'gen': client_amount if kind == '現収' else 0,
+                'mi': client_amount if kind == '未収' else 0,
+                'memo': memo, 'state': 'ok',
+            })
+            output.append({
+                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'gen': overage, 'mi': 0,
+                'memo': 'メーター超過', 'state': 'special',
+            })
+        elif case == 'disabled':
+            display_memo = memo if '障割' in memo else (f'障割 {memo}'.strip() if memo else '障割')
+            output.append({
+                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'gen': meter_row['amount'] if kind == '現収' else 0,
+                'mi': meter_row['amount'] if kind == '未収' else 0,
+                'memo': display_memo, 'state': 'ok',
+            })
+        else:
+            output.append({
+                'no': meter_no, 'passengers': passengers, 'time': meter_row['time'],
+                'gen': meter_row['amount'] if kind == '現収' else 0,
+                'mi': meter_row['amount'] if kind == '未収' else 0,
+                'memo': memo, 'state': 'ok',
+            })
+
+    next_no = (max(meter_rows.keys()) + 1) if meter_rows else 1
+    for extra in nippou_data.get('extras', []):
+        case = extra.get('case')
+        amount = int(extra.get('amount') or 0)
+        kind = extra.get('kind') or '現収'
+        passengers = extra.get('passengers') or 0
+        memo = extra.get('memo') or ''
+        if case == 'charter':
+            output.append({
+                'no': next_no, 'passengers': passengers, 'time': '',
+                'gen': amount if kind == '現収' else 0,
+                'mi': amount if kind == '未収' else 0,
+                'memo': memo or '貸切', 'state': 'charter',
+            })
+            next_no += 1
+        elif case == 'discount_cash':
+            linked = extra.get('linked_meter_no') or next_no
+            output.append({
+                'no': linked, 'passengers': 0, 'time': '',
+                'gen': amount, 'mi': 0,
+                'memo': memo or '障割現金', 'state': 'ok',
+            })
+
+    return output
+
+
+# ============================================================
+# 7. 整合性チェック
+# ============================================================
+
+def validate(report_rows, meter_data, nippou_data):
+    """合計の整合性チェック。返値: (ok: bool, diff: int)"""
+    output_total = sum((r['gen'] or 0) + (r['mi'] or 0) for r in report_rows)
+    expected = meter_data.get('total') or sum(r['amount'] for r in meter_data.get('rows', []))
+    for extra in nippou_data.get('extras', []):
+        amt = int(extra.get('amount') or 0)
+        if extra.get('case') in ('charter', 'discount_cash'):
+            expected += amt
+    diff = output_total - expected
+    return diff == 0, diff
+
+
+# ============================================================
+# Loader 演出ヘルパー
+# ============================================================
+
+def _particles_html():
+    return ''.join(f'<span class="particle p{i}"></span>' for i in range(1, 101))
+
+def show_loader(loader, pct, label):
+    loader.markdown(
+        f'<div class="big-overlay"><div class="particles">{_particles_html()}</div>'
+        f'<div class="big-num">{pct}%</div><div class="big-label">{label}</div></div>',
+        unsafe_allow_html=True
+    )
+
+def loader_steps(loader, pcts, label, sleep=0.15):
+    for pct in pcts:
+        show_loader(loader, pct, label)
+        time.sleep(sleep)
+
+
+# ============================================================
+# 8. 表示ヘルパー
+# ============================================================
+
+def render_summary(ken, nin, gen, mi, sou, tax, net):
+    fmt = lambda x: f'¥{int(x):,}'
+    st.markdown(f"""
+<div class="complete-bar">
+  <p class="label">✓ 完成</p>
+  <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
+</div>
+<div class="metric-grid-3">
+  <div class="metric"><p class="label">現収</p><p class="value">{fmt(gen)}</p></div>
+  <div class="metric"><p class="label">未収</p><p class="value">{fmt(mi)}</p></div>
+  <div class="metric dark"><p class="label">総収</p><p class="value">{fmt(sou)}</p></div>
+</div>
+<div class="metric-grid-2">
+  <div class="metric"><p class="label">消費税</p><p class="value">{fmt(tax)}</p></div>
+  <div class="metric"><p class="label">税抜運収</p><p class="value">{fmt(net)}</p></div>
+</div>
+""", unsafe_allow_html=True)
+
+
+def render_detail_table(rows):
+    headers = ['No', '人数', '時刻', '現収', '未収', '摘要', '状態']
+    parts = ['<table class="detail-table"><thead><tr>']
+    parts.extend(f'<th>{h}</th>' for h in headers)
+    parts.append('</tr></thead><tbody>')
+    state_class_map = {'mismatch': 'mismatch', 'special': 'special', 'charter': 'charter'}
+    for r in rows:
+        cls = state_class_map.get(r.get('state', ''), '')
+        row_class = f' class="{cls}"' if cls else ''
+        gen = f"{r['gen']:,}" if r['gen'] else ''
+        mi = f"{r['mi']:,}" if r['mi'] else ''
+        parts.append(f'<tr{row_class}>')
+        parts.append(f'<td>{r["no"]}</td>')
+        parts.append(f'<td>{r["passengers"] if r["passengers"] else ""}</td>')
+        parts.append(f'<td>{r["time"]}</td>')
+        parts.append(f'<td>{gen}</td>')
+        parts.append(f'<td>{mi}</td>')
+        parts.append(f'<td>{r["memo"]}</td>')
+        parts.append(f'<td>{r["state"]}</td>')
+        parts.append('</tr>')
+    parts.append('</tbody></table>')
+    st.markdown(''.join(parts), unsafe_allow_html=True)
+
+
+def aggregate_totals(rows):
+    """件数・人数・現収・未収・総収・消費税・税抜運収を集計"""
+    gen = sum((r.get('gen') or 0) for r in rows)
+    mi = sum((r.get('mi') or 0) for r in rows)
+    ken = sum(1 for r in rows if r.get('state') != 'special')
+    nin = sum((r.get('passengers') or 0) for r in rows if r.get('state') != 'special')
+    sou = gen + mi
+    tax = round(sou / 11, -1)
+    net = sou - tax
+    return ken, nin, gen, mi, sou, int(tax), net
+
+
+# ============================================================
+# パイプライン本体
+# ============================================================
+
+def run_pipeline(client, imgs, loader):
+    """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff)"""
+    loader_steps(loader, [3, 8, 14], '画像を判別中')
+    kind1 = identify_image(client, imgs[0])
+    kind2 = identify_image(client, imgs[1])
+
+    if kind1 == 'unclear' or kind2 == 'unclear':
+        idx = 1 if kind1 == 'unclear' else 2
+        raise RuntimeError(f'{idx}枚目が日報・メーター明細書のどちらか判別できません。正しい画像を選択してください。')
+    if kind1 == kind2:
+        kind_jp = 'メーター明細書' if kind1 == 'meter' else '日報'
+        raise RuntimeError(f'同じ種類の画像が2枚アップされています（両方とも{kind_jp}）。日報1枚＋メーター明細書1枚をアップしてください。')
+
+    if kind1 == 'meter':
+        meter_img, nippou_img = imgs[0], imgs[1]
+    else:
+        meter_img, nippou_img = imgs[1], imgs[0]
+
+    loader_steps(loader, [18, 24, 30], '鮮明度を確認中')
+    ok, reason = check_clarity(client, meter_img, nippou_img)
+    if not ok:
+        raise RuntimeError(f'画像の鮮明度が不足しています：{reason}\n撮り直して再アップしてください。')
+
+    loader_steps(loader, [35, 42, 50], 'メーター明細を読み取り中')
+    meter_data = parse_meter(client, meter_img)
+
+    loader_steps(loader, [60, 70, 80], '日報を読み取り中')
+    nippou_data = parse_nippou(client, nippou_img, meter_data)
+
+    loader_steps(loader, [88, 94, 100], '統合中')
+    report_rows = build_report(meter_data, nippou_data)
+    valid, diff = validate(report_rows, meter_data, nippou_data)
+    return report_rows, valid, diff
+
+
+# ============================================================
+# Reset / state
+# ============================================================
 
 def reset_app():
     st.session_state.uploader_counter = st.session_state.get('uploader_counter', 0) + 1
     st.session_state.kept_files = []
+    for k in ('result_rows', 'result_valid', 'result_diff'):
+        if k in st.session_state:
+            del st.session_state[k]
 
 if 'uploader_counter' not in st.session_state:
     st.session_state.uploader_counter = 0
@@ -1581,250 +1997,78 @@ if st.session_state.kept_files:
 if len(imgs) == 2:
     if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
         loader = st.empty()
-        import time
-        for pct in [3, 8, 14, 21, 29]:
-            loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span><span class="particle p11"></span><span class="particle p12"></span><span class="particle p13"></span><span class="particle p14"></span><span class="particle p15"></span><span class="particle p16"></span><span class="particle p17"></span><span class="particle p18"></span><span class="particle p19"></span><span class="particle p20"></span><span class="particle p21"></span><span class="particle p22"></span><span class="particle p23"></span><span class="particle p24"></span><span class="particle p25"></span><span class="particle p26"></span><span class="particle p27"></span><span class="particle p28"></span><span class="particle p29"></span><span class="particle p30"></span><span class="particle p31"></span><span class="particle p32"></span><span class="particle p33"></span><span class="particle p34"></span><span class="particle p35"></span><span class="particle p36"></span><span class="particle p37"></span><span class="particle p38"></span><span class="particle p39"></span><span class="particle p40"></span><span class="particle p41"></span><span class="particle p42"></span><span class="particle p43"></span><span class="particle p44"></span><span class="particle p45"></span><span class="particle p46"></span><span class="particle p47"></span><span class="particle p48"></span><span class="particle p49"></span><span class="particle p50"></span><span class="particle p51"></span><span class="particle p52"></span><span class="particle p53"></span><span class="particle p54"></span><span class="particle p55"></span><span class="particle p56"></span><span class="particle p57"></span><span class="particle p58"></span><span class="particle p59"></span><span class="particle p60"></span><span class="particle p61"></span><span class="particle p62"></span><span class="particle p63"></span><span class="particle p64"></span><span class="particle p65"></span><span class="particle p66"></span><span class="particle p67"></span><span class="particle p68"></span><span class="particle p69"></span><span class="particle p70"></span><span class="particle p71"></span><span class="particle p72"></span><span class="particle p73"></span><span class="particle p74"></span><span class="particle p75"></span><span class="particle p76"></span><span class="particle p77"></span><span class="particle p78"></span><span class="particle p79"></span><span class="particle p80"></span><span class="particle p81"></span><span class="particle p82"></span><span class="particle p83"></span><span class="particle p84"></span><span class="particle p85"></span><span class="particle p86"></span><span class="particle p87"></span><span class="particle p88"></span><span class="particle p89"></span><span class="particle p90"></span><span class="particle p91"></span><span class="particle p92"></span><span class="particle p93"></span><span class="particle p94"></span><span class="particle p95"></span><span class="particle p96"></span><span class="particle p97"></span><span class="particle p98"></span><span class="particle p99"></span><span class="particle p100"></span></div><div class="big-num">{pct}%</div><div class="big-label">画像を判別中</div></div>', unsafe_allow_html=True)
-            time.sleep(0.15)
         try:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
-            if is_meter(client, imgs[0]):
-                meter_img, nippou_img = imgs[0], imgs[1]
-            else:
-                meter_img, nippou_img = imgs[1], imgs[0]
-            for pct in [34, 42, 51, 58, 65, 71]:
-                loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span><span class="particle p11"></span><span class="particle p12"></span><span class="particle p13"></span><span class="particle p14"></span><span class="particle p15"></span><span class="particle p16"></span><span class="particle p17"></span><span class="particle p18"></span><span class="particle p19"></span><span class="particle p20"></span><span class="particle p21"></span><span class="particle p22"></span><span class="particle p23"></span><span class="particle p24"></span><span class="particle p25"></span><span class="particle p26"></span><span class="particle p27"></span><span class="particle p28"></span><span class="particle p29"></span><span class="particle p30"></span><span class="particle p31"></span><span class="particle p32"></span><span class="particle p33"></span><span class="particle p34"></span><span class="particle p35"></span><span class="particle p36"></span><span class="particle p37"></span><span class="particle p38"></span><span class="particle p39"></span><span class="particle p40"></span><span class="particle p41"></span><span class="particle p42"></span><span class="particle p43"></span><span class="particle p44"></span><span class="particle p45"></span><span class="particle p46"></span><span class="particle p47"></span><span class="particle p48"></span><span class="particle p49"></span><span class="particle p50"></span><span class="particle p51"></span><span class="particle p52"></span><span class="particle p53"></span><span class="particle p54"></span><span class="particle p55"></span><span class="particle p56"></span><span class="particle p57"></span><span class="particle p58"></span><span class="particle p59"></span><span class="particle p60"></span><span class="particle p61"></span><span class="particle p62"></span><span class="particle p63"></span><span class="particle p64"></span><span class="particle p65"></span><span class="particle p66"></span><span class="particle p67"></span><span class="particle p68"></span><span class="particle p69"></span><span class="particle p70"></span><span class="particle p71"></span><span class="particle p72"></span><span class="particle p73"></span><span class="particle p74"></span><span class="particle p75"></span><span class="particle p76"></span><span class="particle p77"></span><span class="particle p78"></span><span class="particle p79"></span><span class="particle p80"></span><span class="particle p81"></span><span class="particle p82"></span><span class="particle p83"></span><span class="particle p84"></span><span class="particle p85"></span><span class="particle p86"></span><span class="particle p87"></span><span class="particle p88"></span><span class="particle p89"></span><span class="particle p90"></span><span class="particle p91"></span><span class="particle p92"></span><span class="particle p93"></span><span class="particle p94"></span><span class="particle p95"></span><span class="particle p96"></span><span class="particle p97"></span><span class="particle p98"></span><span class="particle p99"></span><span class="particle p100"></span></div><div class="big-num">{pct}%</div><div class="big-label">明細と照合中</div></div>', unsafe_allow_html=True)
-                time.sleep(0.2)
+            report_rows, valid, diff = run_pipeline(client, imgs, loader)
+            loader.empty()
+            st.session_state.result_rows = report_rows
+            st.session_state.result_valid = valid
+            st.session_state.result_diff = diff
+        except RuntimeError as e:
+            loader.empty()
+            for k in ('result_rows', 'result_valid', 'result_diff'):
+                st.session_state.pop(k, None)
+            st.error(str(e))
+        except json.JSONDecodeError as e:
+            loader.empty()
+            for k in ('result_rows', 'result_valid', 'result_diff'):
+                st.session_state.pop(k, None)
+            st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
         except Exception as e:
-            st.error(f'エラー: {e}')
-            st.stop()
-        try:
-                prompt = """あなたはタクシー日報の処理担当者です。
-1枚目：手書き日報、2枚目：メーター明細書（営業明細書）の2画像から、正確な日報を作成してください。
-
-【最重要原則】
-メーター明細書を「主」、手書き日報を「従」として処理する。
-メーター明細の金額・時刻が真実、日報は摘要・現収/未収判定・特殊ケース判定の参考情報。
-
-━━━━━━━━━━━━━━━━━━━━
-【Step 1】メーター明細書を読む（2枚目の画像 = 主データ）
-━━━━━━━━━━━━━━━━━━━━
-メーター明細書の各行を「番号. 時刻 ¥金額」の形式でリストアップ。
-例：
-1. 10:32 ¥4,100
-2. 10:50 ¥1,000
-3. 11:26 ¥3,300
-...
-N. HH:MM ¥X,XXX
-
-このリストが「真実の金額・時刻リスト」。後続の処理で必ず参照する。
-
-━━━━━━━━━━━━━━━━━━━━
-【Step 2】日報を読む（1枚目の画像 = 補助データ）
-━━━━━━━━━━━━━━━━━━━━
-各行について以下を判定：
-- 概略的な時刻（手書きなので人間が大体で書いている、参考程度に対応行の特定に使う）
-- 現収欄と未収欄、どちらに記入があるか
-- 摘要（Visa, Uber, Suica, 交通系, 現金, 障割, 貸切, 等）
-- 「+〇〇」記号の有無（メーター超過分）
-- 訂正線（取り消し線）：その数字は無視・消去扱い
-
-【現収/未収判定の重要ルール】
-摘要を最優先で確認：
-- 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 必ず未収
-- 摘要が空欄、または「現金」 → 現収
-- 「－」「ダッシュ」「無記入」の欄は金額なし扱い
-
-訂正の判断：
-- 現収欄と未収欄の両方に記入があるが片方が訂正線で消されている → 残った方を採用
-- 摘要にカード名があるのに現収欄に記入がある場合：書き損じの可能性大、未収扱い
-
-━━━━━━━━━━━━━━━━━━━━
-【Step 3】出力データを構築
-━━━━━━━━━━━━━━━━━━━━
-メーター明細書の各行（Step 1のリスト）を順に処理：
-
-▼通常の乗車
-- 金額：メーター明細の値（絶対、改変禁止）
-- 時刻：メーター明細の時刻
-- 配置：日報の摘要を確認して現収/未収を判定
-- 摘要：日報の摘要を記入
-- 状態：ok（日報側の金額がメーター明細と一致 or 日報に金額記載なし）／mismatch（日報側に金額記載があり、メーター明細の金額と異なる場合）
-
-▼障害者割引（日報の摘要に「障割」記載）
-- 金額：メーター明細の値
-- 摘要：「障割」を含める
-- 配置：日報通り
-- 状態：ok
-- 注意：割引額は日報に別の行で現金として計上されることがある。日報全体を確認し、関連する割引額の現金行があれば別行として追加。
-
-▼メーター超過（日報に「+〇〇」記載）
-この行は2行に分割：
-- 客分行：金額 = メーター金額 − 超過分。日報の現収/未収判定通り、摘要も日報通り。状態 ok。
-- 超過分行：金額 = 日報の「+〇〇」の値。必ず現収。摘要「メーター超過」。状態 special。
-
-▼貸切（日報に「貸切」記載、メーター明細にない）
-- メーター明細リストの最後に追加
-- 金額：日報の値
-- 摘要：「貸切」
-- 配置：日報の現収/未収欄を確認（現収の場合も未収の場合もある）
-- 状態：charter
-
-━━━━━━━━━━━━━━━━━━━━
-【「+」記号の認識（メーター超過時、誤読厳禁）】
-━━━━━━━━━━━━━━━━━━━━
-- 「+〇〇」の先頭にある「+」記号を絶対に見落とさないこと。
-- 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
-- 「+」が判読しづらくても、通常の現収/未収欄とは別に小さく書かれた数字はメーター超過分の候補として扱う。
-- 超過分は固定値ではなく、ケースごとに毎回異なる金額（+50、+100、+200、+300 など）。
-- 超過分の計算手順：
-  E1: 日報の「+〇〇」を読み取り「超過分」とする
-  E2: 客分 = メーター明細の金額 − 超過分
-  E3: 同じNoで客分行＋超過分行の2行を出力
-
-━━━━━━━━━━━━━━━━━━━━
-【金額読み取りの厳密ルール】
-━━━━━━━━━━━━━━━━━━━━
-※精度最優先。直近の誤読例：1,800→1,200／1,100→5,100／3,300→3,200／1,500→1,400／1,800→1,500。
-1. メーター明細書の各金額は、桁ごとに慎重に読み取ること。一目で判断せず、千の位・百の位・十の位を順に確認する。
-2. 金額は通常「¥X,XXX円」または「X,XXX」の形式で表記される。千の位（カンマの前）と百の位（カンマの直後）を特に明確に識別すること。
-3. 形が紛らわしい数字ペアに最大限注意：「3 と 2」「8 と 2」「8 と 3」「5 と 4」「6 と 0」「7 と 1」「9 と 4」「1 と 5」。少しでも迷ったら拡大して再確認する。
-4. 不確実な場合でも、前後の金額や時刻、合計値などの「文脈」から数字を推測してはいけない。あくまで画像上の文字を読む。
-5. メーター明細書の数字を「絶対の真実」として扱い、日報の手書き数字とは独立して読み取る。日報の数字に引きずられないこと。
-
-━━━━━━━━━━━━━━━━━━━━
-【絶対遵守ルール】
-━━━━━━━━━━━━━━━━━━━━
-- メーター明細にある全行を必ず出力する（行を抜かさない）
-- メーター明細の金額を改変しない（1円も変えない）
-- メーター明細にない金額を勝手に出力しない（貸切・メーター超過の超過分・障割の割引額のみ例外）
-- 行の順番を時刻順に保つ
-- 出力前に確認：
-  - 通常行の数 ≧ メーター明細の行数
-  - 通常行の各金額 = メーター明細の対応行の金額（完全一致）
-
-━━━━━━━━━━━━━━━━━━━━
-【出力フォーマット】
-━━━━━━━━━━━━━━━━━━━━
-
-## 集計
-件数: N件
-総人数: N人
-現収合計: ¥X,XXX
-未収合計: ¥X,XXX
-総収: ¥X,XXX
-消費税: ¥X,XXX
-税抜運収: ¥X,XXX
-
-## 明細
-|No|人数|時刻|現収|未収|摘要|状態|
-|---|---|---|---|---|---|---|
-|1|2|10:32|0|4,100|アプリ|ok|
-|...|
-
-※列名は「降車時刻」ではなく「時刻」と表示。
-
-【状態列】
-- ok：通常
-- mismatch：日報の金額とメーター明細の金額が異なる場合
-- charter：貸切
-- special：メーター超過の超過分行
-
-【消費税計算】
-消費税 = round(総収 ÷ 11, -1)（10円単位四捨五入）
-税抜運収 = 総収 − 消費税
-"""
-                res = client.messages.create(
-                    model='claude-opus-4-5', max_tokens=4000,
-                    messages=[{'role':'user','content':[
-                        {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(nippou_img)}},
-                        {'type':'image','source':{'type':'base64','media_type':'image/jpeg','data':to_b64(meter_img)}},
-                        {'type':'text','text':prompt}
-                    ]}]
-                )
-                text = res.content[0].text
-                
-                def grab(*labels):
-                    for label in labels:
-                        m = re.search(label + r'\**\s*[:：]\s*\**\s*¥?([\d,]+)', text)
-                        if m:
-                            return m.group(1).replace(',', '').strip()
-                        m = re.search(r'\|\s*\**\s*' + label + r'\s*\**\s*\|\s*\**\s*¥?([\d,]+)', text)
-                        if m:
-                            return m.group(1).replace(',', '').strip()
-                    return '0'
-
-                ken = grab(r'件数')
-                nin = grab(r'総人数', r'人数合計')
-                gen = grab(r'現収合計', r'現収')
-                mi = grab(r'未収合計', r'未収')
-                sou = grab(r'総収合計', r'総収')
-                tax = grab(r'消費税')
-                net = grab(r'税抜運収', r'運収')
-                
-                fmt = lambda x: f'¥{int(x):,}'
-                
-                for pct in [82, 91, 97, 100]:
-                    loader.markdown(f'<div class="big-overlay"><div class="particles"><span class="particle p1"></span><span class="particle p2"></span><span class="particle p3"></span><span class="particle p4"></span><span class="particle p5"></span><span class="particle p6"></span><span class="particle p7"></span><span class="particle p8"></span><span class="particle p9"></span><span class="particle p10"></span><span class="particle p11"></span><span class="particle p12"></span><span class="particle p13"></span><span class="particle p14"></span><span class="particle p15"></span><span class="particle p16"></span><span class="particle p17"></span><span class="particle p18"></span><span class="particle p19"></span><span class="particle p20"></span><span class="particle p21"></span><span class="particle p22"></span><span class="particle p23"></span><span class="particle p24"></span><span class="particle p25"></span><span class="particle p26"></span><span class="particle p27"></span><span class="particle p28"></span><span class="particle p29"></span><span class="particle p30"></span><span class="particle p31"></span><span class="particle p32"></span><span class="particle p33"></span><span class="particle p34"></span><span class="particle p35"></span><span class="particle p36"></span><span class="particle p37"></span><span class="particle p38"></span><span class="particle p39"></span><span class="particle p40"></span><span class="particle p41"></span><span class="particle p42"></span><span class="particle p43"></span><span class="particle p44"></span><span class="particle p45"></span><span class="particle p46"></span><span class="particle p47"></span><span class="particle p48"></span><span class="particle p49"></span><span class="particle p50"></span><span class="particle p51"></span><span class="particle p52"></span><span class="particle p53"></span><span class="particle p54"></span><span class="particle p55"></span><span class="particle p56"></span><span class="particle p57"></span><span class="particle p58"></span><span class="particle p59"></span><span class="particle p60"></span><span class="particle p61"></span><span class="particle p62"></span><span class="particle p63"></span><span class="particle p64"></span><span class="particle p65"></span><span class="particle p66"></span><span class="particle p67"></span><span class="particle p68"></span><span class="particle p69"></span><span class="particle p70"></span><span class="particle p71"></span><span class="particle p72"></span><span class="particle p73"></span><span class="particle p74"></span><span class="particle p75"></span><span class="particle p76"></span><span class="particle p77"></span><span class="particle p78"></span><span class="particle p79"></span><span class="particle p80"></span><span class="particle p81"></span><span class="particle p82"></span><span class="particle p83"></span><span class="particle p84"></span><span class="particle p85"></span><span class="particle p86"></span><span class="particle p87"></span><span class="particle p88"></span><span class="particle p89"></span><span class="particle p90"></span><span class="particle p91"></span><span class="particle p92"></span><span class="particle p93"></span><span class="particle p94"></span><span class="particle p95"></span><span class="particle p96"></span><span class="particle p97"></span><span class="particle p98"></span><span class="particle p99"></span><span class="particle p100"></span></div><div class="big-num">{pct}%</div><div class="big-label">完成しました</div></div>', unsafe_allow_html=True)
-                    time.sleep(0.15)
-                loader.empty()
-                st.markdown('<div class="result-card">', unsafe_allow_html=True)
-                st.markdown(f"""
-<div class="complete-bar">
-  <p class="label">✓ 完成</p>
-  <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
-</div>
-<div class="metric-grid-3">
-  <div class="metric"><p class="label">現収</p><p class="value">{fmt(gen)}</p></div>
-  <div class="metric"><p class="label">未収</p><p class="value">{fmt(mi)}</p></div>
-  <div class="metric dark"><p class="label">総収</p><p class="value">{fmt(sou)}</p></div>
-</div>
-<div class="metric-grid-2">
-  <div class="metric"><p class="label">消費税</p><p class="value">{fmt(tax)}</p></div>
-  <div class="metric"><p class="label">税抜運収</p><p class="value">{fmt(net)}</p></div>
-</div>
-""", unsafe_allow_html=True)
-                
-                table_match = re.search(r'## 明細\s*(.+)', text, re.DOTALL)
-                if table_match:
-                    raw_table = table_match.group(1).strip()
-                    table_lines = [ln.strip() for ln in raw_table.split('\n') if ln.strip().startswith('|')]
-                    if len(table_lines) >= 2:
-                        header_cells = [c.strip() for c in table_lines[0].strip('|').split('|')]
-                        data_lines = [ln for ln in table_lines[1:] if not re.fullmatch(r'\|[\s\-:|]+\|', ln)]
-                        state_idx = next((i for i, h in enumerate(header_cells) if '状態' in h or 'state' in h.lower()), -1)
-                        html_parts = ['<table class="detail-table"><thead><tr>']
-                        for h in header_cells:
-                            html_parts.append(f'<th>{h}</th>')
-                        html_parts.append('</tr></thead><tbody>')
-                        for line in data_lines:
-                            cells = [c.strip() for c in line.strip('|').split('|')]
-                            state_value = cells[state_idx].strip().lower() if state_idx >= 0 and state_idx < len(cells) else ''
-                            state_class = ''
-                            if 'mismatch' in state_value:
-                                state_class = 'mismatch'
-                            elif 'special' in state_value:
-                                state_class = 'special'
-                            elif 'charter' in state_value:
-                                state_class = 'charter'
-                            row_class = f' class="{state_class}"' if state_class else ''
-                            html_parts.append(f'<tr{row_class}>')
-                            for c in cells:
-                                html_parts.append(f'<td>{c}</td>')
-                            html_parts.append('</tr>')
-                        html_parts.append('</tbody></table>')
-                        st.markdown(''.join(html_parts), unsafe_allow_html=True)
-                    else:
-                        st.markdown(raw_table)
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                st.markdown('<br>', unsafe_allow_html=True)
-                st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
-        except Exception as e:
-            st.error(f'エラー: {e}')
+            loader.empty()
+            for k in ('result_rows', 'result_valid', 'result_diff'):
+                st.session_state.pop(k, None)
+            st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
 elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
     st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
+
+# ============================================================
+# 結果表示（result_rows が session_state にある時）
+# ============================================================
+
+if st.session_state.get('result_rows'):
+    rows = st.session_state.result_rows
+    valid = st.session_state.result_valid
+    diff = st.session_state.result_diff
+
+    st.markdown('<div class="result-card">', unsafe_allow_html=True)
+
+    if not valid:
+        st.warning(f'⚠️ 整合性チェック失敗: 出力合計とメーター合計が ¥{abs(diff):,} ずれています。下のテーブルで編集して「合計を再計算」を押してください。')
+        df = pd.DataFrame([
+            {'No': r['no'], '人数': r['passengers'], '時刻': r['time'],
+             '現収': r['gen'], '未収': r['mi'], '摘要': r['memo'], '状態': r['state']}
+            for r in rows
+        ])
+        edited = st.data_editor(df, use_container_width=True, num_rows='dynamic', key='result_editor')
+        if st.button('💾 合計を再計算', use_container_width=True, key='recalc_btn'):
+            edited2 = edited.copy()
+            for col in ('現収', '未収', '人数'):
+                edited2[col] = pd.to_numeric(edited2[col], errors='coerce').fillna(0)
+            recalced = []
+            for _, row in edited2.iterrows():
+                recalced.append({
+                    'no': row.get('No', 0),
+                    'passengers': int(row['人数']),
+                    'time': row.get('時刻', ''),
+                    'gen': int(row['現収']),
+                    'mi': int(row['未収']),
+                    'memo': row.get('摘要', ''),
+                    'state': row.get('状態', 'ok'),
+                })
+            ken, nin, gen, mi, sou, tax, net = aggregate_totals(recalced)
+            render_summary(ken, nin, gen, mi, sou, tax, net)
+            render_detail_table(recalced)
+    else:
+        ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
+        render_summary(ken, nin, gen, mi, sou, tax, net)
+        render_detail_table(rows)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<br>', unsafe_allow_html=True)
+    st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
+
 
 with st.expander('？ このアプリについて・使い方'):
     st.markdown('''
