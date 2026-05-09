@@ -1751,6 +1751,25 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 #   build_report ではこの金額を改変せずに使用する。
 # ============================================================
 
+def _extract_meter_no(line):
+    """行頭からメーター明細の行番号を抽出。
+    対応パターン: 'No.4', 'No 4', 'No4', '4.', '4)', '4 ' など。
+    抽出できなければ None。"""
+    # "No.4" / "No 4" / "No4"（大小文字無視）
+    m = re.match(r'^\s*no\.?\s*(\d{1,2})\b', line, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    # "4." または "4)"
+    m = re.match(r'^\s*(\d{1,2})[\.\)]', line)
+    if m:
+        return int(m.group(1))
+    # "4 " 形式（後続が「:数字」でない＝時刻の hour 部分と誤認しない）
+    m = re.match(r'^\s*(\d{1,2})(?!:\d)\s+', line)
+    if m:
+        return int(m.group(1))
+    return None
+
+
 def _parse_meter_vision(meter_img):
     """Vision API による OCR + 正規表現抽出。
     成功時: {'success': True, 'rows': [...], 'total': N, 'source': 'vision', 'raw_text': str}
@@ -1792,8 +1811,10 @@ def _parse_meter_vision(meter_img):
 
     rows = []
     no_counter = 1
+    seen_nos = set()
     skipped_lines = 0
     total_lines = 0
+    extracted_count = 0  # OCR から no を抽出できた行数（デバッグ用）
     for line in full_text.split('\n'):
         line = line.strip()
         if not line:
@@ -1820,8 +1841,20 @@ def _parse_meter_vision(meter_img):
             continue
         amount = max(candidates)  # 同行に複数あれば最大値（運賃が最大値であることが多い）
         time_str = f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
-        rows.append({'no': no_counter, 'time': time_str, 'amount': amount})
-        no_counter += 1
+
+        # 行番号の決定: OCR から抽出 → 失敗時は未使用の連番をフォールバック採番
+        extracted_no = _extract_meter_no(line)
+        if extracted_no is not None and extracted_no not in seen_nos:
+            no = extracted_no
+            extracted_count += 1
+        else:
+            while no_counter in seen_nos:
+                no_counter += 1
+            no = no_counter
+            no_counter += 1
+        seen_nos.add(no)
+
+        rows.append({'no': no, 'time': time_str, 'amount': amount})
 
     if not rows:
         return {
@@ -1830,11 +1863,15 @@ def _parse_meter_vision(meter_img):
             'raw_text': full_text,
         }
 
+    # OCR が行を順不同で返した場合に備え、no で昇順ソートして整合性を保つ
+    rows.sort(key=lambda r: r['no'])
+
     total = sum(r['amount'] for r in rows)
     return {
         'success': True,
         'rows': rows, 'total': total,
         'source': 'vision', 'raw_text': full_text,
+        'no_extracted': extracted_count,  # 何行で no を OCR から抽出できたか（デバッグ）
     }
 
 
