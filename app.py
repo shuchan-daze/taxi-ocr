@@ -1951,7 +1951,7 @@ def _parse_meter_claude(client, meter_img):
 
 JSON以外の余計なテキストは最後のJSON以外不要。"""
     res = client.messages.create(
-        model='claude-sonnet-4-6-20251001', max_tokens=4000, temperature=0,
+        model='claude-sonnet-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
             {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(meter_img)}},
             {'type': 'text', 'text': prompt},
