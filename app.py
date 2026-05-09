@@ -2489,8 +2489,45 @@ if st.session_state.get('result_rows'):
     meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
     nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
 
-    # ========== 乖離チェック（写真誤りの検知） ==========
+    # ========== メーターレシート品質チェック（読み取り破綻の検知） ==========
     _meter_rows = meter_data.get('rows', [])
+    _meter_no_list = [int(r.get('no', 0)) for r in _meter_rows]
+
+    # ① 先頭5行の行番号が [1,2,3,4,5] と一致するか
+    _first_5 = _meter_no_list[:5]
+    _expected_head = [1, 2, 3, 4, 5]
+    _top5_mismatch_count = sum(
+        1 for i, n in enumerate(_first_5)
+        if i < len(_expected_head) and n != _expected_head[i]
+    )
+    # 先頭5行のうち2件以上が連番からズレていれば異常（5件未満ならスキップ）
+    _top5_invalid = len(_first_5) >= 5 and _top5_mismatch_count >= 2
+
+    # ② 総件数と最終行番号の乖離
+    _meter_total_count = len(_meter_no_list)
+    _meter_last_no = _meter_no_list[-1] if _meter_no_list else 0
+    _no_count_gap = abs(_meter_total_count - _meter_last_no) if _meter_no_list else 0
+    _count_diverged = _meter_no_list and _no_count_gap >= 3
+
+    if _meter_rows and (_top5_invalid or _count_diverged):
+        _reasons = []
+        if _top5_invalid:
+            _reasons.append(
+                f'先頭5行の行番号が連番になっていません（読み取り: {_first_5}、期待: [1,2,3,4,5]）'
+            )
+        if _count_diverged:
+            _reasons.append(
+                f'抽出行数（{_meter_total_count}件）と最終行番号（No.{_meter_last_no}）が乖離しています（差 {_no_count_gap}）'
+            )
+        _bullets = '\n'.join('- ' + r for r in _reasons)
+        st.error(
+            f'### ⚠️ メーターレシートの読み取りに問題があります\n\n'
+            f'{_bullets}\n\n'
+            f'正しいメーターレシートの写真か確認して再アップしてください。'
+        )
+        st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_meter_btn', use_container_width=True)
+
+    # ========== 乖離チェック（写真誤りの検知） ==========
     _rides = nippou_data.get('rides', [])
     _extras = nippou_data.get('extras', [])
 
