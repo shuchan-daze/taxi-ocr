@@ -1504,8 +1504,9 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .detail-table {width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px;}
 .detail-table th, .detail-table td {padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.15); text-align: left; color: white;}
 .detail-table th {background: rgba(255,255,255,0.06); font-weight: 600;}
-.detail-table tr.mismatch td {background: #fee2e2 !important; color: #7f1d1d !important;}
-.detail-table tr.mismatch td:first-child {border-left: 4px solid #dc2626 !important;}
+/* mismatch: 現収/未収セルのみを薄赤で強調（行全体ではない） */
+.detail-table tr.mismatch td[data-col="gen"],
+.detail-table tr.mismatch td[data-col="mi"] {background: #fee2e2 !important; color: #7f1d1d !important; font-weight: 600;}
 .detail-table tr.special td {background: #fef3c7 !important; color: #78350f !important;}
 .detail-table tr.special td:first-child {border-left: 4px solid #d97706 !important;}
 .detail-table tr.charter td {background: #dbeafe !important; color: #1e3a8a !important;}
@@ -2084,22 +2085,31 @@ def parse_meter(client, meter_img):
 
 # Stage 2: 日報のみから乗客行を分類 → {'rides': [...]}
 # meter_data に依存せず、meter_no は日報の上から 1 始まり連番で割当。
-# AI は金額を読まない（金額は Stage 1 のメーター値を build_report が使用）。
+# 金額の主要値は読まないが、mismatch 検出のため nippou_amount として
+# 日報の手書き金額を任意で記録する（読めない場合は null）。
 
 def classify_nippou(client, nippou_img):
     """Stage 2: 日報を Claude で分類し、{rides: [...]} を返す。
     各 ride は通常乗客行に対応。case='normal' か 'overage'（から回し時）。
+    nippou_amount: 日報の手書き金額（mismatch 検出用、null可）。
     から回し行（取り消し線つき +金額のみ）は独立 ride にせず、直前の通常行
     の case を 'overage' に変更し overage_amount をセットする。"""
     prompt = """これはタクシー乗務員の手書き日報です。
 日報の各行を上から順に処理し、以下のルールで JSON 配列を返してください。
 
 【通常行】
-{"meter_no": 連番（1始まり、上から何番目の乗客か）, "passengers": 人数（数字）, "kind": "現収" or "未収", "memo": "Visa/Suica/Uber/交通系/現金 等", "case": "normal"}
+{"meter_no": 連番（1始まり、上から何番目の乗客か）, "passengers": 人数（数字）, "kind": "現収" or "未収", "memo": "Visa/Suica/Uber/交通系/現金 等", "case": "normal", "nippou_amount": 日報の現収/未収欄に書かれた金額の数字（読めない/書かれていない場合は null）}
 
 【現収/未収判定】
 - 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 必ず「未収」
 - 摘要が空欄、または「現金」 → 「現収」
+
+【nippou_amount について】
+- 日報の現収/未収欄に手書きで書かれている金額をそのまま読み取る（数値のみ、カンマ無し）。
+- 読み取れない・書かれていない・かすれている場合は null を返す。
+- 「+100」のような追記は除外し、メインの金額のみを読む。
+- この値は出力テーブルの金額にはならない（出力金額はメーター明細から取られる）。
+  メーター明細との比較で「日報誤記の検知（mismatch ハイライト）」のためだけに使われる。
 
 【から回し行の判定】
 - 乗車区間が取り消し線（横線・斜線・×印）で消されており、現収欄に「+100」「+200」のように「+金額」だけ書かれた行は「から回し」（メーター消し忘れ）。
@@ -2108,16 +2118,16 @@ def classify_nippou(client, nippou_img):
 
 【出力例】
 [
-  {"meter_no": 1, "passengers": 2, "kind": "未収", "memo": "アプリ", "case": "normal"},
-  {"meter_no": 2, "passengers": 1, "kind": "現収", "memo": "現金", "case": "normal"},
-  {"meter_no": 21, "passengers": 2, "kind": "未収", "memo": "Visa", "case": "overage", "overage_amount": 100}
+  {"meter_no": 1, "passengers": 2, "kind": "未収", "memo": "アプリ", "case": "normal", "nippou_amount": 1500},
+  {"meter_no": 2, "passengers": 1, "kind": "現収", "memo": "現金", "case": "normal", "nippou_amount": null},
+  {"meter_no": 21, "passengers": 2, "kind": "未収", "memo": "Visa", "case": "overage", "overage_amount": 100, "nippou_amount": 1600}
 ]
 
 【厳守】
 - JSON 配列のみを返す。前後に余計なテキスト・コードブロック記号・思考過程は付けない。
 - 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
 - 取り消し線行を独立した ride として出力しない。
-- 通常の現収/未収欄の金額は読み取らない・出力しない（金額はメーター明細書の値を Python が自動で割り当てる）。"""
+- 出力テーブルの最終金額は **メーター明細書の値** が使われる（nippou_amount は mismatch 検知のみに使われる）。"""
     res = client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
@@ -2139,7 +2149,9 @@ def classify_nippou(client, nippou_img):
 
 def build_report(meter_data, nippou_data):
     """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。
-    case は 'normal'（1行）と 'overage'（2行に分割）のみ扱う。"""
+    case は 'normal'（1行）と 'overage'（2行に分割）のみ扱う。
+    日報金額（nippou_amount）がメーター額と異なる場合は state='mismatch' を立てる
+    （ハイライトのみ。出力金額はメーター額のまま）。"""
     meter_rows = {r['no']: r for r in meter_data.get('rows', [])}
     nippou_by_meter = {r['meter_no']: r for r in nippou_data.get('rides', [])}
     output = []
@@ -2153,15 +2165,19 @@ def build_report(meter_data, nippou_data):
         memo = n.get('memo') or ''
         case = n.get('case') or 'normal'
         time_str = meter_row['time']
+        nippou_amt = n.get('nippou_amount')
+        nippou_amt = int(nippou_amt) if isinstance(nippou_amt, (int, float)) else None
 
         if case == 'overage':
             overage = int(n.get('overage_amount') or 0)
             client_amount = meter_amount - overage
+            # 客分行: 日報金額（=客分）と一致するか比較
+            client_state = 'mismatch' if (nippou_amt is not None and nippou_amt != client_amount) else 'ok'
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': time_str,
                 'gen': client_amount if kind == '現収' else 0,
                 'mi': client_amount if kind == '未収' else 0,
-                'memo': memo, 'state': 'ok',
+                'memo': memo, 'state': client_state,
             })
             output.append({
                 'no': f'{meter_no}+', 'passengers': passengers, 'time': time_str,
@@ -2169,11 +2185,13 @@ def build_report(meter_data, nippou_data):
                 'memo': 'メーター超過', 'state': 'special',
             })
         else:
+            # normal: 日報金額がメーター額と異なれば mismatch（金額はメーター額のまま）
+            row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': time_str,
                 'gen': meter_amount if kind == '現収' else 0,
                 'mi': meter_amount if kind == '未収' else 0,
-                'memo': memo, 'state': 'ok',
+                'memo': memo, 'state': row_state,
             })
 
     return output
