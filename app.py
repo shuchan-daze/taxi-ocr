@@ -1518,6 +1518,11 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .detail-table tr.special td:first-child {border-left: 4px solid #d97706 !important;}
 .detail-table tr.charter td {background: #dbeafe !important; color: #1e3a8a !important;}
 .detail-table tr.charter td:first-child {border-left: 4px solid #2563eb !important;}
+.detail-table tr.edited td {background: #fef9c3 !important; color: #713f12 !important;}
+.detail-table tr.edited td:first-child {border-left: 4px solid #ca8a04 !important;}
+.detail-table td[data-col="gen"], .detail-table td[data-col="mi"] {cursor: pointer;}
+.detail-table td[data-col="gen"]:hover, .detail-table td[data-col="mi"]:hover {outline: 1px dashed rgba(212,175,55,0.55); outline-offset: -2px;}
+.detail-table td input.cell-edit {width: 100%; padding: 4px 6px; font: inherit; color: #111; background: #fff; border: 2px solid #d4af37; border-radius: 4px; box-sizing: border-box;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1744,6 +1749,78 @@ observer.observe(document.body, {childList: true, subtree: true});
     }
   });
   mo.observe(D.body, {childList: true, subtree: true});
+
+  // === ダブルクリックで現収/未収を編集＋合計再計算 ===
+  function fmtYen(n) { return '¥' + Number(n).toLocaleString(); }
+
+  function recalcTotals() {
+    const tbody = D.querySelector('.detail-table tbody');
+    if (!tbody) return;
+    let gen = 0, mi = 0;
+    tbody.querySelectorAll('tr').forEach((tr) => {
+      const g = tr.querySelector('td[data-col="gen"]');
+      const m = tr.querySelector('td[data-col="mi"]');
+      gen += parseInt(g?.dataset.value || '0', 10) || 0;
+      mi += parseInt(m?.dataset.value || '0', 10) || 0;
+    });
+    const sou = gen + mi;
+    const tax = Math.round(sou / 11 / 10) * 10;  // ROUND(総収/11, -1)
+    const net = sou - tax;
+
+    const set = (key, val) => {
+      const el = D.querySelector(`[data-metric="${key}"] .value`);
+      if (el) el.textContent = fmtYen(val);
+    };
+    set('gen', gen);
+    set('mi', mi);
+    set('sou', sou);
+    set('tax', tax);
+    set('net', net);
+  }
+
+  function startEdit(td) {
+    if (!td || td.querySelector('input.cell-edit')) return;
+    const cur = parseInt(td.dataset.value || '0', 10) || 0;
+    const input = D.createElement('input');
+    input.type = 'number';
+    input.className = 'cell-edit';
+    input.value = cur;
+    input.min = '0';
+    input.step = '100';
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      const newVal = parseInt(input.value, 10);
+      const v = isNaN(newVal) || newVal < 0 ? 0 : newVal;
+      td.dataset.value = v;
+      td.textContent = v ? Number(v).toLocaleString() : '';
+      const tr = td.closest('tr');
+      if (tr) tr.classList.add('edited');
+      recalcTotals();
+    };
+    const cancel = () => {
+      if (committed) return;
+      committed = true;
+      td.textContent = cur ? Number(cur).toLocaleString() : '';
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+  }
+
+  // event delegation: 動的に挿入されるテーブルにも対応
+  D.addEventListener('dblclick', (e) => {
+    const td = e.target.closest('td[data-col="gen"], td[data-col="mi"]');
+    if (td) startEdit(td);
+  });
 
   // === イントロ演出（セッション内で初回のみ）===
   try {
@@ -2226,13 +2303,13 @@ def render_summary(ken, nin, gen, mi, sou, tax, net):
   <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
 </div>
 <div class="metric-grid-3">
-  <div class="metric"><p class="label">現収</p><p class="value">{fmt(gen)}</p></div>
-  <div class="metric"><p class="label">未収</p><p class="value">{fmt(mi)}</p></div>
-  <div class="metric dark"><p class="label">総収</p><p class="value">{fmt(sou)}</p></div>
+  <div class="metric" data-metric="gen"><p class="label">現収</p><p class="value">{fmt(gen)}</p></div>
+  <div class="metric" data-metric="mi"><p class="label">未収</p><p class="value">{fmt(mi)}</p></div>
+  <div class="metric dark" data-metric="sou"><p class="label">総収</p><p class="value">{fmt(sou)}</p></div>
 </div>
 <div class="metric-grid-2">
-  <div class="metric"><p class="label">消費税</p><p class="value">{fmt(tax)}</p></div>
-  <div class="metric"><p class="label">税抜運収</p><p class="value">{fmt(net)}</p></div>
+  <div class="metric" data-metric="tax"><p class="label">消費税</p><p class="value">{fmt(tax)}</p></div>
+  <div class="metric" data-metric="net"><p class="label">税抜運収</p><p class="value">{fmt(net)}</p></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -2243,17 +2320,19 @@ def render_detail_table(rows):
     parts.extend(f'<th>{h}</th>' for h in headers)
     parts.append('</tr></thead><tbody>')
     state_class_map = {'mismatch': 'mismatch', 'special': 'special', 'charter': 'charter'}
-    for r in rows:
+    for idx, r in enumerate(rows):
         cls = state_class_map.get(r.get('state', ''), '')
         row_class = f' class="{cls}"' if cls else ''
-        gen = f"{r['gen']:,}" if r['gen'] else ''
-        mi = f"{r['mi']:,}" if r['mi'] else ''
-        parts.append(f'<tr{row_class}>')
+        gen_v = int(r.get('gen') or 0)
+        mi_v = int(r.get('mi') or 0)
+        gen = f"{gen_v:,}" if gen_v else ''
+        mi = f"{mi_v:,}" if mi_v else ''
+        parts.append(f'<tr{row_class} data-rowidx="{idx}">')
         parts.append(f'<td>{r["no"]}</td>')
         parts.append(f'<td>{r["passengers"] if r["passengers"] else ""}</td>')
         parts.append(f'<td>{r["time"]}</td>')
-        parts.append(f'<td>{gen}</td>')
-        parts.append(f'<td>{mi}</td>')
+        parts.append(f'<td data-col="gen" data-value="{gen_v}">{gen}</td>')
+        parts.append(f'<td data-col="mi" data-value="{mi_v}">{mi}</td>')
         parts.append(f'<td>{r["memo"]}</td>')
         parts.append(f'<td>{r["state"]}</td>')
         parts.append('</tr>')
