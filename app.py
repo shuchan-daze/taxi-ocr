@@ -1940,18 +1940,20 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 
 def _parse_meter_claude(client, meter_img):
     """メーターレシート画像を Claude に直接送って JSON で返させる。"""
-    prompt = """このレシートの各行を上から順に読んで、まず全行をテキストで書き出せ：
+    prompt = """このタクシーメーターのレシート画像から全乗車明細を読み取り、
+以下のJSON形式のみで返答せよ。説明文は不要。
 
-行1: no=1, time=10:32, amount=4100
-行2: no=2, time=10:50, amount=1000
-...（全行）
+{"rows": [
+  {"no": 1, "time": "10:32", "amount": 4100},
+  {"no": 2, "time": "10:50", "amount": 1000}
+]}
 
-全行書き出した後に、以下のJSONのみを出力せよ：
-{"rows":[{"no":1,"time":"10:32","amount":4100},...]}
-
-JSON以外の余計なテキストは最後のJSON以外不要。"""
+・noはレシートの行番号
+・timeは降車時刻（HH:MM形式）
+・amountは¥の金額（数値のみ）
+・JSON以外出力しない"""
     res = client.messages.create(
-        model='claude-sonnet-4-5', max_tokens=4000, temperature=0,
+        model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
             {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(meter_img)}},
             {'type': 'text', 'text': prompt},
