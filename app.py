@@ -2005,51 +2005,33 @@ def _parse_meter_vision(client_vision, meter_img):
     if not full_text.strip():
         return None
 
-    # 全wordをbounding boxのY・X座標付きで収集
-    words = []
-    for page in annotation.pages:
-        for block in page.blocks:
-            for para in block.paragraphs:
-                for word in para.words:
-                    text = ''.join(s.text for s in word.symbols)
-                    y = word.bounding_box.vertices[0].y
-                    x = word.bounding_box.vertices[0].x
-                    words.append((y, x, text))
+    lines = full_text.split('\n')
+    time_pat = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
+    amt_pat = re.compile(r'[¥\\]\s*([\d,]+(?:\s\d{3}(?!\d))?)')
 
-    # 行番号・時刻・金額をそれぞれ Y 順で並べ、i 番目どうしを対応付ける
-    no_pat = re.compile(r'^(\d+)\.$')
-    time_pat = re.compile(r'^(\d{1,2}):(\d{2})$')
-    amt_pat = re.compile(r'[¥\\]([\d,]+)')
-
-    # 行番号リスト（Y順）
-    no_list = sorted([(y, int(no_pat.match(t).group(1)))
-                      for y, x, t in words if no_pat.match(t)])
-
-    # 時刻リスト（Y順）
-    time_list = sorted([(y, t) for y, x, t in words if time_pat.match(t)])
-
-    # 金額リスト（Y順）
-    amt_list = sorted([(y, int(amt_pat.search(t).group(1).replace(',', '')))
-                       for y, x, t in words if amt_pat.search(t)])
-
-    # 順番で対応付け（1番目の行番号 → 1番目の時刻 → 1番目の金額）
     rows = []
-    for i, (_, no) in enumerate(no_list):
-        if i < len(time_list) and i < len(amt_list):
-            _, time_raw = time_list[i]
-            m = time_pat.match(time_raw)
-            time_str = f'{int(m.group(1)):02d}:{m.group(2)}'
-            amount = amt_list[i][1]
-            rows.append({'no': no, 'time': time_str, 'amount': amount})
+    for i, line in enumerate(lines):
+        tm = time_pat.search(line)
+        if not tm:
+            continue
+        for j in range(i + 1, min(i + 3, len(lines))):
+            am = amt_pat.search(lines[j])
+            if am:
+                h, mi = tm.group(2).split(':')
+                amount = int(am.group(1).replace(',', '').replace(' ', ''))
+                rows.append({
+                    'no': int(tm.group(1)),
+                    'time': f'{int(h):02d}:{mi}',
+                    'amount': amount,
+                })
+                break
+    rows.sort(key=lambda r: r['no'])
 
     if not rows:
         return None
-    # デバッグ: 18/19 行付近の word を抽出
-    debug_words_18_19 = [(y, x, t) for y, x, t in words if '18' in t or '19' in t or '1,1' in t or '5,7' in t]
     return {
         'rows': rows,
         'total': sum(r['amount'] for r in rows),
-        '_debug_words_18_19': debug_words_18_19,
         '_raw_text': full_text,
     }
 
@@ -2575,17 +2557,6 @@ if st.session_state.get('result_rows'):
         else:
             st.info('メーター明細データなし')
 
-        # 18/19 行付近の Vision word データ（bbox パーサーがどう読んだかの確認）
-        debug_words = meter_data.get('_debug_words_18_19')
-        if debug_words is not None:
-            st.markdown('**🔍 18/19 関連 word（Y, X, text）:**')
-            if debug_words:
-                st.write(debug_words)
-            else:
-                st.caption('（"18" / "19" / "1,1" / "5,7" を含む word は検出されませんでした）')
-        else:
-            st.caption('（Vision パスを通っていないため bbox word データはありません）')
-
         # Vision の生 OCR テキスト（full_text_annotation.text）をそのまま表示
         raw_text = meter_data.get('_raw_text')
         if raw_text is not None:
@@ -2596,7 +2567,7 @@ if st.session_state.get('result_rows'):
             st.caption('（Vision パスを通っていないため raw_text なし）')
 
         st.markdown('**生 JSON:**')
-        st.json({k: v for k, v in meter_data.items() if k not in ('_debug_words_18_19', '_raw_text')})
+        st.json({k: v for k, v in meter_data.items() if k != '_raw_text'})
 
     # ========== Stage 2: 日報分類生データ ==========
     with st.expander('🔧 Stage 2: 日報分類生データ'):
