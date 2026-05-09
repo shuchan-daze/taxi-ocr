@@ -150,6 +150,35 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     justify-content: center;
     pointer-events: none;
 }
+.big-overlay.entering {
+    animation: overlayFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.big-overlay.entering::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.55), rgba(212,175,55,0.55));
+    animation: goldFlash 0.6s ease-out forwards;
+    pointer-events: none;
+    z-index: 5;
+    mix-blend-mode: screen;
+}
+.big-overlay.exiting {
+    animation: overlayFadeOut 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes overlayFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes overlayFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+@keyframes goldFlash {
+    0% { opacity: 0; }
+    30% { opacity: 0.85; }
+    100% { opacity: 0; }
+}
 .big-num {
     font-size: 120px !important;
     font-weight: 700 !important;
@@ -724,6 +753,14 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     border-radius: 50%;
     background: rgba(255,255,255,0.25);
 }
+/* 粒子の動きを不規則に：nth-child で7種類のイージング曲線をローテーション */
+.particle:nth-child(7n)   {animation-timing-function: cubic-bezier(0.30, 0.10, 0.70, 0.90) !important;}
+.particle:nth-child(7n+1) {animation-timing-function: cubic-bezier(0.62, 0.04, 0.32, 1.00) !important;}
+.particle:nth-child(7n+2) {animation-timing-function: cubic-bezier(0.20, 0.45, 0.85, 0.55) !important;}
+.particle:nth-child(7n+3) {animation-timing-function: cubic-bezier(0.85, 0.05, 0.18, 0.98) !important;}
+.particle:nth-child(7n+4) {animation-timing-function: cubic-bezier(0.45, 0.65, 0.55, 0.35) !important;}
+.particle:nth-child(7n+5) {animation-timing-function: cubic-bezier(0.55, 0.00, 0.45, 1.00) !important;}
+.particle:nth-child(7n+6) {animation-timing-function: cubic-bezier(0.10, 0.30, 0.92, 0.72) !important;}
 @keyframes warp1 {
   0% {transform: translate(0,0) scale(1); opacity: 0; filter: blur(4px); width: 4.9px; height: 4.9px; box-shadow: 0 0 8px rgba(255,255,255,0.40), 0 0 16px rgba(212,175,55,0.30);}
   10% {opacity: 0.85; filter: blur(2.4px);}
@@ -2114,17 +2151,19 @@ def validate(report_rows, meter_data, nippou_data):
 def _particles_html():
     return ''.join(f'<span class="particle p{i}"></span>' for i in range(1, 101))
 
-def show_loader(loader, pct, label):
+def show_loader(loader, pct, label, anim_class=''):
+    cls = f'big-overlay {anim_class}'.strip()
     loader.markdown(
-        f'<div class="big-overlay"><div class="particles">{_particles_html()}</div>'
+        f'<div class="{cls}"><div class="particles">{_particles_html()}</div>'
         f'<div class="big-num">{pct}%</div><div class="big-label">{label}</div></div>',
         unsafe_allow_html=True
     )
 
-def loader_steps(loader, pcts, label, sleep=0.15):
+def loader_steps(loader, pcts, label, sleep=0.15, anim_class=''):
     for pct in pcts:
-        show_loader(loader, pct, label)
+        show_loader(loader, pct, label, anim_class=anim_class)
         time.sleep(sleep)
+        anim_class = ''  # 最初のステップだけアニメーション、以降は静的に
 
 
 # ============================================================
@@ -2192,7 +2231,8 @@ def aggregate_totals(rows):
 
 def run_pipeline(client, imgs, loader):
     """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff, meter_data, nippou_data)"""
-    loader_steps(loader, [3, 8, 14], '画像を判別中')
+    # 最初のステップでフェードイン演出
+    loader_steps(loader, [3, 8, 14], '画像を判別中', anim_class='entering')
     kind1 = identify_image(client, imgs[0])
     kind2 = identify_image(client, imgs[1])
 
@@ -2273,12 +2313,16 @@ if len(imgs) == 2:
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
             report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
+            # フェードアウト演出
+            show_loader(loader, 100, '完成しました', anim_class='exiting')
+            time.sleep(0.3)
             loader.empty()
             st.session_state.result_rows = report_rows
             st.session_state.result_valid = valid
             st.session_state.result_diff = diff
             st.session_state.result_meter = meter_data
             st.session_state.result_nippou = nippou_data
+            st.session_state._pending_scroll = True  # 結果表示後に自動スクロール
         except RuntimeError as e:
             loader.empty()
             for k in ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou'):
@@ -2509,6 +2553,18 @@ if st.session_state.get('result_rows'):
 
     st.markdown('<br>', unsafe_allow_html=True)
     st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
+
+    # 結果が新しく生成されたターンのみ「✓ 完成」を画面トップへスムーススクロール
+    if st.session_state.get('_pending_scroll'):
+        st.session_state._pending_scroll = False
+        components.html('''
+<script>
+setTimeout(() => {
+    const target = parent.document.querySelector('.complete-bar');
+    if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
+}, 120);
+</script>
+''', height=0)
 
 
 with st.expander('？ このアプリについて・使い方'):
