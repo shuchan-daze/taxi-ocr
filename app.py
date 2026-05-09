@@ -2066,6 +2066,7 @@ def _parse_meter_vision(client_vision, meter_img):
         'rows': rows,
         'total': sum(r['amount'] for r in rows),
         '_debug_words_18_19': debug_words_18_19,
+        '_raw_text': full_text,
     }
 
 
@@ -2601,8 +2602,17 @@ if st.session_state.get('result_rows'):
         else:
             st.caption('（Vision パスを通っていないため bbox word データはありません）')
 
+        # Vision の生 OCR テキスト（full_text_annotation.text）をそのまま表示
+        raw_text = meter_data.get('_raw_text')
+        if raw_text is not None:
+            st.markdown('**📄 Vision API 生 OCR テキスト（full_text_annotation.text）:**')
+            st.code(raw_text)
+            st.caption(f'文字数: {len(raw_text)}、行数: {len(raw_text.splitlines())}')
+        else:
+            st.caption('（Vision パスを通っていないため raw_text なし）')
+
         st.markdown('**生 JSON:**')
-        st.json({k: v for k, v in meter_data.items() if k != '_debug_words_18_19'})
+        st.json({k: v for k, v in meter_data.items() if k not in ('_debug_words_18_19', '_raw_text')})
 
     # ========== Stage 2: 日報分類生データ ==========
     with st.expander('🔧 Stage 2: 日報分類生データ'):
