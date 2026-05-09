@@ -1430,6 +1430,11 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 [data-testid="stExpander"] h3 {color: white !important;}
 [data-testid="stExpander"] summary p {color: #d4af37 !important;}
 [data-testid="stExpander"] {background: rgba(255,255,255,0.05); border: 1px solid rgba(212,175,55,0.3); border-radius: 12px;}
+[data-testid="stColumn"]:has([class*="st-key-del_"]) {position: relative;}
+[class*="st-key-del_"] {position: absolute !important; bottom: 12px; right: 12px; width: auto !important; z-index: 10;}
+[class*="st-key-del_"] button {background: rgba(0,0,0,0.6) !important; color: white !important; border: 1px solid rgba(255,255,255,0.3) !important; border-radius: 6px !important; padding: 4px 10px !important; min-height: auto !important; line-height: 1.2 !important; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);}
+[class*="st-key-del_"] button:hover {background: rgba(220,38,38,0.85) !important; border-color: rgba(255,255,255,0.5) !important;}
+[class*="st-key-del_"] button p {font-size: 12px !important; margin: 0 !important; color: white !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1532,22 +1537,32 @@ def is_meter(client, img):
 
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = 0
-if 'removed_ids' not in st.session_state:
-    st.session_state.removed_ids = set()
-files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f'uploader_{st.session_state.uploader_key}')
+if 'kept_files' not in st.session_state:
+    st.session_state.kept_files = []
+new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f'uploader_{st.session_state.uploader_key}')
 
-active_files = [f for f in (files or []) if f.file_id not in st.session_state.removed_ids]
+if new_files:
+    existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
+    added = False
+    for f in new_files:
+        key = (f.name, f.size)
+        if key not in existing_keys:
+            st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
+            added = True
+    if added:
+        st.session_state.uploader_key += 1
+        st.rerun()
 
 imgs = []
-if active_files:
-    cols = st.columns(len(active_files))
-    for i, f in enumerate(active_files):
-        img = fix_orientation(Image.open(f))
+if st.session_state.kept_files:
+    cols = st.columns(len(st.session_state.kept_files))
+    for i, kf in enumerate(st.session_state.kept_files):
+        img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
         imgs.append(img)
         with cols[i]:
             st.image(img, use_container_width=True)
-            if st.button('✕ この写真を削除', key=f'del_{f.file_id}', use_container_width=True):
-                st.session_state.removed_ids.add(f.file_id)
+            if st.button('✕ 削除', key=f'del_{i}'):
+                st.session_state.kept_files.pop(i)
                 st.rerun()
 
 if len(imgs) == 2:
@@ -1674,7 +1689,7 @@ if len(imgs) == 2:
                 st.markdown('<br>', unsafe_allow_html=True)
                 if st.button('🔄 新しい日報を作成', use_container_width=True):
                     st.session_state.uploader_key += 1
-                    st.session_state.removed_ids = set()
+                    st.session_state.kept_files = []
                     st.rerun()
         except Exception as e:
             st.error(f'エラー: {e}')
