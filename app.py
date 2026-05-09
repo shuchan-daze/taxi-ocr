@@ -2418,6 +2418,24 @@ if st.session_state.get('result_rows'):
             st.markdown('**Vision API 生テキスト（OCR結果）:**')
             st.code(raw_text[:3000])
             st.caption(f'文字数: {len(raw_text)}、行数（空行除く）: {len([l for l in raw_text.split(chr(10)) if l.strip()])}')
+
+            # 18. / 19. を含む箇所を周辺コンテキスト付きで抽出
+            st.markdown('**🔍 「18.」「19.」を含む部分（処理前の生データ）:**')
+            target_lines = []
+            text_lines = raw_text.split('\n')
+            for i, line in enumerate(text_lines):
+                if '18.' in line or '19.' in line:
+                    # 前後1行も付けて視認性を上げる
+                    start = max(0, i - 1)
+                    end = min(len(text_lines), i + 2)
+                    for j in range(start, end):
+                        marker = '→' if j == i else ' '
+                        target_lines.append(f'{marker} L{j+1:03d}: {text_lines[j]}')
+                    target_lines.append('---')
+            if target_lines:
+                st.code('\n'.join(target_lines))
+            else:
+                st.caption('（「18.」も「19.」も生テキスト中に見つかりませんでした）')
         elif diag and not diag.get('success'):
             st.caption('（Vision API の生テキストは取得できていません）')
 
