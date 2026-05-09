@@ -1764,16 +1764,23 @@ def _parse_meter_vision(client_vision, meter_img):
 
     rows = []
     for row in rows_raw:
-        texts = [t for _, t in row]
         no = time_str = amount = None
-        for t in texts:
+        yen_x = None
+
+        for x, t in row:
             if not no and no_pat.match(t):
                 no = int(no_pat.match(t).group(1))
-            if not time_str and time_pat.match(t):
+            elif not time_str and time_pat.match(t):
                 m = time_pat.match(t)
                 time_str = f'{int(m.group(1)):02d}:{m.group(2)}'
-            if not amount and amt_pat.search(t):
+            elif t in ('¥', '\\', '￥'):
+                yen_x = x
+            elif yen_x is not None and re.match(r'[\d,]+$', t):
+                amount = int(t.replace(',', ''))
+                yen_x = None
+            elif amt_pat.search(t):
                 amount = int(amt_pat.search(t).group(1).replace(',', ''))
+
         if no and time_str and amount:
             rows.append({'no': no, 'time': time_str, 'amount': amount})
 
