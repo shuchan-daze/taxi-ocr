@@ -346,7 +346,7 @@ if len(imgs) == 2:
         loader = st.empty()
         try:
             for pct in [3, 8, 14, 21, 29]:
-                show_overlay(loader, pct, 'いくぞ')
+                show_overlay(loader, pct, 'どりゃ〜')
                 time.sleep(0.15)
             api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
             client = anthropic.Anthropic(api_key=api_key)
@@ -355,7 +355,7 @@ if len(imgs) == 2:
             else:
                 meter_img, nippou_img = imgs[1], imgs[0]
             for pct in [34, 42, 51, 58, 65, 71]:
-                show_overlay(loader, pct, 'うし！')
+                show_overlay(loader, pct, 'ぐぬぬぬっ')
                 time.sleep(0.2)
 
             prompt = """【最重要ルール】金額は必ずメーター明細書（2枚目の画像）の値を使用すること。日報（1枚目）の金額は無視すること。
@@ -407,7 +407,7 @@ if len(imgs) == 2:
             fmt = lambda x: f'¥{int(x):,}'
 
             for pct in [82, 91, 97, 100]:
-                show_overlay(loader, pct, 'よし！')
+                show_overlay(loader, pct, 'もうちょい')
                 time.sleep(0.15)
             loader.empty()
 
