@@ -1720,7 +1720,11 @@ def _parse_meter_vision(client_vision, meter_img):
     buf = io.BytesIO()
     meter_img.save(buf, format='JPEG', quality=95)
     image = vision.Image(content=buf.getvalue())
-    response = client_vision.document_text_detection(image=image)
+    image_context = vision.ImageContext(language_hints=['ja'])
+    response = client_vision.document_text_detection(
+        image=image,
+        image_context=image_context,
+    )
     if response.error.message:
         return None
     full_text = response.full_text_annotation.text
@@ -1729,7 +1733,7 @@ def _parse_meter_vision(client_vision, meter_img):
 
     lines = full_text.split('\n')
     time_pat = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
-    amt_pat = re.compile(r'[¥\\]\s*([\d,\s]+?)(?:円|M|H|\s+\d{4}|\s*$)')
+    amt_pat = re.compile(r'[¥\\]\s*([\d,]+(?:\s\d{3}(?!\d))?)')
     rows = []
     for i, line in enumerate(lines):
         tm = time_pat.search(line)
