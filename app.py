@@ -1727,29 +1727,56 @@ def _parse_meter_vision(client_vision, meter_img):
     )
     if response.error.message:
         return None
-    full_text = response.full_text_annotation.text
+    annotation = response.full_text_annotation
+    full_text = annotation.text if annotation else ''
     if not full_text.strip():
         return None
 
-    lines = full_text.split('\n')
-    time_pat = re.compile(r'^(\d+)\.\s*(\d{1,2}:\d{2})')
-    amt_pat = re.compile(r'[¥\\]\s*([\d,]+(?:\s\d{3}(?!\d))?)')
+    # 全wordをbounding boxのY・X座標付きで収集
+    words = []
+    for page in annotation.pages:
+        for block in page.blocks:
+            for para in block.paragraphs:
+                for word in para.words:
+                    text = ''.join(s.text for s in word.symbols)
+                    y = word.bounding_box.vertices[0].y
+                    x = word.bounding_box.vertices[0].x
+                    words.append((y, x, text))
+
+    # Y座標でソートし、15px以内を同一行としてグループ化
+    words.sort()
+    rows_raw, current_y, current_row = [], None, []
+    for y, x, text in words:
+        if current_y is None or abs(y - current_y) > 15:
+            if current_row:
+                rows_raw.append(sorted(current_row))
+            current_row = [(x, text)]
+            current_y = y
+        else:
+            current_row.append((x, text))
+    if current_row:
+        rows_raw.append(sorted(current_row))
+
+    # 各行から行番号・時刻・金額を抽出
+    no_pat = re.compile(r'^(\d+)\.$')
+    time_pat = re.compile(r'^(\d{1,2}):(\d{2})$')
+    amt_pat = re.compile(r'[¥\\]([\d,]+)')
+
     rows = []
-    for i, line in enumerate(lines):
-        tm = time_pat.search(line)
-        if not tm:
-            continue
-        for j in range(i + 1, min(i + 3, len(lines))):
-            am = amt_pat.search(lines[j])
-            if am:
-                h, mi = tm.group(2).split(':')
-                amount = int(am.group(1).replace(',', '').replace(' ', ''))
-                rows.append({
-                    'no': int(tm.group(1)),
-                    'time': f'{int(h):02d}:{mi}',
-                    'amount': amount,
-                })
-                break
+    for row in rows_raw:
+        texts = [t for _, t in row]
+        no = time_str = amount = None
+        for t in texts:
+            if not no and no_pat.match(t):
+                no = int(no_pat.match(t).group(1))
+            if not time_str and time_pat.match(t):
+                m = time_pat.match(t)
+                time_str = f'{int(m.group(1)):02d}:{m.group(2)}'
+            if not amount and amt_pat.search(t):
+                amount = int(amt_pat.search(t).group(1).replace(',', ''))
+        if no and time_str and amount:
+            rows.append({'no': no, 'time': time_str, 'amount': amount})
+
     rows.sort(key=lambda r: r['no'])
     return {'rows': rows, 'total': sum(r['amount'] for r in rows)} if rows else None
 
