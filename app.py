@@ -1752,9 +1752,10 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 # ============================================================
 
 def _parse_meter_vision(meter_img):
-    """Stage 1: Vision API でメーター明細を OCR、1行=1件として抽出。
-    各行に HH:MM 形式の時刻と金額が両方含まれていれば 1 件として抽出する。
-    no は1始まりの連番（レシートに印字された No は読まない）。
+    """Stage 1: Vision API でメーター明細を OCR、bounding box の Y 座標で行を再構成。
+    full_text_annotation.pages → blocks → paragraphs → words の word 単位データを使い、
+    Y 座標が近い word（±Y_THRESHOLD px 以内）を同じ行としてグループ化する。
+    これにより文字列改行に依存せず、隣の行の数字を拾う問題を構造的に防ぐ。
 
     成功時: {'success': True, 'rows': [{'no':1,'time':'10:32','amount':4100},...], 'total': N,
              'source': 'vision', 'raw_text': str}
@@ -1777,21 +1778,56 @@ def _parse_meter_vision(meter_img):
         return {'success': False, 'stage': 'api_response',
                 'reason': f'Vision API エラー応答: {response.error.message}', 'raw_text': None}
 
-    full_text = response.full_text_annotation.text if response.full_text_annotation else ''
-    if not full_text.strip():
+    annotation = response.full_text_annotation
+    if not annotation or not annotation.pages:
         return {'success': False, 'stage': 'ocr',
-                'reason': 'Vision API は応答したが OCR テキストが空', 'raw_text': ''}
+                'reason': 'Vision API は応答したが page データなし',
+                'raw_text': (annotation.text if annotation else '') or ''}
 
+    # 全 word を bbox 付きで収集（text + 左上 X/Y 座標）
+    words = []
+    for page in annotation.pages:
+        for block in page.blocks:
+            for paragraph in block.paragraphs:
+                for word in paragraph.words:
+                    word_text = ''.join(symbol.text for symbol in word.symbols)
+                    if not word_text.strip():
+                        continue
+                    vertices = word.bounding_box.vertices
+                    if not vertices:
+                        continue
+                    # vertices[0] は左上（document_text_detection の標準仕様）
+                    words.append({'text': word_text, 'x': vertices[0].x, 'y': vertices[0].y})
+
+    if not words:
+        return {'success': False, 'stage': 'ocr',
+                'reason': 'Vision API は応答したが word 単位データを取得できませんでした',
+                'raw_text': annotation.text or ''}
+
+    # Y 座標で行クラスタリング: Y 昇順にソート → 連続する Y のギャップが
+    # Y_THRESHOLD 以下なら同じ行と見なす
+    Y_THRESHOLD = 20
+    words.sort(key=lambda w: w['y'])
+    groups = []
+    for w in words:
+        if groups and (w['y'] - groups[-1][-1]['y']) <= Y_THRESHOLD:
+            groups[-1].append(w)
+        else:
+            groups.append([w])
+
+    # 各グループ内を X 昇順でソートして「行」を再構成
+    reconstructed_lines = []
+    for group in groups:
+        group.sort(key=lambda w: w['x'])
+        reconstructed_lines.append(' '.join(w['text'] for w in group))
+
+    # 各再構成行から時刻と金額を抽出
     rows = []
     no = 1
-    for line in full_text.split('\n'):
-        line = line.strip()
-        if not line:
-            continue
+    for line in reconstructed_lines:
         time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', line)
         if not time_match:
             continue
-        # 金額抽出: カンマ付き（X,XXX）優先、無ければ 3〜5 桁数字をフォールバック
         amount = None
         m = re.search(r'[¥￥]?(\d{1,2},\d{3})', line)
         if m:
@@ -1809,9 +1845,11 @@ def _parse_meter_vision(meter_img):
         rows.append({'no': no, 'time': time_str, 'amount': amount})
         no += 1
 
+    full_text = '\n'.join(reconstructed_lines)
+
     if not rows:
         return {'success': False, 'stage': 'parser',
-                'reason': 'Parser: 「HH:MM と金額」を同一行で抽出できる行がありませんでした',
+                'reason': f'Parser: bounding box ベースで {len(reconstructed_lines)} 行を再構成しましたが、「HH:MM と金額」を抽出できる行がありませんでした',
                 'raw_text': full_text}
 
     total = sum(r['amount'] for r in rows)
