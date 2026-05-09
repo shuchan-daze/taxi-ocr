@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', layout='centered', initial_sidebar_state='collapsed')
@@ -1702,19 +1703,14 @@ def parse_meter(client, meter_img):
 #   独立した ride にせず、直前の通常行を case='overage' に更新する。
 # ============================================================
 
-def classify_nippou(client, nippou_img, meter_data):
-    """Stage 2: 日報を Claude で分類。各通常乗客行を JSON 配列で返す。"""
-    meter_summary = '\n'.join(f"  No.{r['no']}: {r['time']} ¥{r['amount']:,}" for r in meter_data.get('rows', []))
-    prompt = f"""これはタクシー乗務員の手書き日報です。
-別途、メーター明細書から下記の行リストを既に読み取り済みです。
-
-【メーター明細リスト】
-{meter_summary}
-
+def classify_nippou(client, nippou_img):
+    """Stage 2: 日報を Claude で分類。各通常乗客行を JSON 配列で返す。
+    meter_data に依存せず日報のみで完結する（meter_no は 1 始まり連番として割当）。"""
+    prompt = """これはタクシー乗務員の手書き日報です。
 日報の各行を上から順に処理し、以下のルールで JSON 配列を返してください。
 
 【通常行】
-{{"meter_no": 連番（1始まり）, "passengers": 人数（数字）, "kind": "現収" or "未収", "memo": "Visa/Suica/Uber/交通系/現金 等", "case": "normal"}}
+{"meter_no": 連番（1始まり、上から何番目の乗客か）, "passengers": 人数（数字）, "kind": "現収" or "未収", "memo": "Visa/Suica/Uber/交通系/現金 等", "case": "normal"}
 
 【現収/未収判定】
 - 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 必ず「未収」
@@ -1727,16 +1723,16 @@ def classify_nippou(client, nippou_img, meter_data):
 
 【出力例】
 [
-  {{"meter_no": 1, "passengers": 2, "kind": "未収", "memo": "アプリ", "case": "normal"}},
-  {{"meter_no": 2, "passengers": 1, "kind": "現収", "memo": "現金", "case": "normal"}},
-  {{"meter_no": 21, "passengers": 2, "kind": "未収", "memo": "Visa", "case": "overage", "overage_amount": 100}}
+  {"meter_no": 1, "passengers": 2, "kind": "未収", "memo": "アプリ", "case": "normal"},
+  {"meter_no": 2, "passengers": 1, "kind": "現収", "memo": "現金", "case": "normal"},
+  {"meter_no": 21, "passengers": 2, "kind": "未収", "memo": "Visa", "case": "overage", "overage_amount": 100}
 ]
 
 【厳守】
 - JSON 配列のみを返す。前後に余計なテキスト・コードブロック記号・思考過程は付けない。
 - 「+100」を「1,100」と誤読しない。「+200」を「1,200」と誤読しない。
 - 取り消し線行を独立した ride として出力しない。
-- 通常の現収/未収欄の金額は読み取らない・出力しない（金額はメーター明細リストの値を Python が自動で割り当てる）。"""
+- 通常の現収/未収欄の金額は読み取らない・出力しない（金額はメーター明細書の値を Python が自動で割り当てる）。"""
     res = client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
@@ -1966,11 +1962,21 @@ def run_pipeline(client, imgs, loader):
     if not ok:
         raise RuntimeError(f'画像の鮮明度が不足しています：{reason}\n撮り直して再アップしてください。')
 
-    loader_steps(loader, [35, 42, 50], 'メーター明細を読み取り中')
-    meter_data = parse_meter(client, meter_img)
+    # Step 3+4: メーター明細と日報を並列読み取り（互いに独立なため同時実行）
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        meter_future = executor.submit(parse_meter, client, meter_img)
+        nippou_future = executor.submit(classify_nippou, client, nippou_img)
 
-    loader_steps(loader, [60, 70, 80], '日報を読み取り中')
-    nippou_data = classify_nippou(client, nippou_img, meter_data)
+        # 両 future 完了までローダーを動かす（早期完了なら break）
+        for pct in [35, 42, 50, 58, 65, 72, 78, 82, 84]:
+            if meter_future.done() and nippou_future.done():
+                break
+            show_loader(loader, pct, 'メーター明細と日報を並列読み取り中')
+            time.sleep(0.5)
+
+        # 結果取得（例外があれば伝搬）
+        meter_data = meter_future.result()
+        nippou_data = nippou_future.result()
 
     loader_steps(loader, [88, 94, 100], '統合中')
     report_rows = build_report(meter_data, nippou_data)
