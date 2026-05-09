@@ -322,77 +322,6 @@ div[class*="ManageAppButton"] {
 """, unsafe_allow_html=True)
 
 
-import streamlit.components.v1 as components
-components.html("""
-<style>
-.help-fab {
-    position: fixed;
-    bottom: 80px;
-    right: 16px;
-    z-index: 2147483647;
-    background: #d4af37;
-    color: #010519;
-    padding: 14px 24px;
-    border-radius: 28px;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    border: none;
-    user-select: none;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-.help-fab:hover {background: #c89f2e;}
-.help-content {
-    display: none;
-    position: fixed;
-    bottom: 150px;
-    right: 16px;
-    z-index: 2147483647;
-    background: white;
-    color: #010519;
-    padding: 20px;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    max-width: 280px;
-    max-height: 70vh;
-    overflow-y: auto;
-    font-size: 14px;
-    line-height: 1.7;
-}
-.help-content.show {display: block;}
-.help-content p, .help-content li, .help-content b {color: #010519;}
-</style>
-<button class="help-fab" onclick="
-  var c = window.parent.document.getElementById('hc');
-  if (c) c.classList.toggle('show');
-">？ 使い方</button>
-<div id="hc" class="help-content">
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ なぜこのアプリが ━━</p>
-  <p style="margin: 0 0 14px; font-size: 13px;">乗務後の日報。手書き日報をメーター明細と照合し、エクセルへ転記。毎日<b>30分以上</b>、年間<b>180時間以上</b>の単純作業。</p>
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ AIが代わりに ━━</p>
-  <ul style="padding-left: 18px; margin: 0 0 14px; font-size: 13px;">
-    <li><b>手書き文字</b>を一文字ずつ解読</li>
-    <li>滲んだ数字も<b>文脈から推測</b></li>
-    <li>2枚の画像を突き合わせ整合性確認</li>
-    <li>業務ルールに従って<b>論理的に判断</b></li>
-    <li>消費税・税抜運収まで<b>自動計算</b></li>
-  </ul>
-  <p style="margin: 0 0 14px; font-size: 13px;">これはOCRではなく<b>AIが画像を「理解」</b>している。数年前まで「研究段階」だった技術です。</p>
-  <p style="margin: 0 0 14px; font-size: 13px; padding: 10px; background: rgba(212,175,55,0.1); border-left: 3px solid #d4af37;"><b>30分の作業が数秒に。</b></p>
-  <p style="margin: 0 0 14px; font-size: 14px; font-weight: 600;">━━ プライバシー ━━</p>
-  <p style="margin: 0 0 14px; font-size: 13px;">写真はこのアプリのサーバーには保存されません。AI処理元（Anthropic）に一時送信されますが、<b>学習に使われず30日以内に自動削除</b>されます。</p>
-  <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600;">使い方</p>
-  <ol style="padding-left: 18px; margin: 0; font-size: 13px;">
-    <li>写真2枚をアップ</li>
-    <li>「日報を完成させる」を押す</li>
-    <li>待つ。完成。以上。</li>
-  </ol>
-  <p style="margin: 12px 0 0; font-size: 11px; color: #888; text-align: right;">— 怒りの山本</p>
-</div>
-""", height=0)
 
 st.markdown("""
 <div class="title-block">
@@ -401,6 +330,42 @@ st.markdown("""
   <div class="divider"></div>
 </div>
 """, unsafe_allow_html=True)
+
+with st.expander("？ このアプリについて・使い方"):
+    st.markdown("""
+**━━ なぜこのアプリが生まれたか ━━**
+
+乗務後の日報。手書き日報を見ながらメーター明細と照合し、エクセルへ転記。たった一人のドライバーが、毎日**30分以上**を費やす作業。365日続けると**年間180時間以上**。タクシー業界全体では**気が遠くなる労働時間**がこの単純作業に消えています。
+
+**━━ AIが代わりにやります ━━**
+
+最先端AI「Claude」が、あなたの代わりに：
+- **手書き文字**を一文字ずつ解読
+- 滲んだ数字、潰れた漢字も**文脈から推測**
+- 2枚の画像を突き合わせ**金額の真実**を確定
+- 現収か未収か、業務ルールに従って**論理的に判断**
+- 消費税・税抜運収まで**自動計算**
+
+**━━ 何がすごいか ━━**
+
+これはOCR（文字読み取り）ではありません。**AIが画像を「理解」している**のです。崩れた手書き文字を見て「これは1900円」と判断し、メーター明細と照合して整合性を確認する。これは数年前まで「研究段階」だった技術です。
+
+> **30分の作業が、わずか数秒に。**
+> これがAIの真価です。
+
+**━━ プライバシーへの配慮 ━━**
+
+アップロードした写真は**このアプリのサーバーには保存されません**。AI処理のためにAI提供元（Anthropic社）に一時的に送信されますが、**学習には使われず、30日以内に自動削除**されます。日報の中身が永続的に外部に残ることはなく、個人情報・売上情報は適切に管理されています。
+
+**使い方**
+
+1. 写真2枚をアップ（日報＋営業明細書）
+2. 「日報を完成させる」を押す
+3. 待つ。完成。以上。
+
+— 怒りの山本
+""")
+
 
 
 def fix_orientation(img):
