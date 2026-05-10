@@ -1716,21 +1716,22 @@ if st.session_state.get('result_rows'):
     st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
 
     # 結果が新しく生成されたターンのみ slide-in アニメ→スクロール
+    # st.markdown は <script> をサニタイズして実行しないため components.html を使用。
     if st.session_state.get('_pending_scroll'):
         st.session_state._pending_scroll = False
-        st.markdown('''
+        components.html("""
 <script>
 setTimeout(() => {
-    const card = parent.document.querySelector('.result-card');
-    if (card) card.classList.add('slide-in');
-    const target = parent.document.querySelector('.complete-bar');
+    const target = window.parent.document.querySelector('.complete-bar');
     if (target) {
-        const y = target.getBoundingClientRect().top + parent.window.scrollY - 20;
-        parent.window.scrollTo({top: y, behavior: 'smooth'});
+        const y = target.getBoundingClientRect().top + window.parent.scrollY - 20;
+        window.parent.scrollTo({top: y, behavior: 'smooth'});
     }
-}, 200);
+    const card = window.parent.document.querySelector('.result-card');
+    if (card) card.classList.add('slide-in');
+}, 300);
 </script>
-''', unsafe_allow_html=True)
+""", height=0)
 
 
 with st.expander('？ このアプリについて・使い方'):
