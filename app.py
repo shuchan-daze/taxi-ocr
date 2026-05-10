@@ -828,9 +828,9 @@ def aggregate_totals(rows):
     ken = sum(1 for r in rows if r.get('state') not in excluded_states)
     nin = sum((r.get('passengers') or 0) for r in rows if r.get('state') not in excluded_states)
     sou = gen + mi
-    tax = round(sou / 11, -1)
+    tax = int(round(sou / 11, -1))
     net = sou - tax
-    return ken, nin, gen, mi, sou, int(tax), net
+    return ken, nin, gen, mi, sou, tax, net
 
 
 # パイプライン本体
