@@ -949,6 +949,8 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .detail-table {width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px;}
 .detail-table th, .detail-table td {padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.15); text-align: left; color: white;}
 .detail-table th {background: rgba(255,255,255,0.06); font-weight: 600;}
+.detail-table tbody tr td {color: white !important; background: transparent !important;}
+.detail-table tbody tr:nth-child(even) td {background: rgba(255,255,255,0.08) !important;}
 /* mismatch: 現収/未収セルのみを薄赤で強調（行全体ではない） */
 .detail-table tr.mismatch td[data-col="gen"],
 .detail-table tr.mismatch td[data-col="mi"] {background: #fee2e2 !important; color: #7f1d1d !important; font-weight: 600;}
@@ -2025,6 +2027,11 @@ if st.session_state.get('result_rows'):
             st.markdown(''.join(parts), unsafe_allow_html=True)
 
         st.markdown('**生 JSON:**')
+        compact2 = '  '.join(
+            f'**{r.get("meter_no")}**:{r.get("nippou_amount") or "?"}({(r.get("kind") or "?")[0]})'
+            for r in rides
+        )
+        st.markdown(f'📋 **日報数値一覧:** {compact2}')
         st.json(nippou_data)
 
     # Stage 3: build_report 入出力
