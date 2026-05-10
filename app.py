@@ -68,7 +68,7 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
 }
 .stButton button:hover {background: #c89f2e !important; transform: translateY(-1px);}
 .stImage img {border-radius: 12px;}
-.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37; scroll-margin-top: 20px;}
+.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37; scroll-margin-top: 20px; position: sticky; top: 0; z-index: 100;}
 .result-card {animation: slideInFromAbove 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;}
 @keyframes slideInFromAbove {
     from {opacity: 0; transform: translateY(-20px);}
@@ -200,22 +200,21 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 }
 .particle {
     position: fixed;
-    top: 100vh;
-    width: 6px;
-    height: 6px;
+    top: 50%;
+    left: 50%;
     border-radius: 50%;
-    background: rgba(244, 214, 120, 0.75);
-    box-shadow: 0 0 8px rgba(212, 175, 55, 0.85), 0 0 16px rgba(255, 255, 255, 0.25);
-    animation-name: particle-rise;
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px rgba(255, 255, 255, 0.3);
+    animation-name: spiral;
     animation-iteration-count: infinite;
     animation-timing-function: linear;
+    transform-origin: 0 0;
     will-change: transform, opacity;
 }
-@keyframes particle-rise {
-    0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
-    12%  { opacity: 0.9; }
-    88%  { opacity: 0.9; }
-    100% { transform: translate(var(--dx, 0), -120vh) scale(1.3); opacity: 0; }
+@keyframes spiral {
+    0%   { transform: rotate(0deg) translateX(0px) scale(0.5); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: rotate(720deg) translateX(150px) scale(1.5); opacity: 0; }
 }
 [data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
 [data-testid="stExpander"] p,
@@ -628,19 +627,17 @@ def validate_meter_sequence(meter_data):
 # Loader 演出ヘルパー（CSS のみ: %数値 + ラベル + パーティクル）
 
 def _particles_html():
-    """30 個のパーティクルを生成。各々に異なる left / delay / duration / dx を inline style で付与し、
-    CSS @keyframes particle-rise で画面下から上へ流れさせる（JS 不使用）。"""
+    """30 個の白いスパイラルパーティクルを生成。中心 (top:50%, left:50%) から螺旋を描いて外側へ。
+    各 particle に異なる size / animation-delay / animation-duration を inline style で付与（JS 不使用）。"""
     parts = []
     for i in range(30):
-        # 決定論的に散らす（再描画ごとに乱数だとちらつくため index ベース）
-        x_pct = (i * 83 + 7) % 100               # 7〜99 % に分散
-        delay = (i * 0.21) % 4                    # 0〜4 秒の遅延
-        duration = 3.0 + (i * 0.13) % 3           # 3〜6 秒
-        dx = ((i * 31) % 200) - 100               # -100〜+100 px の横ぶれ
+        # 決定論的に散らす（index ベース、再描画でちらつかない）
+        size = 2 + (i * 7) % 7                # 2〜8 px
+        delay = (i * 0.11) % 3                # 0〜3 秒の遅延
+        duration = 2.0 + (i * 0.13) % 3       # 2〜5 秒
         parts.append(
             f'<span class="particle" style="'
-            f'left:{x_pct}%;'
-            f'--dx:{dx}px;'
+            f'width:{size}px;height:{size}px;'
             f'animation-delay:-{delay:.2f}s;'
             f'animation-duration:{duration:.2f}s;'
             f'"></span>'
@@ -937,6 +934,7 @@ if st.session_state.get('result_rows'):
     #   2. render_detail_table（日報の行一覧）
     #   この後: 整合性チェック → デバッグ expander → リセットボタン
     ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
+    st.success('✅ 日報が完成しました！上にスクロールして確認してください', icon=None)
     render_summary(ken, nin, gen, mi, sou, tax, net)
     render_detail_table(rows)
 
