@@ -584,26 +584,48 @@ def build_report(meter_data, nippou_data):
     （ハイライトのみ。出力金額はメーター額のまま）。"""
     meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
     rides = nippou_data.get('rides', [])
-    real_rides, adjustments = _split_rides(rides)
     output = []
 
-    # Phase 1: 通常乗車をメーター行と順番でアライメント
-    aligned_count = min(len(meter_rows_list), len(real_rides))
-    for i in range(aligned_count):
-        meter_row = meter_rows_list[i]
-        n = real_rides[i]
+    # rides の順番をそのまま辿る。障割は「直前の通常行のメーター番号 + '+'」で挿入。
+    # 通常乗車は real_idx をインクリメントしながら meter_rows_list[real_idx] とアラインメント。
+    real_idx = 0
+    for r in rides:
+        case = r.get('case') or 'normal'
+
+        if case == 'discount':
+            nippou_amt = r.get('nippou_amount')
+            if not isinstance(nippou_amt, (int, float)) or int(nippou_amt) <= 0:
+                continue
+            # ラベル: 直前の通常行の meter_no + '+'（例: row 6 の直後の障割は '6+'）
+            if real_idx > 0 and real_idx <= len(meter_rows_list):
+                prev_no = meter_rows_list[real_idx - 1]['no']
+                label = f'{prev_no}+'
+            else:
+                label = '*'
+            output.append({
+                'no': label,
+                'passengers': 0, 'time': '',
+                'gen': 0, 'mi': int(nippou_amt),
+                'memo': r.get('memo') or '障割',
+                'state': 'discount',
+            })
+            continue  # discount は real_idx を進めない
+
+        # 通常乗車: メーター行と順番アラインメント
+        if real_idx >= len(meter_rows_list):
+            continue  # メーター行が不足
+        meter_row = meter_rows_list[real_idx]
         meter_no = meter_row['no']
         meter_amount = int(meter_row['amount'])
-        passengers = int(n.get('passengers') or 1)
-        kind = n.get('kind') or '現収'
-        memo = n.get('memo') or ''
-        case = n.get('case') or 'normal'
+        passengers = int(r.get('passengers') or 1)
+        kind = r.get('kind') or '現収'
+        memo = r.get('memo') or ''
         time_str = meter_row['time']
-        nippou_amt = n.get('nippou_amount')
+        nippou_amt = r.get('nippou_amount')
         nippou_amt = int(nippou_amt) if isinstance(nippou_amt, (int, float)) else None
 
         if case == 'overage':
-            overage = int(n.get('overage_amount') or 0)
+            overage = int(r.get('overage_amount') or 0)
             client_amount = meter_amount - overage
             client_state = 'mismatch' if (nippou_amt is not None and nippou_amt != client_amount) else 'ok'
             output.append({
@@ -617,7 +639,7 @@ def build_report(meter_data, nippou_data):
                 'gen': overage, 'mi': 0,
                 'memo': 'メーター超過', 'state': 'special',
             })
-        else:  # 'normal' or 不明 case
+        else:  # 'normal' or 不明
             row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': time_str,
@@ -625,20 +647,7 @@ def build_report(meter_data, nippou_data):
                 'mi': meter_amount if kind == '未収' else 0,
                 'memo': memo, 'state': row_state,
             })
-
-    # Phase 2: 障割を別系統で処理（nippou_amount を真値として未収に計上）
-    # メーター明細書側の対応行有無を問わない（空回し有無に関係なく動作）
-    for d in adjustments:
-        nippou_amt = d.get('nippou_amount')
-        if not isinstance(nippou_amt, (int, float)) or int(nippou_amt) <= 0:
-            continue
-        output.append({
-            'no': d.get('meter_no', '*'),
-            'passengers': 0, 'time': '',
-            'gen': 0, 'mi': int(nippou_amt),
-            'memo': d.get('memo') or '障割',
-            'state': 'discount',
-        })
+        real_idx += 1
 
     return output
 
