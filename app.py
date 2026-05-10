@@ -1,3 +1,4 @@
+# v1.0.0 - 2026-05-10 初回リリース
 import streamlit as st
 import anthropic
 import base64
@@ -484,10 +485,12 @@ def parse_meter(client, meter_img):
 
 def classify_nippou(client, nippou_img):
     """Stage 2: 日報を Claude で分類し、{rides: [...]} を返す。
-    各 ride は通常乗客行に対応。case='normal' か 'overage'（から回し時）。
-    nippou_amount: 日報の手書き金額（mismatch 検出用、null可）。
-    から回し行（取り消し線つき +金額のみ）は独立 ride にせず、直前の通常行
-    の case を 'overage' に変更し overage_amount をセットする。"""
+    各 ride は通常乗客行に対応。
+    case の値:
+      - 'normal': 通常乗車
+      - 'overage': から回し（メーター超過）。直前通常行の case を変更し overage_amount をセット
+      - 'discount': 障害者割引（障割）。kind は強制的に '未収'
+    nippou_amount: 日報の手書き金額（mismatch 検出用、null 可）。"""
     prompt = """これはタクシー乗務員の手書き日報です。
 日報の各行を上から順に処理し、以下のルールで JSON 配列を返してください。
 
@@ -548,7 +551,11 @@ case="discount" として判定し、割引額を nippou_amount に記録する�
 
 def build_report(meter_data, nippou_data):
     """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。
-    case は 'normal'（1行）と 'overage'（2行に分割）のみ扱う。
+
+    case の扱い:
+      - 'overage': 客分行 + 超過分(state='special')行の 2 行に分割
+      - 'discount': 障割。state='discount'、kind に関わらず mi=meter_amount, gen=0
+      - その他 ('normal' or 不明): kind に従って gen/mi に振り分け 1 行出力
     日報金額（nippou_amount）がメーター額と異なる場合は state='mismatch' を立てる
     （ハイライトのみ。出力金額はメーター額のまま）。"""
     meter_rows = {r['no']: r for r in meter_data.get('rows', [])}
@@ -847,7 +854,7 @@ if 'kept_files' not in st.session_state:
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="opacity:0.6; font-size:9px;">v1.0.0</span></p>
   <div class="divider"></div>
 </div>
 """, unsafe_allow_html=True)
@@ -907,17 +914,12 @@ if st.session_state.get('result_rows'):
 
     # 乖離チェック（写真誤り検知）
     _rides = nippou_data.get('rides', [])
-    _extras = nippou_data.get('extras', [])
 
     _meter_count = len(_meter_rows)
-    # 日報側件数: rides + 貸切（メーター外売上）
-    # 注: 新モデルでは extras は通常空（プロンプトから charter 出力が削除されたため）。
-    #     互換のため `.get('extras', [])` で安全にハンドリング。
-    _nippou_count = len(_rides) + sum(1 for e in _extras if e.get('case') == 'charter')
+    _nippou_count = len(_rides)
     _row_diff = abs(_meter_count - _nippou_count)
 
     # 日報に対応付いたメーター行の合計金額（日報がカバーした金額）
-    # 貸切は別系統の売上のため比較から除外（誤発火防止）
     _meter_total = int(meter_data.get('total') or sum(int(r.get('amount', 0)) for r in _meter_rows))
     _matched_nos = {r.get('meter_no') for r in _rides if r.get('meter_no') is not None}
     _matched_meter_amt = sum(int(r.get('amount', 0)) for r in _meter_rows if r['no'] in _matched_nos)
@@ -991,21 +993,12 @@ if st.session_state.get('result_rows'):
     st.markdown('</div>', unsafe_allow_html=True)
 
     # 値の破壊検出（Stage1 vs 最終出力の整合性）
+    # 各 meter_no について、メーター額とテーブル出力 (gen+mi) の合計が一致するか検証。
+    # 障割行は build_report で独立 meter_no を持ち mi=meter_amount として出力されるため、
+    # 通常行と同じ枠組みで検証できる。
     meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
-    # 旧モデル: extras[case='discount_cash'] が linked_meter_no で meter 行に紐付き、
-    #   整合性チェックで meter+discount の合計と出力合計を比較していた。
-    # 新モデル: rides[case='discount'] が独自 meter_no を持ち主ループで処理されるため、
-    #   ここでは加算不要（プロンプトから extras 出力が削除済み）。case 名は 'discount' に統一。
-    discount_by_no = {}
-    for extra in nippou_data.get('extras', []):
-        if extra.get('case') == 'discount':
-            ln = extra.get('linked_meter_no')
-            if ln in meter_amounts:
-                discount_by_no[ln] = discount_by_no.get(ln, 0) + int(extra.get('amount') or 0)
     sum_by_no = {}
     for r in rows:
-        if r.get('state') == 'charter':
-            continue
         no = r.get('no')
         # メーター超過の "22+" のような string は元の meter_no に正規化して合算
         if isinstance(no, str) and no.endswith('+'):
@@ -1017,25 +1010,20 @@ if st.session_state.get('result_rows'):
             sum_by_no[no] = sum_by_no.get(no, 0) + int(r.get('gen') or 0) + int(r.get('mi') or 0)
     integrity_issues = []
     for no, meter_amt in sorted(meter_amounts.items()):
-        expected = meter_amt + discount_by_no.get(no, 0)
         actual = sum_by_no.get(no, 0)
-        if expected != actual:
+        if meter_amt != actual:
             integrity_issues.append({
-                'no': no, 'meter': meter_amt, 'discount': discount_by_no.get(no, 0),
-                'expected': expected, 'actual': actual,
+                'no': no, 'meter': meter_amt, 'actual': actual,
             })
 
     if integrity_issues:
         st.error(f'🚨 値の破壊を検出（{len(integrity_issues)}件）: Stage 1 で読み取った金額とテーブル出力が一致していません')
-        parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1メーター額</th><th>+割引</th><th>期待値</th><th>テーブル合計</th><th>差</th></tr></thead><tbody>']
+        parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1メーター額</th><th>テーブル合計</th><th>差</th></tr></thead><tbody>']
         for it in integrity_issues:
-            diff_v = it['actual'] - it['expected']
-            disc_disp = f'¥{it["discount"]:,}' if it['discount'] else '-'
+            diff_v = it['actual'] - it['meter']
             parts.append(
                 f'<tr class="mismatch"><td>{it["no"]}</td>'
                 f'<td>¥{it["meter"]:,}</td>'
-                f'<td>{disc_disp}</td>'
-                f'<td>¥{it["expected"]:,}</td>'
                 f'<td>¥{it["actual"]:,}</td>'
                 f'<td>{diff_v:+,}</td></tr>'
             )
@@ -1081,22 +1069,6 @@ if st.session_state.get('result_rows'):
             st.markdown(''.join(parts), unsafe_allow_html=True)
         else:
             st.info('日報の分類データなし')
-
-        extras = nippou_data.get('extras', [])
-        if extras:
-            st.markdown('**extras（貸切・障割現金）**')
-            parts = ['<table class="detail-table"><thead><tr><th>case</th><th>人数</th><th>kind</th><th>memo</th><th>金額</th><th>linked</th></tr></thead><tbody>']
-            for e in extras:
-                parts.append(
-                    f'<tr><td>{e.get("case", "")}</td>'
-                    f'<td>{e.get("passengers", "")}</td>'
-                    f'<td>{e.get("kind", "")}</td>'
-                    f'<td>{e.get("memo", "")}</td>'
-                    f'<td>¥{int(e.get("amount", 0) or 0):,}</td>'
-                    f'<td>{e.get("linked_meter_no", "")}</td></tr>'
-                )
-            parts.append('</tbody></table>')
-            st.markdown(''.join(parts), unsafe_allow_html=True)
 
         st.markdown('**生 JSON:**')
         compact2 = '  '.join(
@@ -1187,7 +1159,8 @@ else:
                 _clear_results()
                 if isinstance(e, RuntimeError):
                     st.error(str(e))
-                elif isinstance(e, json.JSONDecodeError):
+                elif isinstance(e, (json.JSONDecodeError, ValueError)):
+                    # JSON 抽出失敗または JSON が見つからない (_parse_meter_claude / classify_nippou が raise)
                     st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
                 else:
                     st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
