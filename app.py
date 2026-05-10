@@ -201,8 +201,8 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .particle {
     position: fixed;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 0 10px 4px rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 1.0);
+    box-shadow: 0 0 20px 8px rgba(255, 255, 255, 0.9), 0 0 40px 15px rgba(255, 255, 255, 0.5);
     animation-iteration-count: infinite;
     animation-timing-function: linear;
     will-change: transform, opacity;
@@ -217,7 +217,7 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 @keyframes p-spiral {
     0%   { transform: rotate(0deg) translateX(0px) scale(0.5); opacity: 0; }
     20%  { opacity: 1; }
-    100% { transform: rotate(720deg) translateX(220px) scale(1.5); opacity: 0; }
+    100% { transform: rotate(720deg) translateX(440px) scale(1.5); opacity: 0; }
 }
 /* パターン2: 画面全体を sin 波でゆらゆら漂う */
 .particle.p-drift {
@@ -226,10 +226,10 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 @keyframes p-drift {
     0%   { transform: translate(0, 0) scale(0.8); opacity: 0; }
     20%  { opacity: 1; }
-    25%  { transform: translate(40px, -30px) scale(1); }
-    50%  { transform: translate(-30px, -60px) scale(1.2); }
-    75%  { transform: translate(50px, -90px) scale(1); }
-    100% { transform: translate(-20px, -120px) scale(0.7); opacity: 0; }
+    25%  { transform: translate(80px, -60px) scale(1); }
+    50%  { transform: translate(-60px, -120px) scale(1.2); }
+    75%  { transform: translate(100px, -180px) scale(1); }
+    100% { transform: translate(-40px, -240px) scale(0.7); opacity: 0; }
 }
 /* パターン3: 下から上へ舞い上がる */
 .particle.p-rise {
@@ -652,12 +652,12 @@ def validate_meter_sequence(meter_data):
 
 def _particles_html():
     """40 個の白いパーティクルを生成。3 種類の動き(spiral/drift/rise)を index で割り当て、
-    サイズ 8〜25px / duration 1.5〜5s / delay 0〜4s をすべて決定論的に分散（JS 不使用、ちらつかない）。"""
+    サイズ 15〜40px / duration 1.5〜5s / delay 0〜4s をすべて決定論的に分散（JS 不使用、ちらつかない）。"""
     patterns = ['p-spiral', 'p-drift', 'p-rise']
     parts = []
     for i in range(40):
         pat = patterns[i % 3]                                  # 3 パターンを順繰り
-        size = 8 + (i * 11) % 18                               # 8〜25 px
+        size = 15 + (i * 13) % 26                              # 15〜40 px
         delay = (i * 0.17) % 4                                 # 0〜4 秒
         duration = 1.5 + (i * 0.23) % 3.5                      # 1.5〜5 秒
         # 配置: drift / rise は画面全体ランダム位置、spiral は中心固定（CSS 側）
@@ -669,7 +669,7 @@ def _particles_html():
             pos_style = f'left:{x_pct}%;top:{y_pct}%;'
         else:  # p-rise
             x_pct = (i * 83 + 7) % 100
-            dx = ((i * 31) % 200) - 100
+            dx = ((i * 31) % 400) - 200                        # -200〜+200 px (振れ幅 2 倍)
             pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
         parts.append(
             f'<span class="particle {pat}" style="'
@@ -975,6 +975,18 @@ if st.session_state.get('result_rows'):
     ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
     render_summary(ken, nin, gen, mi, sou, tax, net)
     render_detail_table(rows)
+    # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
+    st.markdown(f"""
+<div class="metric-grid-3" style="margin-top:12px;">
+  <div class="metric"><p class="label">現収</p><p class="value">¥{gen:,}</p></div>
+  <div class="metric"><p class="label">未収</p><p class="value">¥{mi:,}</p></div>
+  <div class="metric dark"><p class="label">総収</p><p class="value">¥{sou:,}</p></div>
+</div>
+<div class="metric-grid-2">
+  <div class="metric"><p class="label">消費税</p><p class="value">¥{tax:,}</p></div>
+  <div class="metric"><p class="label">税抜運収</p><p class="value">¥{net:,}</p></div>
+</div>
+""", unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
