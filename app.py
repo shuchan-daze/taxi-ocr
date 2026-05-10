@@ -277,8 +277,6 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .detail-table tr.mismatch td[data-col="mi"] {background: #fee2e2 !important; color: #7f1d1d !important; font-weight: 600;}
 .detail-table tr.special td {background: #fef3c7 !important; color: #78350f !important;}
 .detail-table tr.special td:first-child {border-left: 4px solid #d97706 !important;}
-.detail-table tr.charter td {background: #dbeafe !important; color: #1e3a8a !important;}
-.detail-table tr.charter td:first-child {border-left: 4px solid #2563eb !important;}
 .detail-table tr.edited td {background: #fef9c3 !important; color: #713f12 !important;}
 .detail-table tr.edited td:first-child {border-left: 4px solid #ca8a04 !important;}
 .detail-table td[data-col="gen"], .detail-table td[data-col="mi"] {cursor: pointer;}
@@ -298,7 +296,6 @@ st.markdown("""
 
 # 結果表示用スロット（タイトルの直下）。結果がある時に container() で埋める。
 result_slot = st.empty()
-
 
 
 # Loader タイミング定数
@@ -670,17 +667,17 @@ def validate_meter_sequence(meter_data):
 
 # Loader 演出ヘルパー（CSS のみ: %数値 + ラベル + パーティクル）
 
-def _particles_html():
-    """40 個の白いパーティクルを生成。3 種類の動き(spiral/drift/rise)を index で割り当て、
-    サイズ 15〜40px / duration 1.5〜5s / delay 0〜4s をすべて決定論的に分散（JS 不使用、ちらつかない）。"""
+def _build_particles_html():
+    """40 個の白いパーティクル HTML を構築（決定論的、毎回同じ出力）。
+    3 種類の動き(spiral/drift/rise)を index で割り当て、サイズ 15〜40px / duration 1.5〜5s /
+    delay 0〜4s をすべて分散（JS 不使用、ちらつかない）。"""
     patterns = ['p-spiral', 'p-drift', 'p-rise']
     parts = []
     for i in range(40):
-        pat = patterns[i % 3]                                  # 3 パターンを順繰り
-        size = 15 + (i * 13) % 26                              # 15〜40 px
-        delay = (i * 0.17) % 4                                 # 0〜4 秒
-        duration = 1.5 + (i * 0.23) % 3.5                      # 1.5〜5 秒
-        # 配置: drift / rise は画面全体ランダム位置、spiral は中心固定（CSS 側）
+        pat = patterns[i % 3]
+        size = 15 + (i * 13) % 26
+        delay = (i * 0.17) % 4
+        duration = 1.5 + (i * 0.23) % 3.5
         if pat == 'p-spiral':
             pos_style = ''
         elif pat == 'p-drift':
@@ -689,7 +686,7 @@ def _particles_html():
             pos_style = f'left:{x_pct}%;top:{y_pct}%;'
         else:  # p-rise
             x_pct = (i * 83 + 7) % 100
-            dx = ((i * 31) % 400) - 200                        # -200〜+200 px (振れ幅 2 倍)
+            dx = ((i * 31) % 400) - 200
             pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
         parts.append(
             f'<span class="particle {pat}" style="'
@@ -702,11 +699,16 @@ def _particles_html():
     return ''.join(parts)
 
 
+# 速度改善: パーティクル HTML はパイプライン中 50+ 回 show_loader から呼ばれるが
+# 出力は毎回同じ（決定論的）。モジュール起動時に一度だけ構築してキャッシュ。
+_PARTICLES_HTML = _build_particles_html()
+
+
 def show_loader(loader, pct, label, anim_class=''):
     cls = f'big-overlay {anim_class}'.strip()
     loader.markdown(
         f'<div class="{cls}" data-pct="{pct}">'
-        f'<div class="particles-container">{_particles_html()}</div>'
+        f'<div class="particles-container">{_PARTICLES_HTML}</div>'
         f'<div class="big-num">{pct}%</div>'
         f'<div class="big-label">{label}</div>'
         f'</div>',
@@ -748,7 +750,7 @@ def render_detail_table(rows):
     parts = ['<table class="detail-table"><thead><tr>']
     parts.extend(f'<th>{h}</th>' for h in headers)
     parts.append('</tr></thead><tbody>')
-    state_class_map = {'mismatch': 'mismatch', 'special': 'special', 'charter': 'charter'}
+    state_class_map = {'mismatch': 'mismatch', 'special': 'special'}
     for idx, r in enumerate(rows):
         cls = state_class_map.get(r.get('state', ''), '')
         row_class = f' class="{cls}"' if cls else ''
@@ -775,7 +777,6 @@ def aggregate_totals(rows):
     state ごとの件数(ken)・人数(nin)カウント方針【業務ルール】:
       - 'special'（メーター超過）: 除外。同一乗客の超過分のため二重計上回避。
       - 'discount'（障割）: 除外。割引額の独立行は会計調整であり「乗客」ではないため。
-      - 'charter'（貸切）: 含める。独立した運収案件。
       - 'normal' / 'mismatch' / 'edited' 等: 含める。通常の乗車。
 
     金額(gen/mi/sou/tax/net)は state を問わず合算するため、
@@ -902,7 +903,7 @@ if st.session_state.get('result_rows'):
         valid = st.session_state.result_valid
         diff = st.session_state.result_diff
         meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
-        nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
+        nippou_data = st.session_state.get('result_nippou', {'rides': []})
 
         # メーターレシート品質チェック
         _meter_rows = meter_data.get('rows', [])
@@ -1132,8 +1133,6 @@ if st.session_state.get('result_rows'):
                     cls = ' class="mismatch"'
                 elif r.get('state') == 'special':
                     cls = ' class="special"'
-                elif r.get('state') == 'charter':
-                    cls = ' class="charter"'
                 parts.append(
                     f'<tr{cls}><td>{no}</td>'
                     f'<td>{meter_amt_disp}</td>'
