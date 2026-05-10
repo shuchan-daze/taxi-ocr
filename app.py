@@ -1515,6 +1515,11 @@ def classify_nippou(client, nippou_img):
 - この値は出力テーブルの金額にはならない（出力金額はメーター明細から取られる）。
   メーター明細との比較で「日報誤記の検知（mismatch ハイライト）」のためだけに使われる。
 
+【障害者割引（障割）】
+摘要に「障割」「障害者割引」の記載がある割引額行は、
+日報の現収欄に書かれていても kind="未収" として読み取ること。
+case="discount" として判定し、割引額を nippou_amount に記録する。
+
 【から回し行の判定】
 - 乗車区間が取り消し線（横線・斜線・×印）で消されており、現収欄に「+100」「+200」のように「+金額」だけ書かれた行は「から回し」（メーター消し忘れ）。
 - この行は ride として出力しない。
@@ -1587,6 +1592,14 @@ def build_report(meter_data, nippou_data):
                 'no': f'{meter_no}+', 'passengers': passengers, 'time': time_str,
                 'gen': overage, 'mi': 0,
                 'memo': 'メーター超過', 'state': 'special',
+            })
+        elif case == 'discount':
+            # 障割: 摘要に関わらず必ず未収に計上、現収には計上しない
+            row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
+            output.append({
+                'no': meter_no, 'passengers': passengers, 'time': time_str,
+                'gen': 0, 'mi': meter_amount,
+                'memo': memo, 'state': row_state,
             })
         else:
             # normal: 日報金額がメーター額と異なれば mismatch（金額はメーター額のまま）
