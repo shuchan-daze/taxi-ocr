@@ -1431,6 +1431,7 @@ def get_vision_client():
 
 
 def _parse_meter_vision(client_vision, meter_img):
+    """ハイブリッド: Vision API で OCR した生テキストを Claude に渡して JSON 構造化。"""
     buf = io.BytesIO()
     meter_img.save(buf, format='JPEG', quality=95)
     image = vision.Image(content=buf.getvalue())
@@ -1446,35 +1447,41 @@ def _parse_meter_vision(client_vision, meter_img):
     if not full_text.strip():
         return None
 
-    lines = full_text.split('\n')
-    time_pat = re.compile(r'^(\d+)[.,]\s*(\d{1,2}:\d{2})')
-    amt_pat = re.compile(r'[¥\\]\s*([\d,]+(?:\s\d{3}(?!\d))?)')
+    api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
+    claude_client = anthropic.Anthropic(api_key=api_key)
+    prompt = f"""以下はタクシーメーターのレシートをOCRで読み取った生テキストです。
+全乗車明細を読み取り、以下のJSON形式のみで返答せよ。説明文は不要。
 
-    rows = []
-    for i, line in enumerate(lines):
-        tm = time_pat.search(line)
-        if not tm:
-            continue
-        for j in range(i, min(i + 3, len(lines))):
-            am = amt_pat.search(lines[j])
-            if am:
-                h, mi = tm.group(2).split(':')
-                amount = int(am.group(1).replace(',', '').replace(' ', ''))
-                rows.append({
-                    'no': int(tm.group(1)),
-                    'time': f'{int(h):02d}:{mi}',
-                    'amount': amount,
-                })
-                break
-    rows.sort(key=lambda r: r['no'])
+{full_text}
 
+{{"rows": [{{"no": 1, "time": "10:32", "amount": 4100}}]}}
+
+・noはレシートの行番号（整数）・timeは降車時刻（HH:MM形式）・amountは¥の金額（数値のみ）・JSON以外出力しない"""
+    res = claude_client.messages.create(
+        model='claude-opus-4-5', max_tokens=4000, temperature=0,
+        messages=[{'role': 'user', 'content': prompt}]
+    )
+    text = res.content[0].text.strip()
+    m = re.search(r'\{.*\}', text, re.DOTALL)
+    if not m:
+        return None
+    data = json.loads(m.group(0))
+    rows = data.get('rows', [])
     if not rows:
         return None
     return {'rows': rows, 'total': sum(r['amount'] for r in rows)}
 
 
 def parse_meter(client, meter_img):
-    """Stage 1: Claude でメーターレシートを OCR（Vision API より精度が高いため）。"""
+    """Stage 1 ディスパッチャ: Vision+Claude ハイブリッド優先、失敗時のみ Claude 単独にフォールバック。"""
+    vc = get_vision_client()
+    if vc is not None:
+        try:
+            result = _parse_meter_vision(vc, meter_img)
+            if result is not None:
+                return result
+        except Exception:
+            pass
     return _parse_meter_claude(client, meter_img)
 
 
@@ -1977,6 +1984,8 @@ if st.session_state.get('result_rows'):
             st.markdown(f'**合計**: ¥{sum(int(r.get("amount", 0)) for r in meter_rows_disp):,}（{len(meter_rows_disp)}行）')
         else:
             st.info('メーター明細データなし')
+        compact = '  '.join(f'**{r["no"]}**:{r["amount"]:,}' for r in meter_rows_disp)
+        st.markdown(f'📋 **OCR数値一覧:** {compact}')
         st.markdown('**生 JSON:**')
         st.json(meter_data)
 
