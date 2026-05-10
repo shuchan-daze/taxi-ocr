@@ -867,8 +867,37 @@ if 'kept_files' not in st.session_state:
 
 if st.session_state.get('result_rows'):
     with result_slot.container():
+        # 処理完了後にページ最上部へ強制スクロール。
+        # Streamlit は st.rerun() でスクロール位置を保持してしまうため、
+        # 完成ボタンを押した位置（ページ下部）から動かないバグへの対策。
+        # 複数のスクロール API（scrollTo / scrollTop / scrollIntoView）を併用し、
+        # Streamlit の遅延レンダリングに追従するよう 50ms / 200ms / 500ms / 1200ms で
+        # 連打する。height=1 + body height:1px で iframe を完全に不可視化。
+        components.html("""
+<style>html, body { margin:0; padding:0; overflow:hidden; height:1px; }</style>
+<script>
+(function() {
+  function doScroll() {
+    try {
+      var w = window.parent;
+      var d = w.document;
+      w.scrollTo(0, 0);
+      if (d.documentElement) d.documentElement.scrollTop = 0;
+      if (d.body) d.body.scrollTop = 0;
+      var t = d.querySelector('.title-block');
+      if (t && t.scrollIntoView) t.scrollIntoView({block: 'start'});
+    } catch(e) {}
+  }
+  doScroll();
+  setTimeout(doScroll, 50);
+  setTimeout(doScroll, 200);
+  setTimeout(doScroll, 500);
+  setTimeout(doScroll, 1200);
+})();
+</script>
+""", height=1)
+
         # 結果本体（summary / detail-table / reset button / debug expander）
-        # スクロール演出は廃止（タイトルが常に最上部にあるため不要）。
         rows = st.session_state.result_rows
         valid = st.session_state.result_valid
         diff = st.session_state.result_diff
