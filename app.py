@@ -2160,12 +2160,32 @@ if st.session_state.get('result_rows'):
         st.session_state._pending_scroll = False
         components.html('''
 <script>
-setTimeout(() => {
-    const card = parent.document.querySelector('.result-card');
+(function() {
+  try {
+    const doc = parent.document;
+    const win = parent;
+    const card = doc.querySelector('.result-card');
     if (card) card.classList.add('slide-in');
-    const target = parent.document.querySelector('.complete-bar');
-    if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
-}, 120);
+
+    // モバイル Safari は scrollIntoView の smooth が不安定なため、
+    // 計算した絶対位置への scrollTo を使用（CSS scroll-margin-top も考慮済み）
+    function scrollToTarget() {
+      const target = doc.querySelector('.complete-bar');
+      if (!target) return false;
+      const top = target.getBoundingClientRect().top + win.scrollY - 20;
+      win.scrollTo({top: top, behavior: 'smooth'});
+      return true;
+    }
+
+    // 複数回試行: Streamlit の遅延レンダリング・slide-in アニメによる
+    // レイアウトシフトにも追従して最終位置を確定させる
+    setTimeout(scrollToTarget, 150);
+    setTimeout(scrollToTarget, 700);
+    setTimeout(scrollToTarget, 1400);
+  } catch (e) {
+    console.warn('scroll skipped:', e);
+  }
+})();
 </script>
 ''', height=0)
 
@@ -2175,10 +2195,12 @@ with st.expander('？ このアプリについて・使い方'):
 ### 1. 日報の書き方ルール
 このアプリを正しく使うには、手書き日報の書き方にルールがあります。
 
-- **通常の乗車**：日報の現収欄か未収欄に金額を記入
-- **メーター超過（消し忘れ）**：客の支払いが終わった後にメーターが回ってしまった場合、別の行を追加して「現収」に超過分を記入する（自己負担で会社に納金）
-  例：客が1,600円支払い→メーター1,700円なら、客分1,600円とは別に、超過分100円を「現収」で1行追加
-- **障害者割引（障割）**：障害者割引適用の乗車は、別の行として記入する。摘要欄に「障割」と明記
+- **通常の乗車（現金）**：現収欄に金額を記入。未収欄は空欄のまま。
+- **通常の乗車（カード・電子マネー等）**：未収欄に金額を記入。現収欄は空欄。
+- **障害者割引（障割）**：
+  - 1行目：割引後の乗客支払い額を現収または未収欄に記入（支払い方法による）
+  - 2行目（別段）：割引額を未収欄に記入。摘要欄に「障割」と明記。
+- **メーター超過（消し忘れ）**：超過分を現収で別行追加（自己負担で会社納金）。
 
 ### 2. 使い方
 1. 写真2枚をアップ（手書き日報＋営業明細書）
