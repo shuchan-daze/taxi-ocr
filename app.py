@@ -287,7 +287,16 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 </style>
 """, unsafe_allow_html=True)
 
-# 結果表示用スロット（ページ最上部）。結果がある時に container() で埋める。
+# タイトルブロック（ページ最上部、常時表示。結果の有無に関わらず常に最上段）
+st.markdown("""
+<div class="title-block">
+  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="color: rgba(255,255,255,0.7) !important; font-size: 10px; letter-spacing:0.05em;">v1.0.0</span></p>
+  <div class="divider"></div>
+</div>
+""", unsafe_allow_html=True)
+
+# 結果表示用スロット（タイトルの直下）。結果がある時に container() で埋める。
 result_slot = st.empty()
 
 
@@ -858,31 +867,8 @@ if 'kept_files' not in st.session_state:
 
 if st.session_state.get('result_rows'):
     with result_slot.container():
-        # 1. ✓ 完成バーが画面上部に来るようスクロール（処理完了後の UX）
-        #    setTimeout で DOM 描画完了を待ってから scrollIntoView。
-        st.html("""
-<script>
-setTimeout(() => {
-  try {
-    const el = window.parent.document.querySelector('.complete-bar');
-    if (el) {
-      el.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }
-  } catch(e) {}
-}, 300);
-</script>
-""")
-
-        # 2. タイトルブロック（再表示: st.stop で隠れる外側のタイトル代わり）
-        st.markdown("""
-<div class="title-block">
-  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="color: rgba(255,255,255,0.7) !important; font-size: 10px; letter-spacing:0.05em;">v1.0.0</span></p>
-  <div class="divider"></div>
-</div>
-""", unsafe_allow_html=True)
-
-        # 3〜6: 結果本体（summary / detail-table / reset button / debug expander）
+        # 結果本体（summary / detail-table / reset button / debug expander）
+        # スクロール演出は廃止（タイトルが常に最上部にあるため不要）。
         rows = st.session_state.result_rows
         valid = st.session_state.result_valid
         diff = st.session_state.result_diff
@@ -1135,14 +1121,6 @@ setTimeout(() => {
             st.json(rows)
 
     st.stop()
-
-st.markdown("""
-<div class="title-block">
-  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="color: rgba(255,255,255,0.7) !important; font-size: 10px; letter-spacing:0.05em;">v1.0.0</span></p>
-  <div class="divider"></div>
-</div>
-""", unsafe_allow_html=True)
 
 new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
 
