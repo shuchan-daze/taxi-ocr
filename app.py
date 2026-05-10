@@ -190,6 +190,33 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     letter-spacing: 0.2em;
     font-weight: 400 !important;
 }
+/* === CSS 純正パーティクルアニメーション (JS 不使用) === */
+.particles-container {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 99999;
+    overflow: hidden;
+}
+.particle {
+    position: fixed;
+    top: 100vh;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(244, 214, 120, 0.75);
+    box-shadow: 0 0 8px rgba(212, 175, 55, 0.85), 0 0 16px rgba(255, 255, 255, 0.25);
+    animation-name: particle-rise;
+    animation-iteration-count: infinite;
+    animation-timing-function: linear;
+    will-change: transform, opacity;
+}
+@keyframes particle-rise {
+    0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
+    12%  { opacity: 0.9; }
+    88%  { opacity: 0.9; }
+    100% { transform: translate(var(--dx, 0), -120vh) scale(1.3); opacity: 0; }
+}
 [data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
 [data-testid="stExpander"] p,
 [data-testid="stExpander"] li,
@@ -598,12 +625,34 @@ def validate_meter_sequence(meter_data):
     return len(missing) == 0, missing
 
 
-# Loader 演出ヘルパー（CSS のみで成立する最小構成: %数値 + ラベル）
+# Loader 演出ヘルパー（CSS のみ: %数値 + ラベル + パーティクル）
+
+def _particles_html():
+    """30 個のパーティクルを生成。各々に異なる left / delay / duration / dx を inline style で付与し、
+    CSS @keyframes particle-rise で画面下から上へ流れさせる（JS 不使用）。"""
+    parts = []
+    for i in range(30):
+        # 決定論的に散らす（再描画ごとに乱数だとちらつくため index ベース）
+        x_pct = (i * 83 + 7) % 100               # 7〜99 % に分散
+        delay = (i * 0.21) % 4                    # 0〜4 秒の遅延
+        duration = 3.0 + (i * 0.13) % 3           # 3〜6 秒
+        dx = ((i * 31) % 200) - 100               # -100〜+100 px の横ぶれ
+        parts.append(
+            f'<span class="particle" style="'
+            f'left:{x_pct}%;'
+            f'--dx:{dx}px;'
+            f'animation-delay:-{delay:.2f}s;'
+            f'animation-duration:{duration:.2f}s;'
+            f'"></span>'
+        )
+    return ''.join(parts)
+
 
 def show_loader(loader, pct, label, anim_class=''):
     cls = f'big-overlay {anim_class}'.strip()
     loader.markdown(
         f'<div class="{cls}" data-pct="{pct}">'
+        f'<div class="particles-container">{_particles_html()}</div>'
         f'<div class="big-num">{pct}%</div>'
         f'<div class="big-label">{label}</div>'
         f'</div>',
@@ -759,6 +808,14 @@ if 'uploader_counter' not in st.session_state:
     st.session_state.uploader_counter = 0
 if 'kept_files' not in st.session_state:
     st.session_state.kept_files = []
+st.markdown("""
+<div class="title-block">
+  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
+  <div class="divider"></div>
+</div>
+""", unsafe_allow_html=True)
+
 if st.session_state.get('result_rows'):
     rows = st.session_state.result_rows
     valid = st.session_state.result_valid
@@ -938,6 +995,9 @@ if st.session_state.get('result_rows'):
         st.markdown(''.join(parts), unsafe_allow_html=True)
         st.caption('差が出ている No について、下のデバッグセクションで Stage 1 の値と最終出力の値を照合してください。')
 
+    st.markdown('<br>', unsafe_allow_html=True)
+    st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
+
     # Stage 1: メーター明細生データ
     with st.expander('🔧 Stage 1: メーター明細生データ'):
         meter_rows_disp = meter_data.get('rows', [])
@@ -1031,73 +1091,60 @@ if st.session_state.get('result_rows'):
         st.markdown('**report_rows 生 JSON:**')
         st.json(rows)
 
-    st.markdown('<br>', unsafe_allow_html=True)
-    st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
+else:
+    new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
 
-    # スライドイン演出は CSS のみで実装。スクロールは廃止（モバイル白画面リスク回避）。
-    st.stop()  # 結果がある場合はここで停止し、タイトルと入力UIを描画しない
+    if new_files:
+        existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
+        added = False
+        for f in new_files:
+            key = (f.name, f.size)
+            if key not in existing_keys:
+                st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
+                added = True
+        if added:
+            st.session_state.uploader_counter += 1
+            st.rerun()
 
-st.markdown("""
-<div class="title-block">
-  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
-  <div class="divider"></div>
-</div>
-""", unsafe_allow_html=True)
+    imgs = []
+    if st.session_state.kept_files:
+        cols = st.columns(len(st.session_state.kept_files))
+        for i, kf in enumerate(st.session_state.kept_files):
+            img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
+            imgs.append(img)
+            with cols[i]:
+                st.image(img, use_container_width=True)
+                if st.button('✕ 削除', key=f'del_{i}'):
+                    st.session_state.kept_files.pop(i)
+                    st.rerun()
 
-new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
-
-if new_files:
-    existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
-    added = False
-    for f in new_files:
-        key = (f.name, f.size)
-        if key not in existing_keys:
-            st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
-            added = True
-    if added:
-        st.session_state.uploader_counter += 1
-        st.rerun()
-
-imgs = []
-if st.session_state.kept_files:
-    cols = st.columns(len(st.session_state.kept_files))
-    for i, kf in enumerate(st.session_state.kept_files):
-        img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
-        imgs.append(img)
-        with cols[i]:
-            st.image(img, use_container_width=True)
-            if st.button('✕ 削除', key=f'del_{i}'):
-                st.session_state.kept_files.pop(i)
-                st.rerun()
-
-if len(imgs) == 2:
-    if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
-        loader = st.empty()
-        try:
-            api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
-            client = anthropic.Anthropic(api_key=api_key)
-            report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
-            show_loader(loader, 100, '完成しました', anim_class='exiting')
-            time.sleep(0.3)
-            loader.empty()
-            st.session_state.result_rows = report_rows
-            st.session_state.result_valid = valid
-            st.session_state.result_diff = diff
-            st.session_state.result_meter = meter_data
-            st.session_state.result_nippou = nippou_data
-            st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
-        except Exception as e:
-            loader.empty()
-            _clear_results()
-            if isinstance(e, RuntimeError):
-                st.error(str(e))
-            elif isinstance(e, json.JSONDecodeError):
-                st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
-            else:
-                st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
-elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
-    st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
+    if len(imgs) == 2:
+        if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
+            loader = st.empty()
+            try:
+                api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
+                client = anthropic.Anthropic(api_key=api_key)
+                report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
+                show_loader(loader, 100, '完成しました', anim_class='exiting')
+                time.sleep(0.3)
+                loader.empty()
+                st.session_state.result_rows = report_rows
+                st.session_state.result_valid = valid
+                st.session_state.result_diff = diff
+                st.session_state.result_meter = meter_data
+                st.session_state.result_nippou = nippou_data
+                st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
+            except Exception as e:
+                loader.empty()
+                _clear_results()
+                if isinstance(e, RuntimeError):
+                    st.error(str(e))
+                elif isinstance(e, json.JSONDecodeError):
+                    st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
+                else:
+                    st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
+    elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
+        st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
 with st.expander('？ このアプリについて・使い方'):
     st.markdown('''
