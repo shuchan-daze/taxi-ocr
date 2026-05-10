@@ -858,15 +858,20 @@ if 'kept_files' not in st.session_state:
 
 if st.session_state.get('result_rows'):
     with result_slot.container():
-        # 1. ページ最上部へスクロール（処理完了後の UX）
-        #    Method A (st.html, Streamlit 1.31+) を主とし、失敗時は Method B (components.html) にフォールバック
-        try:
-            st.html('<script>window.parent.scrollTo({top:0,behavior:"smooth"});</script>')
-        except Exception:
-            try:
-                components.html('<script>window.parent.scrollTo({top:0});</script>', height=1)
-            except Exception:
-                pass
+        # 1. ✓ 完成バーが画面上部に来るようスクロール（処理完了後の UX）
+        #    setTimeout で DOM 描画完了を待ってから scrollIntoView。
+        st.html("""
+<script>
+setTimeout(() => {
+  try {
+    const el = window.parent.document.querySelector('.complete-bar');
+    if (el) {
+      el.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+  } catch(e) {}
+}, 300);
+</script>
+""")
 
         # 2. タイトルブロック（再表示: st.stop で隠れる外側のタイトル代わり）
         st.markdown("""
