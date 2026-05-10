@@ -1302,6 +1302,11 @@ observer.observe(document.body, {childList: true, subtree: true});
 </script>
 ''', height=0)
 
+# Loader タイミング定数
+LOADER_STEP_SLEEP = 0.15   # loader_steps の各ステップ間隔
+LOADER_POLL_SLEEP = 0.5    # parse_meter / classify_nippou 並列実行中のポーリング間隔
+
+
 # 画像準備
 
 def fix_orientation(img):
@@ -1309,7 +1314,7 @@ def fix_orientation(img):
         for orientation in ExifTags.TAGS.keys():
             if ExifTags.TAGS[orientation] == 'Orientation':
                 break
-        exif = img._getexif()
+        exif = img.getexif()
         if exif is not None:
             o = exif.get(orientation)
             if o == 3: img = img.rotate(180, expand=True)
@@ -1432,8 +1437,9 @@ def get_vision_client():
     return None
 
 
-def _parse_meter_vision(client_vision, meter_img):
-    """ハイブリッド: Vision API で OCR した生テキストを Claude に渡して JSON 構造化。"""
+def _parse_meter_vision(client_vision, meter_img, claude_client):
+    """ハイブリッド: Vision API で OCR した生テキストを Claude に渡して JSON 構造化。
+    claude_client は parse_meter 経由で main から渡される（毎回生成しない）。"""
     buf = io.BytesIO()
     meter_img.save(buf, format='JPEG', quality=95)
     image = vision.Image(content=buf.getvalue())
@@ -1449,8 +1455,6 @@ def _parse_meter_vision(client_vision, meter_img):
     if not full_text.strip():
         return None
 
-    api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
-    claude_client = anthropic.Anthropic(api_key=api_key)
     prompt = f"""以下はタクシーメーターのレシートをOCRで読み取った生テキストです。
 全乗車明細を読み取り、以下のJSON形式のみで返答せよ。説明文は不要。
 
@@ -1479,7 +1483,7 @@ def parse_meter(client, meter_img):
     vc = get_vision_client()
     if vc is not None:
         try:
-            result = _parse_meter_vision(vc, meter_img)
+            result = _parse_meter_vision(vc, meter_img, client)
             if result is not None:
                 return result
         except Exception:
@@ -1594,12 +1598,16 @@ def build_report(meter_data, nippou_data):
                 'memo': 'メーター超過', 'state': 'special',
             })
         elif case == 'discount':
-            # 障割: 摘要に関わらず必ず未収に計上、現収には計上しない
-            row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
+            # 障割: 摘要に関わらず必ず未収に計上、現収には計上しない。
+            # state='discount' で aggregate_totals の件数・人数カウントから除外される。
+            # passengers=0 で render_detail_table の人数欄も空表示になる。
+            # 検証: kind='現収' の入力でも mi=meter_amount, gen=0 となること。
+            #   例: ride={'meter_no':5,'kind':'現収','case':'discount','nippou_amount':100}
+            #     + meter_row={'no':5,'amount':100} → output: gen=0, mi=100, state='discount'
             output.append({
-                'no': meter_no, 'passengers': passengers, 'time': time_str,
+                'no': meter_no, 'passengers': 0, 'time': time_str,
                 'gen': 0, 'mi': meter_amount,
-                'memo': memo, 'state': row_state,
+                'memo': memo, 'state': 'discount',
             })
         else:
             # normal: 日報金額がメーター額と異なれば mismatch（金額はメーター額のまま）
@@ -1617,11 +1625,41 @@ def build_report(meter_data, nippou_data):
 # 整合性チェック
 
 def validate(report_rows, meter_data, nippou_data):
-    """合計の整合性チェック。返値: (ok: bool, diff: int)"""
+    """出力合計とメーター合計の整合性チェック。
+
+    返値:
+        (ok: bool, diff: int)
+        - ok: True ならメーター明細書の合計と出力テーブルの gen+mi 合計が完全一致
+        - diff: 出力合計 − メーター合計（正なら出力過多、負なら出力不足）
+
+    補足: 障割（state='discount'）の行は mi=meter_amount として gen+mi に
+    含まれており、メーター側にも対応行があるため自動的に整合する。
+    """
     output_total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in report_rows)
     expected = meter_data.get('total') or sum(r.get('amount', 0) for r in meter_data.get('rows', []))
     diff = output_total - expected
     return diff == 0, diff
+
+
+def validate_meter_sequence(meter_data):
+    """メーター明細の行番号が連番か検証（欠番検出）。
+
+    例: nos=[1,2,4,5] → (False, [3])
+        nos=[1,2,3,4,5] → (True, [])
+        nos=[] → (True, [])
+
+    返値:
+        (ok: bool, missing: list[int])
+        - ok: True なら最小〜最大の間に欠番なし
+        - missing: 欠番の昇順リスト
+    """
+    rows = meter_data.get('rows', [])
+    nos = sorted(int(r.get('no', 0)) for r in rows if r.get('no') is not None)
+    if not nos:
+        return True, []
+    expected = set(range(nos[0], nos[-1] + 1))
+    missing = sorted(expected - set(nos))
+    return len(missing) == 0, missing
 
 
 # Loader 演出ヘルパー
@@ -1641,7 +1679,7 @@ def show_loader(loader, pct, label, anim_class=''):
         unsafe_allow_html=True
     )
 
-def loader_steps(loader, pcts, label, sleep=0.15, anim_class=''):
+def loader_steps(loader, pcts, label, sleep=LOADER_STEP_SLEEP, anim_class=''):
     for pct in pcts:
         show_loader(loader, pct, label, anim_class=anim_class)
         time.sleep(sleep)
@@ -1696,11 +1734,22 @@ def render_detail_table(rows):
 
 
 def aggregate_totals(rows):
-    """件数・人数・現収・未収・総収・消費税・税抜運収を集計"""
+    """件数・人数・現収・未収・総収・消費税・税抜運収を集計。
+
+    state ごとの件数(ken)・人数(nin)カウント方針【業務ルール】:
+      - 'special'（メーター超過）: 除外。同一乗客の超過分のため二重計上回避。
+      - 'discount'（障割）: 除外。割引額の独立行は会計調整であり「乗客」ではないため。
+      - 'charter'（貸切）: 含める。独立した運収案件。
+      - 'normal' / 'mismatch' / 'edited' 等: 含める。通常の乗車。
+
+    金額(gen/mi/sou/tax/net)は state を問わず合算するため、
+    消費税・税抜運収は gen+mi の合計から自動的に正しく計算される。
+    """
     gen = sum((r.get('gen') or 0) for r in rows)
     mi = sum((r.get('mi') or 0) for r in rows)
-    ken = sum(1 for r in rows if r.get('state') != 'special')
-    nin = sum((r.get('passengers') or 0) for r in rows if r.get('state') != 'special')
+    excluded_states = {'special', 'discount'}
+    ken = sum(1 for r in rows if r.get('state') not in excluded_states)
+    nin = sum((r.get('passengers') or 0) for r in rows if r.get('state') not in excluded_states)
     sou = gen + mi
     tax = round(sou / 11, -1)
     net = sou - tax
@@ -1713,8 +1762,12 @@ def run_pipeline(client, imgs, loader):
     """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff, meter_data, nippou_data)"""
     # 最初のステップでフェードイン演出
     loader_steps(loader, [3, 8, 14], '画像を判別中', anim_class='entering')
-    kind1 = identify_image(client, imgs[0])
-    kind2 = identify_image(client, imgs[1])
+    # 2 枚の判別は互いに独立なため並列実行（API レイテンシを 1 回分に短縮）
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(identify_image, client, imgs[0])
+        f2 = executor.submit(identify_image, client, imgs[1])
+        kind1 = f1.result()
+        kind2 = f2.result()
 
     if kind1 == 'unclear' or kind2 == 'unclear':
         idx = 1 if kind1 == 'unclear' else 2
@@ -1743,7 +1796,7 @@ def run_pipeline(client, imgs, loader):
             if meter_future.done() and nippou_future.done():
                 break
             show_loader(loader, pct, 'メーター明細と日報を並列読み取り中')
-            time.sleep(0.5)
+            time.sleep(LOADER_POLL_SLEEP)
 
         # 結果取得（例外があれば伝搬）
         meter_data = meter_future.result()
@@ -1876,12 +1929,22 @@ if st.session_state.get('result_rows'):
         )
         st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_meter_btn', use_container_width=True)
 
+    # 行番号連番チェック（内部欠番の検出: 例 1,2,4,5 で 3 が抜けるケース）
+    _seq_ok, _missing_nos = validate_meter_sequence(meter_data)
+    if not _seq_ok:
+        st.warning(
+            f'メーター明細の行番号に欠番があります（欠番: {_missing_nos}）。'
+            f'写真の途中行が読み取れていない可能性があります。'
+        )
+
     # 乖離チェック（写真誤り検知）
     _rides = nippou_data.get('rides', [])
     _extras = nippou_data.get('extras', [])
 
     _meter_count = len(_meter_rows)
     # 日報側件数: rides + 貸切（メーター外売上）
+    # 注: 新モデルでは extras は通常空（プロンプトから charter 出力が削除されたため）。
+    #     互換のため `.get('extras', [])` で安全にハンドリング。
     _nippou_count = len(_rides) + sum(1 for e in _extras if e.get('case') == 'charter')
     _row_diff = abs(_meter_count - _nippou_count)
 
@@ -1903,6 +1966,11 @@ if st.session_state.get('result_rows'):
             f'写真が正しいか確認して、必要であれば再アップしてください。'
         )
         st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_btn', use_container_width=True)
+    elif _row_diff == 2:
+        st.warning(
+            f'メーター({_meter_count}件) と 日報({_nippou_count}件) で 2 件の差があります。'
+            f'読み落としや日報の書き漏れがないか確認してください。'
+        )
 
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
 
@@ -1940,9 +2008,13 @@ if st.session_state.get('result_rows'):
 
     # 値の破壊検出（Stage1 vs 最終出力の整合性）
     meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
+    # 旧モデル: extras[case='discount_cash'] が linked_meter_no で meter 行に紐付き、
+    #   整合性チェックで meter+discount の合計と出力合計を比較していた。
+    # 新モデル: rides[case='discount'] が独自 meter_no を持ち主ループで処理されるため、
+    #   ここでは加算不要（プロンプトから extras 出力が削除済み）。case 名は 'discount' に統一。
     discount_by_no = {}
     for extra in nippou_data.get('extras', []):
-        if extra.get('case') == 'discount_cash':
+        if extra.get('case') == 'discount':
             ln = extra.get('linked_meter_no')
             if ln in meter_amounts:
                 discount_by_no[ln] = discount_by_no.get(ln, 0) + int(extra.get('amount') or 0)
