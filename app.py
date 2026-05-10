@@ -1717,21 +1717,27 @@ if st.session_state.get('result_rows'):
 
     # 結果が新しく生成されたターンのみ slide-in アニメ→スクロール
     # st.markdown は <script> をサニタイズして実行しないため components.html を使用。
+    # height=0 はモバイルで画面を真っ白にする不具合があるため height=1 + body非表示で回避。
     if st.session_state.get('_pending_scroll'):
         st.session_state._pending_scroll = False
         components.html("""
+<style>
+html, body { margin: 0; padding: 0; overflow: hidden; height: 1px; }
+</style>
 <script>
 setTimeout(() => {
-    const target = window.parent.document.querySelector('.complete-bar');
-    if (target) {
-        const y = target.getBoundingClientRect().top + window.parent.scrollY - 20;
-        window.parent.scrollTo({top: y, behavior: 'smooth'});
-    }
-    const card = window.parent.document.querySelector('.result-card');
-    if (card) card.classList.add('slide-in');
+    try {
+        const target = window.parent.document.querySelector('.complete-bar');
+        if (target) {
+            const y = target.getBoundingClientRect().top + window.parent.scrollY - 20;
+            window.parent.scrollTo({top: y, behavior: 'smooth'});
+        }
+        const card = window.parent.document.querySelector('.result-card');
+        if (card) card.classList.add('slide-in');
+    } catch(e) {}
 }, 300);
 </script>
-""", height=0)
+""", height=1)
 
 
 with st.expander('？ このアプリについて・使い方'):
