@@ -1716,37 +1716,19 @@ if st.session_state.get('result_rows'):
     st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
 
     # 結果が新しく生成されたターンのみ slide-in アニメ→スクロール
-    # st.components.v1.html(height=0) は deprecation 警告が出るため st.markdown 方式に変更。
-    # parent.document → document に変更（同一ドキュメント内なので親アクセス不要）。
-    # スクリプト全体を try-catch で囲み、失敗してもページレンダリングを止めない。
     if st.session_state.get('_pending_scroll'):
         st.session_state._pending_scroll = False
         st.markdown('''
 <script>
-(function() {
-  try {
-    const card = document.querySelector('.result-card');
+setTimeout(() => {
+    const card = parent.document.querySelector('.result-card');
     if (card) card.classList.add('slide-in');
-
-    // モバイル Safari は scrollIntoView の smooth が不安定なため、
-    // 計算した絶対位置への scrollTo を使用（CSS scroll-margin-top も考慮済み）
-    function scrollToTarget() {
-      const target = document.querySelector('.complete-bar');
-      if (!target) return false;
-      const top = target.getBoundingClientRect().top + window.scrollY - 20;
-      window.scrollTo({top: top, behavior: 'smooth'});
-      return true;
+    const target = parent.document.querySelector('.complete-bar');
+    if (target) {
+        const y = target.getBoundingClientRect().top + parent.window.scrollY - 20;
+        parent.window.scrollTo({top: y, behavior: 'smooth'});
     }
-
-    // 複数回試行: Streamlit の遅延レンダリング・slide-in アニメによる
-    // レイアウトシフトにも追従して最終位置を確定させる
-    setTimeout(scrollToTarget, 150);
-    setTimeout(scrollToTarget, 700);
-    setTimeout(scrollToTarget, 1400);
-  } catch (e) {
-    console.warn('scroll skipped:', e);
-  }
-})();
+}, 200);
 </script>
 ''', unsafe_allow_html=True)
 
