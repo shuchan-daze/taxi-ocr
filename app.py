@@ -882,6 +882,10 @@ if st.session_state.get('result_rows'):
             + '\n\nメーター明細の読み取り結果（下のデバッグセクション）を画像と照合してください。'
         )
 
+    # 表示順序を厳守:
+    #   1. render_summary（件数・現収・未収・総収・消費税・税抜）
+    #   2. render_detail_table（日報の行一覧）
+    #   この後: 整合性チェック → デバッグ expander → リセットボタン
     ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
     render_summary(ken, nin, gen, mi, sou, tax, net)
     render_detail_table(rows)
@@ -1080,6 +1084,7 @@ else:
                 st.session_state.result_diff = diff
                 st.session_state.result_meter = meter_data
                 st.session_state.result_nippou = nippou_data
+                st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
             except Exception as e:
                 loader.empty()
                 _clear_results()
