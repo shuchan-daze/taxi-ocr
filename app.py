@@ -560,28 +560,40 @@ case="discount" として判定し、割引額を nippou_amount に記録する�
 # 通常行は meter_amount をそのまま gen/mi に振り分け。
 # overage 行は客分 (meter - overage) と超過分 (overage) の 2 行に分割。
 
+def _split_rides(rides):
+    """rides を「通常乗車（normal/overage）」と「障割（discount）」に分離。"""
+    real = [r for r in rides if r.get('case') != 'discount']
+    adjustments = [r for r in rides if r.get('case') == 'discount']
+    return real, adjustments
+
+
 def build_report(meter_data, nippou_data):
     """Stage 3: メーター明細（金額確定）と日報の分類情報を統合して最終行リストを構築。
 
+    アライメント方針【重要】:
+      classify_nippou が出力する meter_no は「日報の上から何番目」の連番のため、
+      メーター明細書の行番号と必ずしも一致しない（特に障割の空回しが無い場合にズレる）。
+      そのため通常乗車（normal/overage）はメーター行と **順番（index）でマッチング**し、
+      障割（discount）は別系統で nippou_amount を真値として処理する。
+
     case の扱い:
       - 'overage': 客分行 + 超過分(state='special')行の 2 行に分割
-      - 'discount': 障割。state='discount'、kind に関わらず mi=meter_amount, gen=0
+      - 'discount': 別ループで nippou_amount を mi に計上、state='discount'
       - その他 ('normal' or 不明): kind に従って gen/mi に振り分け 1 行出力
     日報金額（nippou_amount）がメーター額と異なる場合は state='mismatch' を立てる
-    （ハイライトのみ。出力金額はメーター額のまま）。
-
-    補完ループ: メーター行に対応しない rides で passengers が空 (None/NULL/0)
-    かつ nippou_amount があるものは「+α 要素」（障割など）として扱い、
-    nippou_amount を未収に計上して救済する（空行になるのを防ぐ）。"""
-    meter_rows = {r['no']: r for r in meter_data.get('rows', [])}
+    （ハイライトのみ。出力金額はメーター額のまま）。"""
+    meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
     rides = nippou_data.get('rides', [])
-    nippou_by_meter = {r['meter_no']: r for r in rides}
+    real_rides, adjustments = _split_rides(rides)
     output = []
 
-    for meter_no in sorted(meter_rows.keys()):
-        meter_row = meter_rows[meter_no]
+    # Phase 1: 通常乗車をメーター行と順番でアライメント
+    aligned_count = min(len(meter_rows_list), len(real_rides))
+    for i in range(aligned_count):
+        meter_row = meter_rows_list[i]
+        n = real_rides[i]
+        meter_no = meter_row['no']
         meter_amount = int(meter_row['amount'])
-        n = nippou_by_meter.get(meter_no, {})
         passengers = int(n.get('passengers') or 1)
         kind = n.get('kind') or '現収'
         memo = n.get('memo') or ''
@@ -593,7 +605,6 @@ def build_report(meter_data, nippou_data):
         if case == 'overage':
             overage = int(n.get('overage_amount') or 0)
             client_amount = meter_amount - overage
-            # 客分行: 日報金額（=客分）と一致するか比較
             client_state = 'mismatch' if (nippou_amt is not None and nippou_amt != client_amount) else 'ok'
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': time_str,
@@ -606,20 +617,7 @@ def build_report(meter_data, nippou_data):
                 'gen': overage, 'mi': 0,
                 'memo': 'メーター超過', 'state': 'special',
             })
-        elif case == 'discount':
-            # 障割: 摘要に関わらず必ず未収に計上、現収には計上しない。
-            # state='discount' で aggregate_totals の件数・人数カウントから除外される。
-            # passengers=0 で render_detail_table の人数欄も空表示になる。
-            # 検証: kind='現収' の入力でも mi=meter_amount, gen=0 となること。
-            #   例: ride={'meter_no':5,'kind':'現収','case':'discount','nippou_amount':100}
-            #     + meter_row={'no':5,'amount':100} → output: gen=0, mi=100, state='discount'
-            output.append({
-                'no': meter_no, 'passengers': 0, 'time': time_str,
-                'gen': 0, 'mi': meter_amount,
-                'memo': memo, 'state': 'discount',
-            })
-        else:
-            # normal: 日報金額がメーター額と異なれば mismatch（金額はメーター額のまま）
+        else:  # 'normal' or 不明 case
             row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
             output.append({
                 'no': meter_no, 'passengers': passengers, 'time': time_str,
@@ -628,24 +626,17 @@ def build_report(meter_data, nippou_data):
                 'memo': memo, 'state': row_state,
             })
 
-    # 補完ループ: メーター行に対応しない +α 要素（障割等）を救済
-    # passengers が空 (None/NULL/0/'') かつ nippou_amount あり → 未収に計上
-    matched = set(meter_rows.keys())
-    for r in rides:
-        mn = r.get('meter_no')
-        if mn is None or mn in matched:
-            continue
-        passengers_val = r.get('passengers')
-        is_alpha = passengers_val in (None, 0, '', 'NULL', 'null')
-        if not is_alpha:
-            continue  # 通常乗車の OCR 漏れの可能性 → 救済しない（誤検出防止）
-        nippou_amt = r.get('nippou_amount')
+    # Phase 2: 障割を別系統で処理（nippou_amount を真値として未収に計上）
+    # メーター明細書側の対応行有無を問わない（空回し有無に関係なく動作）
+    for d in adjustments:
+        nippou_amt = d.get('nippou_amount')
         if not isinstance(nippou_amt, (int, float)) or int(nippou_amt) <= 0:
             continue
         output.append({
-            'no': mn, 'passengers': 0, 'time': '',
+            'no': d.get('meter_no', '*'),
+            'passengers': 0, 'time': '',
             'gen': 0, 'mi': int(nippou_amt),
-            'memo': r.get('memo') or '+α',
+            'memo': d.get('memo') or '障割',
             'state': 'discount',
         })
 
@@ -655,33 +646,31 @@ def build_report(meter_data, nippou_data):
 # 整合性チェック
 
 def validate(report_rows, meter_data, nippou_data):
-    """出力合計とメーター合計の整合性チェック。
+    """出力合計と期待値の整合性チェック。
 
     返値:
         (ok: bool, diff: int)
         - ok: True なら期待値と出力合計が完全一致
         - diff: 出力合計 − 期待値（正なら出力過多、負なら出力不足）
 
-    期待値の算出:
-      - メーター明細書の合計 + 補完ループで救済された +α 要素 (passengers が空で
-        meter 行に対応しない rides の nippou_amount 合計)
-      これにより障割等のメーター外調整があっても誤った金額ズレ警告が出ない。
+    期待値の算出（build_report の sequence ベースアライメントに合わせる）:
+      - 通常乗車部分: 先頭から min(meter_count, real_ride_count) 行のメーター額合計
+      - 障割部分: 全 discount rides の nippou_amount 合計
+      - 期待値 = 通常乗車合計 + 障割合計
+      これにより空回しの有無に関係なく正しく整合する。
     """
     output_total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in report_rows)
-    meter_total = meter_data.get('total') or sum(r.get('amount', 0) for r in meter_data.get('rows', []))
-    # +α 要素（補完ループで救済された orphan ride）の合計を期待値に加算
-    meter_nos = {r['no'] for r in meter_data.get('rows', [])}
-    alpha_total = 0
-    for r in nippou_data.get('rides', []):
-        if r.get('meter_no') in meter_nos:
-            continue
-        passengers_val = r.get('passengers')
-        if passengers_val not in (None, 0, '', 'NULL', 'null'):
-            continue
-        amt = r.get('nippou_amount')
-        if isinstance(amt, (int, float)) and int(amt) > 0:
-            alpha_total += int(amt)
-    expected = int(meter_total) + alpha_total
+    meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
+    rides = nippou_data.get('rides', [])
+    real_rides, adjustments = _split_rides(rides)
+    aligned_count = min(len(meter_rows_list), len(real_rides))
+
+    aligned_meter_total = sum(int(r['amount']) for r in meter_rows_list[:aligned_count])
+    discount_total = sum(
+        int(d['nippou_amount']) for d in adjustments
+        if isinstance(d.get('nippou_amount'), (int, float)) and int(d['nippou_amount']) > 0
+    )
+    expected = aligned_meter_total + discount_total
     diff = output_total - expected
     return diff == 0, diff
 
