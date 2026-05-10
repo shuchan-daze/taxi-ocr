@@ -289,8 +289,9 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="color: rgba(255,255,255,0.7) !important; font-size: 10px; letter-spacing:0.05em;">v1.0.0</span></p>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
+  <p style="color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.0.0</p>
 </div>
 """, unsafe_allow_html=True)
 
