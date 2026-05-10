@@ -205,7 +205,7 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     width: 0%;
     background: linear-gradient(90deg, rgba(212,175,55,0.9), rgba(244,214,120,1));
     box-shadow: 0 0 10px rgba(212,175,55,0.7);
-    transition: width 0.06s linear;
+    transition: width 0.1s linear;
 }
 .booster-fill.flash {
     background: white !important;
@@ -1038,22 +1038,38 @@ observer.observe(document.body, {childList: true, subtree: true});
   if (!D || W.__taxi_anim_inited) return;
   W.__taxi_anim_inited = true;
 
-  // === 粒子: 真にランダム（位置/速度/サイズ/透明度/方向 + sin波/ランダムウォーク混在） ===
+  // === 粒子: 完全ランダム化（位置/速度/サイズ/透明度パターン/方向 + 4 軌跡変種） ===
   function animateParticle(p) {
     if (!p.isConnected) return;
+    // CSS @keyframes warpN との競合を避けるため明示的にアニメ無効化
     p.style.animation = 'none';
     p.style.willChange = 'transform, opacity';
 
-    // 1サイクルごとに完全に独立したランダムパラメータを生成
-    const variant = Math.floor(Math.random() * 3);  // 0:直線 / 1:sin波 / 2:ランダムウォーク
+    // 出発位置: 中心起点ではなく画面全体のランダム位置から
+    p.style.top = (Math.random() * 100) + '%';
+    p.style.left = (Math.random() * 100) + '%';
+
+    // サイズ: 1px〜15px
+    const size = 1 + Math.random() * 14;
+    p.style.width = size + 'px';
+    p.style.height = size + 'px';
+
+    // 軌跡変種: 0:直線 / 1:sin波 / 2:ランダムウォーク / 3:螺旋
+    const variant = Math.floor(Math.random() * 4);
+    // 透明度パターン: 0:fadeIn-hold-fadeOut / 1:パルス / 2:線形フェード
+    const opacityPattern = Math.floor(Math.random() * 3);
+
     const angle = Math.random() * Math.PI * 2;
-    const distance = 250 + Math.random() * 900;
-    const duration = 1400 + Math.random() * 2600;
+    const distance = 200 + Math.random() * 950;
+    // 速度ばらつき拡大: 800ms〜4000ms
+    const duration = 800 + Math.random() * 3200;
     const startScale = 0.6 + Math.random() * 0.7;
     const endScale = startScale + (Math.random() * 1.0);
     const baseOpacity = 0.55 + Math.random() * 0.45;
     const sinFreq = 1.5 + Math.random() * 4;
     const sinAmp = 30 + Math.random() * 90;
+    const spiralAngularSpeed = 2 + Math.random() * 5;  // 螺旋の回転速度
+    const spiralDir = Math.random() < 0.5 ? 1 : -1;
     const perpAng = angle + Math.PI / 2;
     let walkX = 0, walkY = 0;
     const start = performance.now();
@@ -1061,9 +1077,9 @@ observer.observe(document.body, {childList: true, subtree: true});
     function step(now) {
       if (!p.isConnected) return;
       const t = Math.min(1, (now - start) / duration);
-      let x, y;
       const eased = 1 - Math.pow(1 - t, 2.5);
       const main = distance * eased;
+      let x, y;
       if (variant === 0) {
         x = Math.cos(angle) * main;
         y = Math.sin(angle) * main;
@@ -1071,15 +1087,32 @@ observer.observe(document.body, {childList: true, subtree: true});
         const perp = Math.sin(t * sinFreq * Math.PI) * sinAmp * (1 - t * 0.5);
         x = Math.cos(angle) * main + Math.cos(perpAng) * perp;
         y = Math.sin(angle) * main + Math.sin(perpAng) * perp;
-      } else {
+      } else if (variant === 2) {
         walkX += (Math.random() - 0.5) * 6;
         walkY += (Math.random() - 0.5) * 6;
         x = Math.cos(angle) * main + walkX;
         y = Math.sin(angle) * main + walkY;
+      } else {
+        // 螺旋: 半径が伸びながら角度も回転
+        const spiralA = angle + t * spiralAngularSpeed * Math.PI * spiralDir;
+        x = Math.cos(spiralA) * main;
+        y = Math.sin(spiralA) * main;
       }
-      const fadeIn = t < 0.12 ? t / 0.12 : 1;
-      const fadeOut = t > 0.7 ? (1 - t) / 0.3 : 1;
-      const opacity = Math.min(fadeIn, fadeOut) * baseOpacity;
+
+      let opacity;
+      if (opacityPattern === 0) {
+        // fadeIn → hold → fadeOut
+        const fadeIn = t < 0.12 ? t / 0.12 : 1;
+        const fadeOut = t > 0.7 ? (1 - t) / 0.3 : 1;
+        opacity = Math.min(fadeIn, fadeOut) * baseOpacity;
+      } else if (opacityPattern === 1) {
+        // パルス（sin波で点滅、徐々に減衰）
+        opacity = (Math.sin(t * Math.PI * 4) * 0.5 + 0.5) * baseOpacity * (1 - t * 0.4);
+      } else {
+        // 線形フェードアウト
+        opacity = baseOpacity * (1 - t);
+      }
+
       const sc = startScale + (endScale - startScale) * eased;
       p.style.transform = `translate(${x}px, ${y}px) scale(${sc})`;
       p.style.opacity = opacity;
@@ -1113,11 +1146,10 @@ observer.observe(document.body, {childList: true, subtree: true});
   function tickLoader(ts) {
     const overlay = D.querySelector('.big-overlay');
     if (!overlay) {
-      // overlay 消失時は状態リセット、ループ停止
+      // overlay が一時的に存在しない（Streamlit 再描画の隙間）場合は
+      // ループだけ停止して displayedPct/targetPct/lastCycle は保持する。
+      // ここでリセットすると 1% 刻みごとに 0% に戻り、バーが視覚的に動かなくなる。
       loopFrame = null;
-      displayedPct = 0;
-      targetPct = 0;
-      lastCycle = 0;
       lastTs = null;
       return;
     }
@@ -1138,11 +1170,14 @@ observer.observe(document.body, {childList: true, subtree: true});
 
     const fill = overlay.querySelector('.booster-fill');
     if (fill) {
+      // 全体進捗 0-10% の間: バー 0→100% に伸びる
+      // 全体進捗 10-20% の間: 再びバーが 0→100% に伸びる（10サイクル繰り返し）
       const cycleProgress = (displayedPct % 10) * 10;  // 0-100
       fill.style.width = cycleProgress + '%';
       const cycle = Math.floor(displayedPct / 10);
       if (cycle > lastCycle) {
         lastCycle = cycle;
+        if (W.__taxi_loader_debug) console.log('[loader] cycle', cycle, 'displayedPct=', displayedPct);
         // 満タン瞬間にフラッシュ → 短時間で次サイクルへリセット
         fill.classList.add('flash');
         fill.style.width = '100%';
@@ -1162,6 +1197,7 @@ observer.observe(document.body, {childList: true, subtree: true});
     const attr = overlay.getAttribute('data-pct');
     if (attr === null) return;  // intro overlay 等は data-pct なし
     const pct = parseInt(attr, 10) || 0;
+    if (W.__taxi_loader_debug) console.log('[loader] new overlay pct=', pct, 'displayedPct=', displayedPct);
     // 既存セッションの続きか、新規かを判定
     if (pct < displayedPct - 5) {
       // pct が大きく下がった = 新セッション。リセット
@@ -1303,8 +1339,9 @@ observer.observe(document.body, {childList: true, subtree: true});
 ''', height=0)
 
 # Loader タイミング定数
-LOADER_STEP_SLEEP = 0.15   # loader_steps の各ステップ間隔
-LOADER_POLL_SLEEP = 0.5    # parse_meter / classify_nippou 並列実行中のポーリング間隔
+LOADER_STEP_SLEEP = 0.15   # loader_steps の各ステップ間隔（デフォルト、callerが上書きする）
+LOADER_POLL_SLEEP = 0.1    # parse_meter / classify_nippou 並列実行中のポーリング間隔
+                            # 1% 刻みで滑らかに進捗を出すため短めに設定
 
 
 # 画像準備
@@ -1760,8 +1797,8 @@ def aggregate_totals(rows):
 
 def run_pipeline(client, imgs, loader):
     """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff, meter_data, nippou_data)"""
-    # 最初のステップでフェードイン演出
-    loader_steps(loader, [3, 8, 14], '画像を判別中', anim_class='entering')
+    # 最初のステップでフェードイン演出（1% 刻み × 短sleep で滑らかに）
+    loader_steps(loader, list(range(3, 15)), '画像を判別中', sleep=0.04, anim_class='entering')
     # 2 枚の判別は互いに独立なため並列実行（API レイテンシを 1 回分に短縮）
     with ThreadPoolExecutor(max_workers=2) as executor:
         f1 = executor.submit(identify_image, client, imgs[0])
@@ -1781,7 +1818,7 @@ def run_pipeline(client, imgs, loader):
     else:
         meter_img, nippou_img = imgs[1], imgs[0]
 
-    loader_steps(loader, [18, 24, 30], '鮮明度を確認中')
+    loader_steps(loader, list(range(18, 31)), '鮮明度を確認中', sleep=0.035)
     ok, reason = check_clarity(client, meter_img, nippou_img)
     if not ok:
         raise RuntimeError(f'画像の鮮明度が不足しています：{reason}\n撮り直して再アップしてください。')
@@ -1791,8 +1828,8 @@ def run_pipeline(client, imgs, loader):
         meter_future = executor.submit(parse_meter, client, meter_img)
         nippou_future = executor.submit(classify_nippou, client, nippou_img)
 
-        # 両 future 完了までローダーを動かす（早期完了なら break）
-        for pct in [35, 42, 50, 58, 65, 72, 78, 82, 84]:
+        # 両 future 完了までローダーを動かす（早期完了なら break、1% 刻み）
+        for pct in range(35, 85):
             if meter_future.done() and nippou_future.done():
                 break
             show_loader(loader, pct, 'メーター明細と日報を並列読み取り中')
@@ -1802,7 +1839,7 @@ def run_pipeline(client, imgs, loader):
         meter_data = meter_future.result()
         nippou_data = nippou_future.result()
 
-    loader_steps(loader, [88, 94, 100], '統合中')
+    loader_steps(loader, list(range(88, 101)), '統合中', sleep=0.035)
     report_rows = build_report(meter_data, nippou_data)
     valid, diff = validate(report_rows, meter_data, nippou_data)
     return report_rows, valid, diff, meter_data, nippou_data
