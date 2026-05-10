@@ -235,13 +235,6 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="title-block">
-  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
-  <div class="divider"></div>
-</div>
-""", unsafe_allow_html=True)
 
 
 # Loader タイミング定数
@@ -1042,60 +1035,69 @@ if st.session_state.get('result_rows'):
     st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
 
     # スライドイン演出は CSS のみで実装。スクロールは廃止（モバイル白画面リスク回避）。
-else:
-    new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
+    st.stop()  # 結果がある場合はここで停止し、タイトルと入力UIを描画しない
 
-    if new_files:
-        existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
-        added = False
-        for f in new_files:
-            key = (f.name, f.size)
-            if key not in existing_keys:
-                st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
-                added = True
-        if added:
-            st.session_state.uploader_counter += 1
-            st.rerun()
+st.markdown("""
+<div class="title-block">
+  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
+  <div class="divider"></div>
+</div>
+""", unsafe_allow_html=True)
 
-    imgs = []
-    if st.session_state.kept_files:
-        cols = st.columns(len(st.session_state.kept_files))
-        for i, kf in enumerate(st.session_state.kept_files):
-            img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
-            imgs.append(img)
-            with cols[i]:
-                st.image(img, use_container_width=True)
-                if st.button('✕ 削除', key=f'del_{i}'):
-                    st.session_state.kept_files.pop(i)
-                    st.rerun()
+new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
 
-    if len(imgs) == 2:
-        if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
-            loader = st.empty()
-            try:
-                api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
-                client = anthropic.Anthropic(api_key=api_key)
-                report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
-                show_loader(loader, 100, '完成しました', anim_class='exiting')
-                time.sleep(0.3)
-                loader.empty()
-                st.session_state.result_rows = report_rows
-                st.session_state.result_valid = valid
-                st.session_state.result_diff = diff
-                st.session_state.result_meter = meter_data
-                st.session_state.result_nippou = nippou_data
-                st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
-            except Exception as e:
-                loader.empty()
-                _clear_results()
-                if isinstance(e, RuntimeError):
-                    st.error(str(e))
-                elif isinstance(e, json.JSONDecodeError):
-                    st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
-                else:
-                    st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
-    elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
-        st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
+if new_files:
+    existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
+    added = False
+    for f in new_files:
+        key = (f.name, f.size)
+        if key not in existing_keys:
+            st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
+            added = True
+    if added:
+        st.session_state.uploader_counter += 1
+        st.rerun()
+
+imgs = []
+if st.session_state.kept_files:
+    cols = st.columns(len(st.session_state.kept_files))
+    for i, kf in enumerate(st.session_state.kept_files):
+        img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
+        imgs.append(img)
+        with cols[i]:
+            st.image(img, use_container_width=True)
+            if st.button('✕ 削除', key=f'del_{i}'):
+                st.session_state.kept_files.pop(i)
+                st.rerun()
+
+if len(imgs) == 2:
+    if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
+        loader = st.empty()
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
+            client = anthropic.Anthropic(api_key=api_key)
+            report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
+            show_loader(loader, 100, '完成しました', anim_class='exiting')
+            time.sleep(0.3)
+            loader.empty()
+            st.session_state.result_rows = report_rows
+            st.session_state.result_valid = valid
+            st.session_state.result_diff = diff
+            st.session_state.result_meter = meter_data
+            st.session_state.result_nippou = nippou_data
+            st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
+        except Exception as e:
+            loader.empty()
+            _clear_results()
+            if isinstance(e, RuntimeError):
+                st.error(str(e))
+            elif isinstance(e, json.JSONDecodeError):
+                st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
+            else:
+                st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
+elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
+    st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
 with st.expander('？ このアプリについて・使い方'):
     st.markdown('''
