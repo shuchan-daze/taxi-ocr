@@ -1,5 +1,6 @@
 # v1.0.0 - 2026-05-10 初回リリース
 import streamlit as st
+import streamlit.components.v1 as components
 import anthropic
 import base64
 from PIL import Image, ExifTags
@@ -857,6 +858,26 @@ if 'kept_files' not in st.session_state:
 
 if st.session_state.get('result_rows'):
     with result_slot.container():
+        # 1. ページ最上部へスクロール（処理完了後の UX）
+        #    Method A (st.html, Streamlit 1.31+) を主とし、失敗時は Method B (components.html) にフォールバック
+        try:
+            st.html('<script>window.parent.scrollTo({top:0,behavior:"smooth"});</script>')
+        except Exception:
+            try:
+                components.html('<script>window.parent.scrollTo({top:0});</script>', height=1)
+            except Exception:
+                pass
+
+        # 2. タイトルブロック（再表示: st.stop で隠れる外側のタイトル代わり）
+        st.markdown("""
+<div class="title-block">
+  <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="color: rgba(255,255,255,0.7) !important; font-size: 10px; letter-spacing:0.05em;">v1.0.0</span></p>
+  <div class="divider"></div>
+</div>
+""", unsafe_allow_html=True)
+
+        # 3〜6: 結果本体（summary / detail-table / reset button / debug expander）
         rows = st.session_state.result_rows
         valid = st.session_state.result_valid
         diff = st.session_state.result_diff
