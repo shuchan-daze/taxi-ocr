@@ -70,7 +70,7 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
 }
 .stButton button:hover {background: #c89f2e !important; transform: translateY(-1px);}
 .stImage img {border-radius: 12px;}
-.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37;}
+.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37; scroll-margin-top: 80px;}
 .result-card {animation: slideInFromAbove 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;}
 @keyframes slideInFromAbove {
     from {opacity: 0; transform: translateY(-20px);}
