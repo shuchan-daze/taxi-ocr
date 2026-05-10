@@ -68,7 +68,7 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
 }
 .stButton button:hover {background: #c89f2e !important; transform: translateY(-1px);}
 .stImage img {border-radius: 12px;}
-.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37; scroll-margin-top: 20px; position: sticky; top: 0; z-index: 100;}
+.complete-bar {background: #f5f5f7; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #d4af37;}
 .result-card {animation: slideInFromAbove 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;}
 @keyframes slideInFromAbove {
     from {opacity: 0; transform: translateY(-20px);}
@@ -200,21 +200,45 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 }
 .particle {
     position: fixed;
-    top: 50%;
-    left: 50%;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 0 6px rgba(255, 255, 255, 0.6), 0 0 12px rgba(255, 255, 255, 0.3);
-    animation-name: spiral;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 10px 4px rgba(255, 255, 255, 0.6);
     animation-iteration-count: infinite;
     animation-timing-function: linear;
-    transform-origin: 0 0;
     will-change: transform, opacity;
 }
-@keyframes spiral {
+/* パターン1: 中心から螺旋を描いて外側へ */
+.particle.p-spiral {
+    top: 50%;
+    left: 50%;
+    transform-origin: 0 0;
+    animation-name: p-spiral;
+}
+@keyframes p-spiral {
     0%   { transform: rotate(0deg) translateX(0px) scale(0.5); opacity: 0; }
     20%  { opacity: 1; }
-    100% { transform: rotate(720deg) translateX(150px) scale(1.5); opacity: 0; }
+    100% { transform: rotate(720deg) translateX(220px) scale(1.5); opacity: 0; }
+}
+/* パターン2: 画面全体を sin 波でゆらゆら漂う */
+.particle.p-drift {
+    animation-name: p-drift;
+}
+@keyframes p-drift {
+    0%   { transform: translate(0, 0) scale(0.8); opacity: 0; }
+    20%  { opacity: 1; }
+    25%  { transform: translate(40px, -30px) scale(1); }
+    50%  { transform: translate(-30px, -60px) scale(1.2); }
+    75%  { transform: translate(50px, -90px) scale(1); }
+    100% { transform: translate(-20px, -120px) scale(0.7); opacity: 0; }
+}
+/* パターン3: 下から上へ舞い上がる */
+.particle.p-rise {
+    animation-name: p-rise;
+}
+@keyframes p-rise {
+    0%   { transform: translateY(0) translateX(0) scale(0.6); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: translateY(-110vh) translateX(var(--dx, 0)) scale(1.4); opacity: 0; }
 }
 [data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
 [data-testid="stExpander"] p,
@@ -627,16 +651,29 @@ def validate_meter_sequence(meter_data):
 # Loader 演出ヘルパー（CSS のみ: %数値 + ラベル + パーティクル）
 
 def _particles_html():
-    """30 個の白いスパイラルパーティクルを生成。中心 (top:50%, left:50%) から螺旋を描いて外側へ。
-    各 particle に異なる size / animation-delay / animation-duration を inline style で付与（JS 不使用）。"""
+    """40 個の白いパーティクルを生成。3 種類の動き(spiral/drift/rise)を index で割り当て、
+    サイズ 8〜25px / duration 1.5〜5s / delay 0〜4s をすべて決定論的に分散（JS 不使用、ちらつかない）。"""
+    patterns = ['p-spiral', 'p-drift', 'p-rise']
     parts = []
-    for i in range(30):
-        # 決定論的に散らす（index ベース、再描画でちらつかない）
-        size = 2 + (i * 7) % 7                # 2〜8 px
-        delay = (i * 0.11) % 3                # 0〜3 秒の遅延
-        duration = 2.0 + (i * 0.13) % 3       # 2〜5 秒
+    for i in range(40):
+        pat = patterns[i % 3]                                  # 3 パターンを順繰り
+        size = 8 + (i * 11) % 18                               # 8〜25 px
+        delay = (i * 0.17) % 4                                 # 0〜4 秒
+        duration = 1.5 + (i * 0.23) % 3.5                      # 1.5〜5 秒
+        # 配置: drift / rise は画面全体ランダム位置、spiral は中心固定（CSS 側）
+        if pat == 'p-spiral':
+            pos_style = ''
+        elif pat == 'p-drift':
+            x_pct = (i * 73 + 5) % 95
+            y_pct = (i * 41 + 10) % 90
+            pos_style = f'left:{x_pct}%;top:{y_pct}%;'
+        else:  # p-rise
+            x_pct = (i * 83 + 7) % 100
+            dx = ((i * 31) % 200) - 100
+            pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
         parts.append(
-            f'<span class="particle" style="'
+            f'<span class="particle {pat}" style="'
+            f'{pos_style}'
             f'width:{size}px;height:{size}px;'
             f'animation-delay:-{delay:.2f}s;'
             f'animation-duration:{duration:.2f}s;'
@@ -666,12 +703,10 @@ def loader_steps(loader, pcts, label, sleep=LOADER_STEP_SLEEP, anim_class=''):
 # 表示ヘルパー
 
 def render_summary(ken, nin, gen, mi, sou, tax, net):
+    """表示順: 1.現収/未収/総収 → 2.消費税/税抜 → 3.完成バー(件数/人数)。
+    その後の render_detail_table で詳細テーブル。"""
     fmt = lambda x: f'¥{int(x):,}'
     st.markdown(f"""
-<div class="complete-bar">
-  <p class="label">✓ 完成</p>
-  <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
-</div>
 <div class="metric-grid-3">
   <div class="metric" data-metric="gen"><p class="label">現収</p><p class="value">{fmt(gen)}</p></div>
   <div class="metric" data-metric="mi"><p class="label">未収</p><p class="value">{fmt(mi)}</p></div>
@@ -680,6 +715,10 @@ def render_summary(ken, nin, gen, mi, sou, tax, net):
 <div class="metric-grid-2">
   <div class="metric" data-metric="tax"><p class="label">消費税</p><p class="value">{fmt(tax)}</p></div>
   <div class="metric" data-metric="net"><p class="label">税抜運収</p><p class="value">{fmt(net)}</p></div>
+</div>
+<div class="complete-bar">
+  <p class="label">✓ 完成</p>
+  <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -934,7 +973,6 @@ if st.session_state.get('result_rows'):
     #   2. render_detail_table（日報の行一覧）
     #   この後: 整合性チェック → デバッグ expander → リセットボタン
     ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
-    st.success('✅ 日報が完成しました！上にスクロールして確認してください', icon=None)
     render_summary(ken, nin, gen, mi, sou, tax, net)
     render_detail_table(rows)
 
