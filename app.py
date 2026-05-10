@@ -76,7 +76,7 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
     to {opacity: 1; transform: translateY(0);}
 }
 .complete-bar .label {font-size: 14px; font-weight: 500; color: #010519; margin: 0;}
-.complete-bar .stats {font-size: 18px; font-weight: 500; color: #010519; margin: 0;}
+.complete-bar .stats {font-size: 22px; font-weight: 500; color: #010519; margin: 0;}
 .complete-bar .stats small {font-size: 11px; color: #888;}
 .metric-grid-3 {display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px;}
 .metric-grid-2 {display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px;}
@@ -84,9 +84,9 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
 .metric.dark {background: #d4af37;}
 .metric.dark .label {color: #010519 !important;}
 .metric.dark .value {color: #010519 !important;}
-.metric .label {font-size: clamp(11px, 2.5vw, 13px); color: #888; margin: 0; letter-spacing: 0.05em;}
+.metric .label {font-size: clamp(13px, 3vw, 15px); color: #888; margin: 0; letter-spacing: 0.05em;}
 
-.metric .value {font-size: clamp(20px, 5vw, 28px); font-weight: 700; margin: 2px 0 0; color: #010519; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+.metric .value {font-size: clamp(24px, 6vw, 34px); font-weight: 700; margin: 2px 0 0; color: #010519; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
 table {width: 100%; font-size: 12px; border-collapse: collapse; border-radius: 12px; overflow: hidden; border: 0.5px solid #eee;}
 thead tr {background: #010519 !important; color: white !important;}
@@ -710,10 +710,14 @@ def loader_steps(loader, pcts, label, sleep=LOADER_STEP_SLEEP, anim_class=''):
 # 表示ヘルパー
 
 def render_summary(ken, nin, gen, mi, sou, tax, net):
-    """表示順: 1.現収/未収/総収 → 2.消費税/税抜 → 3.完成バー(件数/人数)。
+    """表示順: 1.完成バー(件数/人数) → 2.現収/未収/総収 → 3.消費税/税抜。
     その後の render_detail_table で詳細テーブル。"""
     fmt = lambda x: f'¥{int(x):,}'
     st.markdown(f"""
+<div class="complete-bar">
+  <p class="label">✓ 完成</p>
+  <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
+</div>
 <div class="metric-grid-3">
   <div class="metric" data-metric="gen"><p class="label">現収</p><p class="value">{fmt(gen)}</p></div>
   <div class="metric" data-metric="mi"><p class="label">未収</p><p class="value">{fmt(mi)}</p></div>
@@ -722,10 +726,6 @@ def render_summary(ken, nin, gen, mi, sou, tax, net):
 <div class="metric-grid-2">
   <div class="metric" data-metric="tax"><p class="label">消費税</p><p class="value">{fmt(tax)}</p></div>
   <div class="metric" data-metric="net"><p class="label">税抜運収</p><p class="value">{fmt(net)}</p></div>
-</div>
-<div class="complete-bar">
-  <p class="label">✓ 完成</p>
-  <p class="stats">{ken}<small> 件 </small>{nin}<small> 人</small></p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -854,7 +854,7 @@ if 'kept_files' not in st.session_state:
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="opacity:0.6; font-size:9px;">v1.0.0</span></p>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="opacity:0.7; font-size:10px; letter-spacing:0.05em;">v1.0.0</span></p>
   <div class="divider"></div>
 </div>
 """, unsafe_allow_html=True)
