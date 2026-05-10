@@ -286,6 +286,9 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 </style>
 """, unsafe_allow_html=True)
 
+# 結果表示用スロット（ページ最上部）。結果がある時に container() で埋める。
+result_slot = st.empty()
+
 
 
 # Loader タイミング定数
@@ -851,321 +854,324 @@ if 'uploader_counter' not in st.session_state:
     st.session_state.uploader_counter = 0
 if 'kept_files' not in st.session_state:
     st.session_state.kept_files = []
+
+if st.session_state.get('result_rows'):
+    with result_slot.container():
+        rows = st.session_state.result_rows
+        valid = st.session_state.result_valid
+        diff = st.session_state.result_diff
+        meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
+        nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
+
+        # メーターレシート品質チェック
+        _meter_rows = meter_data.get('rows', [])
+        _meter_no_list = [int(r.get('no', 0)) for r in _meter_rows]
+
+        # ① 先頭5行の行番号が [1,2,3,4,5] と一致するか
+        _first_5 = _meter_no_list[:5]
+        _expected_head = [1, 2, 3, 4, 5]
+        _top5_mismatch_count = sum(
+            1 for i, n in enumerate(_first_5)
+            if i < len(_expected_head) and n != _expected_head[i]
+        )
+        # 先頭5行のうち2件以上が連番からズレていれば異常（5件未満ならスキップ）
+        _top5_invalid = len(_first_5) >= 5 and _top5_mismatch_count >= 2
+
+        # ② 総件数と最終行番号の乖離
+        _meter_total_count = len(_meter_no_list)
+        _meter_last_no = _meter_no_list[-1] if _meter_no_list else 0
+        _no_count_gap = abs(_meter_total_count - _meter_last_no) if _meter_no_list else 0
+        _count_diverged = _meter_no_list and _no_count_gap >= 3
+
+        if _meter_rows and (_top5_invalid or _count_diverged):
+            _reasons = []
+            if _top5_invalid:
+                _reasons.append(
+                    f'先頭5行の行番号が連番になっていません（読み取り: {_first_5}、期待: [1,2,3,4,5]）'
+                )
+            if _count_diverged:
+                _reasons.append(
+                    f'抽出行数（{_meter_total_count}件）と最終行番号（No.{_meter_last_no}）が乖離しています（差 {_no_count_gap}）'
+                )
+            _bullets = '\n'.join('- ' + r for r in _reasons)
+            st.error(
+                f'### ⚠️ メーターレシートの読み取りに問題があります\n\n'
+                f'{_bullets}\n\n'
+                f'正しいメーターレシートの写真か確認して再アップしてください。'
+            )
+            st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_meter_btn', use_container_width=True)
+
+        # 行番号連番チェック（内部欠番の検出: 例 1,2,4,5 で 3 が抜けるケース）
+        _seq_ok, _missing_nos = validate_meter_sequence(meter_data)
+        if not _seq_ok:
+            st.warning(
+                f'メーター明細の行番号に欠番があります（欠番: {_missing_nos}）。'
+                f'写真の途中行が読み取れていない可能性があります。'
+            )
+
+        # 乖離チェック（写真誤り検知）
+        _rides = nippou_data.get('rides', [])
+
+        _meter_count = len(_meter_rows)
+        _nippou_count = len(_rides)
+        _row_diff = abs(_meter_count - _nippou_count)
+
+        # 日報に対応付いたメーター行の合計金額（日報がカバーした金額）
+        _meter_total = int(meter_data.get('total') or sum(int(r.get('amount', 0)) for r in _meter_rows))
+        _matched_nos = {r.get('meter_no') for r in _rides if r.get('meter_no') is not None}
+        _matched_meter_amt = sum(int(r.get('amount', 0)) for r in _meter_rows if r['no'] in _matched_nos)
+        _nippou_total = _matched_meter_amt
+
+        _gap_rate = abs(_meter_total - _nippou_total) / _meter_total if _meter_total > 0 else 0.0
+        _amount_diff = abs(_meter_total - _nippou_total)
+
+        if _row_diff >= 3 or _gap_rate >= 0.30:
+            st.error(
+                f'### ⚠️ メーターレシートと日報の内容が大きく乖離しています\n\n'
+                f'- メーター: **{_meter_count}件** / 日報: **{_nippou_count}件**（{_row_diff}件の差）\n'
+                f'- 金額差: **¥{_amount_diff:,}**（{_gap_rate*100:.0f}%の乖離）\n\n'
+                f'写真が正しいか確認して、必要であれば再アップしてください。'
+            )
+            st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_btn', use_container_width=True)
+        elif _row_diff == 2:
+            st.warning(
+                f'メーター({_meter_count}件) と 日報({_nippou_count}件) で 2 件の差があります。'
+                f'読み落としや日報の書き漏れがないか確認してください。'
+            )
+
+        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+
+        if not valid:
+            diff_abs = abs(diff)
+            # 差額のパターンからヒントを推定
+            hints = []
+            if diff > 0:
+                hints.append(f'出力合計が ¥{diff_abs:,} 多い → メーター明細の桁を多く読みすぎている可能性、または重複行の混入')
+            else:
+                hints.append(f'出力合計が ¥{diff_abs:,} 少ない → メーター明細の行を抜かしている、または桁を少なく読んだ可能性')
+            # 似た数字ペアの差額パターン
+            digit_swap_patterns = {
+                300: '（例: 1,800 ↔ 1,500、3,000 ↔ 2,700 などの「3 と 2」「8 と 5」の取り違え）',
+                500: '（例: 1,000 ↔ 1,500、2,500 ↔ 2,000 などの「0 と 5」の取り違え）',
+                600: '（例: 1,800 ↔ 1,200 などの「8 と 2」の取り違え）',
+                900: '（例: 1,000 ↔ 1,900 などの「0 と 9」の取り違え）',
+                4000: '（例: 1,100 ↔ 5,100 などの千の位「1 と 5」の取り違え）',
+            }
+            for delta, hint in digit_swap_patterns.items():
+                if diff_abs == delta:
+                    hints.append(f'¥{delta:,} は典型的な誤読パターン {hint}')
+                    break
+            st.warning(
+                f'⚠️ 金額が ¥{diff_abs:,} ずれています。下の表で内容を確認してください。\n\n'
+                + '\n'.join('- ' + h for h in hints)
+                + '\n\nメーター明細の読み取り結果（下のデバッグセクション）を画像と照合してください。'
+            )
+
+        # 表示順序を厳守:
+        #   1. render_summary（件数・現収・未収・総収・消費税・税抜）
+        #   2. render_detail_table（日報の行一覧）
+        #   この後: 整合性チェック → デバッグ expander → リセットボタン
+        ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
+        render_summary(ken, nin, gen, mi, sou, tax, net)
+        render_detail_table(rows)
+        # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
+        st.markdown(f"""
+    <div class="metric-grid-3" style="margin-top:12px;">
+      <div class="metric"><p class="label">現収</p><p class="value">¥{gen:,}</p></div>
+      <div class="metric"><p class="label">未収</p><p class="value">¥{mi:,}</p></div>
+      <div class="metric dark"><p class="label">総収</p><p class="value">¥{sou:,}</p></div>
+    </div>
+    <div class="metric-grid-2">
+      <div class="metric"><p class="label">消費税</p><p class="value">¥{tax:,}</p></div>
+      <div class="metric"><p class="label">税抜運収</p><p class="value">¥{net:,}</p></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # 値の破壊検出（Stage1 vs 最終出力の整合性）
+        # 各 meter_no について、メーター額とテーブル出力 (gen+mi) の合計が一致するか検証。
+        # 障割行は build_report で独立 meter_no を持ち mi=meter_amount として出力されるため、
+        # 通常行と同じ枠組みで検証できる。
+        meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
+        sum_by_no = {}
+        for r in rows:
+            no = r.get('no')
+            # メーター超過の "22+" のような string は元の meter_no に正規化して合算
+            if isinstance(no, str) and no.endswith('+'):
+                try:
+                    no = int(no.rstrip('+'))
+                except ValueError:
+                    continue
+            if no in meter_amounts:
+                sum_by_no[no] = sum_by_no.get(no, 0) + int(r.get('gen') or 0) + int(r.get('mi') or 0)
+        integrity_issues = []
+        for no, meter_amt in sorted(meter_amounts.items()):
+            actual = sum_by_no.get(no, 0)
+            if meter_amt != actual:
+                integrity_issues.append({
+                    'no': no, 'meter': meter_amt, 'actual': actual,
+                })
+
+        if integrity_issues:
+            st.error(f'🚨 値の破壊を検出（{len(integrity_issues)}件）: Stage 1 で読み取った金額とテーブル出力が一致していません')
+            parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1メーター額</th><th>テーブル合計</th><th>差</th></tr></thead><tbody>']
+            for it in integrity_issues:
+                diff_v = it['actual'] - it['meter']
+                parts.append(
+                    f'<tr class="mismatch"><td>{it["no"]}</td>'
+                    f'<td>¥{it["meter"]:,}</td>'
+                    f'<td>¥{it["actual"]:,}</td>'
+                    f'<td>{diff_v:+,}</td></tr>'
+                )
+            parts.append('</tbody></table>')
+            st.markdown(''.join(parts), unsafe_allow_html=True)
+            st.caption('差が出ている No について、下のデバッグセクションで Stage 1 の値と最終出力の値を照合してください。')
+
+        st.markdown('<br>', unsafe_allow_html=True)
+        st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
+
+        # Stage 1: メーター明細生データ
+        with st.expander('🔧 Stage 1: メーター明細生データ'):
+            meter_rows_disp = meter_data.get('rows', [])
+            if meter_rows_disp:
+                parts = ['<table class="detail-table"><thead><tr><th>No</th><th>時刻</th><th>金額</th></tr></thead><tbody>']
+                for r in meter_rows_disp:
+                    parts.append(f'<tr><td>{r["no"]}</td><td>{r["time"]}</td><td>¥{r["amount"]:,}</td></tr>')
+                parts.append('</tbody></table>')
+                st.markdown(''.join(parts), unsafe_allow_html=True)
+                st.markdown(f'**合計**: ¥{sum(int(r.get("amount", 0)) for r in meter_rows_disp):,}（{len(meter_rows_disp)}行）')
+            else:
+                st.info('メーター明細データなし')
+            compact = '  '.join(f'**{r["no"]}**:{r["amount"]:,}' for r in meter_rows_disp)
+            st.markdown(f'📋 **OCR数値一覧:** {compact}')
+            st.markdown('**生 JSON:**')
+            st.json(meter_data)
+
+        # Stage 2: 日報分類生データ
+        with st.expander('🔧 Stage 2: 日報分類生データ'):
+            rides = nippou_data.get('rides', [])
+            if rides:
+                parts = ['<table class="detail-table"><thead><tr><th>meter_no</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>overage</th></tr></thead><tbody>']
+                for r in rides:
+                    parts.append(
+                        f'<tr><td>{r.get("meter_no", "")}</td>'
+                        f'<td>{r.get("passengers", "")}</td>'
+                        f'<td>{r.get("kind", "")}</td>'
+                        f'<td>{r.get("memo", "")}</td>'
+                        f'<td>{r.get("case", "")}</td>'
+                        f'<td>{r.get("overage_amount") or ""}</td></tr>'
+                    )
+                parts.append('</tbody></table>')
+                st.markdown(''.join(parts), unsafe_allow_html=True)
+            else:
+                st.info('日報の分類データなし')
+
+            st.markdown('**生 JSON:**')
+            compact2 = '  '.join(
+                f'**{r.get("meter_no")}**:{r.get("nippou_amount") or "?"}({(r.get("kind") or "?")[0]})'
+                for r in rides
+            )
+            st.markdown(f'📋 **日報数値一覧:** {compact2}')
+            st.json(nippou_data)
+
+        # Stage 3: build_report 入出力
+        with st.expander('🔧 Stage 3: build_report 入出力'):
+            st.markdown('**No ごとの突き合わせ（Stage1金額 vs テーブル出力）:**')
+            parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1金額</th><th>出力 gen</th><th>出力 mi</th><th>出力合計</th><th>state</th><th>memo</th></tr></thead><tbody>']
+            for r in rows:
+                no = r.get('no')
+                meter_amt = meter_amounts.get(no)
+                meter_amt_disp = f'¥{meter_amt:,}' if isinstance(meter_amt, int) else '-'
+                gen_v = int(r.get('gen') or 0)
+                mi_v = int(r.get('mi') or 0)
+                total = gen_v + mi_v
+                cls = ''
+                if r.get('state') == 'mismatch':
+                    cls = ' class="mismatch"'
+                elif r.get('state') == 'special':
+                    cls = ' class="special"'
+                elif r.get('state') == 'charter':
+                    cls = ' class="charter"'
+                parts.append(
+                    f'<tr{cls}><td>{no}</td>'
+                    f'<td>{meter_amt_disp}</td>'
+                    f'<td>¥{gen_v:,}</td>'
+                    f'<td>¥{mi_v:,}</td>'
+                    f'<td>¥{total:,}</td>'
+                    f'<td>{r.get("state", "")}</td>'
+                    f'<td>{r.get("memo", "")}</td></tr>'
+                )
+            parts.append('</tbody></table>')
+            st.markdown(''.join(parts), unsafe_allow_html=True)
+
+            st.markdown('**report_rows 生 JSON:**')
+            st.json(rows)
+
+    st.stop()
+
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
-  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="opacity:0.7; font-size:10px; letter-spacing:0.05em;">v1.0.0</span></p>
+  <p class="subtitle">DAILY REPORT · OCR ASSIST · <span style="color: rgba(255,255,255,0.7) !important; font-size: 10px; letter-spacing:0.05em;">v1.0.0</span></p>
   <div class="divider"></div>
 </div>
 """, unsafe_allow_html=True)
 
-if st.session_state.get('result_rows'):
-    rows = st.session_state.result_rows
-    valid = st.session_state.result_valid
-    diff = st.session_state.result_diff
-    meter_data = st.session_state.get('result_meter', {'rows': [], 'total': 0})
-    nippou_data = st.session_state.get('result_nippou', {'rides': [], 'extras': []})
+new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
 
-    # メーターレシート品質チェック
-    _meter_rows = meter_data.get('rows', [])
-    _meter_no_list = [int(r.get('no', 0)) for r in _meter_rows]
+if new_files:
+    existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
+    added = False
+    for f in new_files:
+        key = (f.name, f.size)
+        if key not in existing_keys:
+            st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
+            added = True
+    if added:
+        st.session_state.uploader_counter += 1
+        st.rerun()
 
-    # ① 先頭5行の行番号が [1,2,3,4,5] と一致するか
-    _first_5 = _meter_no_list[:5]
-    _expected_head = [1, 2, 3, 4, 5]
-    _top5_mismatch_count = sum(
-        1 for i, n in enumerate(_first_5)
-        if i < len(_expected_head) and n != _expected_head[i]
-    )
-    # 先頭5行のうち2件以上が連番からズレていれば異常（5件未満ならスキップ）
-    _top5_invalid = len(_first_5) >= 5 and _top5_mismatch_count >= 2
+imgs = []
+if st.session_state.kept_files:
+    cols = st.columns(len(st.session_state.kept_files))
+    for i, kf in enumerate(st.session_state.kept_files):
+        img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
+        imgs.append(img)
+        with cols[i]:
+            st.image(img, use_container_width=True)
+            if st.button('✕ 削除', key=f'del_{i}'):
+                st.session_state.kept_files.pop(i)
+                st.rerun()
 
-    # ② 総件数と最終行番号の乖離
-    _meter_total_count = len(_meter_no_list)
-    _meter_last_no = _meter_no_list[-1] if _meter_no_list else 0
-    _no_count_gap = abs(_meter_total_count - _meter_last_no) if _meter_no_list else 0
-    _count_diverged = _meter_no_list and _no_count_gap >= 3
-
-    if _meter_rows and (_top5_invalid or _count_diverged):
-        _reasons = []
-        if _top5_invalid:
-            _reasons.append(
-                f'先頭5行の行番号が連番になっていません（読み取り: {_first_5}、期待: [1,2,3,4,5]）'
-            )
-        if _count_diverged:
-            _reasons.append(
-                f'抽出行数（{_meter_total_count}件）と最終行番号（No.{_meter_last_no}）が乖離しています（差 {_no_count_gap}）'
-            )
-        _bullets = '\n'.join('- ' + r for r in _reasons)
-        st.error(
-            f'### ⚠️ メーターレシートの読み取りに問題があります\n\n'
-            f'{_bullets}\n\n'
-            f'正しいメーターレシートの写真か確認して再アップしてください。'
-        )
-        st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_meter_btn', use_container_width=True)
-
-    # 行番号連番チェック（内部欠番の検出: 例 1,2,4,5 で 3 が抜けるケース）
-    _seq_ok, _missing_nos = validate_meter_sequence(meter_data)
-    if not _seq_ok:
-        st.warning(
-            f'メーター明細の行番号に欠番があります（欠番: {_missing_nos}）。'
-            f'写真の途中行が読み取れていない可能性があります。'
-        )
-
-    # 乖離チェック（写真誤り検知）
-    _rides = nippou_data.get('rides', [])
-
-    _meter_count = len(_meter_rows)
-    _nippou_count = len(_rides)
-    _row_diff = abs(_meter_count - _nippou_count)
-
-    # 日報に対応付いたメーター行の合計金額（日報がカバーした金額）
-    _meter_total = int(meter_data.get('total') or sum(int(r.get('amount', 0)) for r in _meter_rows))
-    _matched_nos = {r.get('meter_no') for r in _rides if r.get('meter_no') is not None}
-    _matched_meter_amt = sum(int(r.get('amount', 0)) for r in _meter_rows if r['no'] in _matched_nos)
-    _nippou_total = _matched_meter_amt
-
-    _gap_rate = abs(_meter_total - _nippou_total) / _meter_total if _meter_total > 0 else 0.0
-    _amount_diff = abs(_meter_total - _nippou_total)
-
-    if _row_diff >= 3 or _gap_rate >= 0.30:
-        st.error(
-            f'### ⚠️ メーターレシートと日報の内容が大きく乖離しています\n\n'
-            f'- メーター: **{_meter_count}件** / 日報: **{_nippou_count}件**（{_row_diff}件の差）\n'
-            f'- 金額差: **¥{_amount_diff:,}**（{_gap_rate*100:.0f}%の乖離）\n\n'
-            f'写真が正しいか確認して、必要であれば再アップしてください。'
-        )
-        st.button('🔄 写真を再アップする', on_click=reset_app, key='reupload_btn', use_container_width=True)
-    elif _row_diff == 2:
-        st.warning(
-            f'メーター({_meter_count}件) と 日報({_nippou_count}件) で 2 件の差があります。'
-            f'読み落としや日報の書き漏れがないか確認してください。'
-        )
-
-    st.markdown('<div class="result-card">', unsafe_allow_html=True)
-
-    if not valid:
-        diff_abs = abs(diff)
-        # 差額のパターンからヒントを推定
-        hints = []
-        if diff > 0:
-            hints.append(f'出力合計が ¥{diff_abs:,} 多い → メーター明細の桁を多く読みすぎている可能性、または重複行の混入')
-        else:
-            hints.append(f'出力合計が ¥{diff_abs:,} 少ない → メーター明細の行を抜かしている、または桁を少なく読んだ可能性')
-        # 似た数字ペアの差額パターン
-        digit_swap_patterns = {
-            300: '（例: 1,800 ↔ 1,500、3,000 ↔ 2,700 などの「3 と 2」「8 と 5」の取り違え）',
-            500: '（例: 1,000 ↔ 1,500、2,500 ↔ 2,000 などの「0 と 5」の取り違え）',
-            600: '（例: 1,800 ↔ 1,200 などの「8 と 2」の取り違え）',
-            900: '（例: 1,000 ↔ 1,900 などの「0 と 9」の取り違え）',
-            4000: '（例: 1,100 ↔ 5,100 などの千の位「1 と 5」の取り違え）',
-        }
-        for delta, hint in digit_swap_patterns.items():
-            if diff_abs == delta:
-                hints.append(f'¥{delta:,} は典型的な誤読パターン {hint}')
-                break
-        st.warning(
-            f'⚠️ 金額が ¥{diff_abs:,} ずれています。下の表で内容を確認してください。\n\n'
-            + '\n'.join('- ' + h for h in hints)
-            + '\n\nメーター明細の読み取り結果（下のデバッグセクション）を画像と照合してください。'
-        )
-
-    # 表示順序を厳守:
-    #   1. render_summary（件数・現収・未収・総収・消費税・税抜）
-    #   2. render_detail_table（日報の行一覧）
-    #   この後: 整合性チェック → デバッグ expander → リセットボタン
-    ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
-    render_summary(ken, nin, gen, mi, sou, tax, net)
-    render_detail_table(rows)
-    # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
-    st.markdown(f"""
-<div class="metric-grid-3" style="margin-top:12px;">
-  <div class="metric"><p class="label">現収</p><p class="value">¥{gen:,}</p></div>
-  <div class="metric"><p class="label">未収</p><p class="value">¥{mi:,}</p></div>
-  <div class="metric dark"><p class="label">総収</p><p class="value">¥{sou:,}</p></div>
-</div>
-<div class="metric-grid-2">
-  <div class="metric"><p class="label">消費税</p><p class="value">¥{tax:,}</p></div>
-  <div class="metric"><p class="label">税抜運収</p><p class="value">¥{net:,}</p></div>
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # 値の破壊検出（Stage1 vs 最終出力の整合性）
-    # 各 meter_no について、メーター額とテーブル出力 (gen+mi) の合計が一致するか検証。
-    # 障割行は build_report で独立 meter_no を持ち mi=meter_amount として出力されるため、
-    # 通常行と同じ枠組みで検証できる。
-    meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
-    sum_by_no = {}
-    for r in rows:
-        no = r.get('no')
-        # メーター超過の "22+" のような string は元の meter_no に正規化して合算
-        if isinstance(no, str) and no.endswith('+'):
-            try:
-                no = int(no.rstrip('+'))
-            except ValueError:
-                continue
-        if no in meter_amounts:
-            sum_by_no[no] = sum_by_no.get(no, 0) + int(r.get('gen') or 0) + int(r.get('mi') or 0)
-    integrity_issues = []
-    for no, meter_amt in sorted(meter_amounts.items()):
-        actual = sum_by_no.get(no, 0)
-        if meter_amt != actual:
-            integrity_issues.append({
-                'no': no, 'meter': meter_amt, 'actual': actual,
-            })
-
-    if integrity_issues:
-        st.error(f'🚨 値の破壊を検出（{len(integrity_issues)}件）: Stage 1 で読み取った金額とテーブル出力が一致していません')
-        parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1メーター額</th><th>テーブル合計</th><th>差</th></tr></thead><tbody>']
-        for it in integrity_issues:
-            diff_v = it['actual'] - it['meter']
-            parts.append(
-                f'<tr class="mismatch"><td>{it["no"]}</td>'
-                f'<td>¥{it["meter"]:,}</td>'
-                f'<td>¥{it["actual"]:,}</td>'
-                f'<td>{diff_v:+,}</td></tr>'
-            )
-        parts.append('</tbody></table>')
-        st.markdown(''.join(parts), unsafe_allow_html=True)
-        st.caption('差が出ている No について、下のデバッグセクションで Stage 1 の値と最終出力の値を照合してください。')
-
-    st.markdown('<br>', unsafe_allow_html=True)
-    st.button('🔄 新しい日報を作成', on_click=reset_app, key='reset_btn', use_container_width=True)
-
-    # Stage 1: メーター明細生データ
-    with st.expander('🔧 Stage 1: メーター明細生データ'):
-        meter_rows_disp = meter_data.get('rows', [])
-        if meter_rows_disp:
-            parts = ['<table class="detail-table"><thead><tr><th>No</th><th>時刻</th><th>金額</th></tr></thead><tbody>']
-            for r in meter_rows_disp:
-                parts.append(f'<tr><td>{r["no"]}</td><td>{r["time"]}</td><td>¥{r["amount"]:,}</td></tr>')
-            parts.append('</tbody></table>')
-            st.markdown(''.join(parts), unsafe_allow_html=True)
-            st.markdown(f'**合計**: ¥{sum(int(r.get("amount", 0)) for r in meter_rows_disp):,}（{len(meter_rows_disp)}行）')
-        else:
-            st.info('メーター明細データなし')
-        compact = '  '.join(f'**{r["no"]}**:{r["amount"]:,}' for r in meter_rows_disp)
-        st.markdown(f'📋 **OCR数値一覧:** {compact}')
-        st.markdown('**生 JSON:**')
-        st.json(meter_data)
-
-    # Stage 2: 日報分類生データ
-    with st.expander('🔧 Stage 2: 日報分類生データ'):
-        rides = nippou_data.get('rides', [])
-        if rides:
-            parts = ['<table class="detail-table"><thead><tr><th>meter_no</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>overage</th></tr></thead><tbody>']
-            for r in rides:
-                parts.append(
-                    f'<tr><td>{r.get("meter_no", "")}</td>'
-                    f'<td>{r.get("passengers", "")}</td>'
-                    f'<td>{r.get("kind", "")}</td>'
-                    f'<td>{r.get("memo", "")}</td>'
-                    f'<td>{r.get("case", "")}</td>'
-                    f'<td>{r.get("overage_amount") or ""}</td></tr>'
-                )
-            parts.append('</tbody></table>')
-            st.markdown(''.join(parts), unsafe_allow_html=True)
-        else:
-            st.info('日報の分類データなし')
-
-        st.markdown('**生 JSON:**')
-        compact2 = '  '.join(
-            f'**{r.get("meter_no")}**:{r.get("nippou_amount") or "?"}({(r.get("kind") or "?")[0]})'
-            for r in rides
-        )
-        st.markdown(f'📋 **日報数値一覧:** {compact2}')
-        st.json(nippou_data)
-
-    # Stage 3: build_report 入出力
-    with st.expander('🔧 Stage 3: build_report 入出力'):
-        st.markdown('**No ごとの突き合わせ（Stage1金額 vs テーブル出力）:**')
-        parts = ['<table class="detail-table"><thead><tr><th>No</th><th>Stage1金額</th><th>出力 gen</th><th>出力 mi</th><th>出力合計</th><th>state</th><th>memo</th></tr></thead><tbody>']
-        for r in rows:
-            no = r.get('no')
-            meter_amt = meter_amounts.get(no)
-            meter_amt_disp = f'¥{meter_amt:,}' if isinstance(meter_amt, int) else '-'
-            gen_v = int(r.get('gen') or 0)
-            mi_v = int(r.get('mi') or 0)
-            total = gen_v + mi_v
-            cls = ''
-            if r.get('state') == 'mismatch':
-                cls = ' class="mismatch"'
-            elif r.get('state') == 'special':
-                cls = ' class="special"'
-            elif r.get('state') == 'charter':
-                cls = ' class="charter"'
-            parts.append(
-                f'<tr{cls}><td>{no}</td>'
-                f'<td>{meter_amt_disp}</td>'
-                f'<td>¥{gen_v:,}</td>'
-                f'<td>¥{mi_v:,}</td>'
-                f'<td>¥{total:,}</td>'
-                f'<td>{r.get("state", "")}</td>'
-                f'<td>{r.get("memo", "")}</td></tr>'
-            )
-        parts.append('</tbody></table>')
-        st.markdown(''.join(parts), unsafe_allow_html=True)
-
-        st.markdown('**report_rows 生 JSON:**')
-        st.json(rows)
-
-else:
-    new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
-
-    if new_files:
-        existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
-        added = False
-        for f in new_files:
-            key = (f.name, f.size)
-            if key not in existing_keys:
-                st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
-                added = True
-        if added:
-            st.session_state.uploader_counter += 1
-            st.rerun()
-
-    imgs = []
-    if st.session_state.kept_files:
-        cols = st.columns(len(st.session_state.kept_files))
-        for i, kf in enumerate(st.session_state.kept_files):
-            img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
-            imgs.append(img)
-            with cols[i]:
-                st.image(img, use_container_width=True)
-                if st.button('✕ 削除', key=f'del_{i}'):
-                    st.session_state.kept_files.pop(i)
-                    st.rerun()
-
-    if len(imgs) == 2:
-        if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
-            loader = st.empty()
-            try:
-                api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
-                client = anthropic.Anthropic(api_key=api_key)
-                report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
-                show_loader(loader, 100, '完成しました', anim_class='exiting')
-                time.sleep(0.3)
-                loader.empty()
-                st.session_state.result_rows = report_rows
-                st.session_state.result_valid = valid
-                st.session_state.result_diff = diff
-                st.session_state.result_meter = meter_data
-                st.session_state.result_nippou = nippou_data
-                st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
-            except Exception as e:
-                loader.empty()
-                _clear_results()
-                if isinstance(e, RuntimeError):
-                    st.error(str(e))
-                elif isinstance(e, (json.JSONDecodeError, ValueError)):
-                    # JSON 抽出失敗または JSON が見つからない (_parse_meter_claude / classify_nippou が raise)
-                    st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
-                else:
-                    st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
-    elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
-        st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
+if len(imgs) == 2:
+    if st.button('🔍 日報を完成させる', use_container_width=True, type='primary'):
+        loader = st.empty()
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY') or st.secrets.get('ANTHROPIC_API_KEY')
+            client = anthropic.Anthropic(api_key=api_key)
+            report_rows, valid, diff, meter_data, nippou_data = run_pipeline(client, imgs, loader)
+            show_loader(loader, 100, '完成しました', anim_class='exiting')
+            time.sleep(0.3)
+            loader.empty()
+            st.session_state.result_rows = report_rows
+            st.session_state.result_valid = valid
+            st.session_state.result_diff = diff
+            st.session_state.result_meter = meter_data
+            st.session_state.result_nippou = nippou_data
+            st.rerun()  # if/else 分岐を再評価し、結果ブロックを即時表示（2回押し回避）
+        except Exception as e:
+            loader.empty()
+            _clear_results()
+            if isinstance(e, RuntimeError):
+                st.error(str(e))
+            elif isinstance(e, (json.JSONDecodeError, ValueError)):
+                # JSON 抽出失敗または JSON が見つからない (_parse_meter_claude / classify_nippou が raise)
+                st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
+            else:
+                st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
+elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
+    st.warning(f'2枚選択してください（現在{len(st.session_state.kept_files)}枚）')
 
 with st.expander('？ このアプリについて・使い方'):
     st.markdown('''
