@@ -201,8 +201,8 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 .particle {
     position: fixed;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 1.0);
-    box-shadow: 0 0 20px 8px rgba(255, 255, 255, 0.9), 0 0 40px 15px rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 8px 3px rgba(255, 255, 255, 0.2), 0 0 16px 6px rgba(255, 255, 255, 0.1);
     animation-iteration-count: infinite;
     animation-timing-function: linear;
     will-change: transform, opacity;
