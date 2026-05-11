@@ -3,6 +3,12 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.2.02 - 2026-05-11
+#   - イントロ演出を 3.5s → 4.5s に拡張、4 フェーズの滑らかな遷移に再設計:
+#     ① 黒+粒子のみ → ② AI 登場 → ③ 静止 → ④ グラデーション的にフェードアウト
+#   - 背景: 不透明 #010519 → 下から透明グラデーション → 完全透明（UI へ自然に繋がる）
+#   - AI 文字: 退場時に scale(1.18) + blur(8px) で溶けるように消える
+#   - 各要素を 1 本のアニメーションに統合（intro-life / intro-ai-life / intro-sub-life）
 # v1.2.01 - 2026-05-11
 #   - イントロスプラッシュの調整:
 #     • z-index: 99998 → 999999（背景の UI が透けて見える問題を解消）
@@ -276,31 +282,36 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     20%  { opacity: 1; }
     100% { transform: translateY(-110vh) translateX(var(--dx, 0)) scale(1.4); opacity: 0; }
 }
-/* === イントロスプラッシュ（初回セッションのみ表示、CSS のみで自動フェードアウト） === */
-/* 演出順序: t=0 で粒子だけ動く → t=0.5s 頃 AI 文字が現れる → t=0.8s 頃 サブテキスト → t=2.5s フェード開始 */
+/* === イントロスプラッシュ（初回セッションのみ表示、CSS のみで滑らかに遷移） === */
+/* 全体演出 (4.5 秒):
+     0.0s ─ 黒画面、粒子だけが動き始める
+     0.5s ─ AI 文字がふわっと現れる
+     0.8s ─ TAXI NIPPOU が続いて現れる
+     1.5-2.5s ─ 全要素揃って静止
+     2.5-4.5s ─ ゆっくりグラデーション的にフェードアウト
+                 (背景が下から透明に / AI が拡大しながら溶ける / 粒子も一緒に消える) */
 .intro-splash {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: #010519 !important;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: 999999;          /* Streamlit のヘッダー等より上に */
+    z-index: 999999;
     pointer-events: none;
-    animation: intro-fade-out 3.5s ease-in-out forwards;
+    animation: intro-life 4.5s cubic-bezier(0.5, 0, 0.3, 1) forwards;
 }
 .intro-splash .intro-ai {
-    font-size: clamp(160px, 36vw, 360px);  /* 大きく */
+    font-size: clamp(160px, 36vw, 360px);
     font-weight: 900;
-    color: #ffffff;                          /* 白に */
+    color: #ffffff;
     letter-spacing: 0.08em;
     margin: 0;
     text-shadow:
         0 0 24px rgba(255, 255, 255, 0.85),
         0 0 60px rgba(255, 255, 255, 0.55),
         0 0 120px rgba(255, 255, 255, 0.35);
-    animation: intro-text-in 1.0s cubic-bezier(0.2, 0.7, 0.2, 1) 0.5s both;
+    animation: intro-ai-life 4.5s cubic-bezier(0.3, 0, 0.3, 1) forwards;
 }
 .intro-splash .intro-sub {
     font-size: clamp(14px, 3vw, 22px);
@@ -308,15 +319,39 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     letter-spacing: 0.4em;
     font-weight: 400;
     margin: 18px 0 0;
-    animation: intro-text-in 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.8s both;
+    animation: intro-sub-life 4.5s cubic-bezier(0.3, 0, 0.3, 1) forwards;
 }
-@keyframes intro-fade-out {
-    0%, 75%  { opacity: 1; }
-    100%     { opacity: 0; visibility: hidden; }
+/* 背景: 完全不透明 #010519 → 下から徐々に透明になるグラデーションへ → 完全透明 */
+@keyframes intro-life {
+    0%, 55% {
+        background: #010519;
+        opacity: 1;
+    }
+    75% {
+        background: linear-gradient(to top, transparent 0%, #010519 50%, #010519 100%);
+        opacity: 1;
+    }
+    100% {
+        background: transparent;
+        opacity: 0;
+        visibility: hidden;
+    }
 }
-@keyframes intro-text-in {
+/* AI 文字: 遅延ふわっと登場 → 静止 → 拡大しながら溶けるように消える */
+@keyframes intro-ai-life {
+    0%   { opacity: 0; transform: translateY(24px) scale(1); filter: blur(0); }
+    11%  { opacity: 0; transform: translateY(24px) scale(1); filter: blur(0); }
+    33%  { opacity: 1; transform: translateY(0)    scale(1); filter: blur(0); }
+    55%  { opacity: 1; transform: translateY(0)    scale(1); filter: blur(0); }
+    100% { opacity: 0; transform: translateY(0)    scale(1.18); filter: blur(8px); }
+}
+/* サブテキスト: AI より少し遅れて登場、同様にフェード */
+@keyframes intro-sub-life {
     0%   { opacity: 0; transform: translateY(24px); }
-    100% { opacity: 1; transform: translateY(0); }
+    17%  { opacity: 0; transform: translateY(24px); }
+    36%  { opacity: 1; transform: translateY(0); }
+    55%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-10px); }
 }
 [data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
 [data-testid="stExpander"] p,
@@ -415,7 +450,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.01</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.02</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1375,6 +1410,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.2.02** (2026-05-11): イントロ演出を 4 フェーズの滑らかな遷移に再設計（粒子先行 → AI登場 → 静止 → グラデーション溶解）
 - **v1.2.01** (2026-05-11): イントロ調整（背景完全カバー・AI 白グロー・文字拡大・粒子先行）
 - **v1.2.00** (2026-05-11): イントロスプラッシュ追加（AI / TAXI NIPPOU と粒子の演出、3秒で自動フェード）
 - **v1.1.04** (2026-05-11): バージョン表記を 2 桁ゼロパディングに統一（例: 1.1.4 → 1.1.04）
