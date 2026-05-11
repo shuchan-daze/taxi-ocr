@@ -35,7 +35,7 @@ st.markdown("""
 .block-container {padding-top: 1.5rem; padding-bottom: 2rem; max-width: 600px;}
 h1, h2, h3, h4, h5, h6, p, span, div, label {color: #010519;}
 .stApp > header {background: transparent;}
-.title-block {margin-bottom: 1.5rem;}
+.title-block {margin-bottom: 0.5rem;}
 .result-card h1, .result-card h2, .result-card h3, .result-card h4 {color: #010519 !important;}
 .title-block h1 {color: #d4af37 !important; font-size: 32px !important; font-weight: 600 !important; margin: 0 0 6px !important;}
 .title-block h1 * {color: #d4af37 !important;}
@@ -87,9 +87,9 @@ section[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstru
     from {opacity: 0; transform: translateY(-20px);}
     to {opacity: 1; transform: translateY(0);}
 }
-.complete-bar .label {font-size: 14px; font-weight: 500; color: #010519; margin: 0;}
-.complete-bar .stats {font-size: 22px; font-weight: 500; color: #010519; margin: 0;}
-.complete-bar .stats small {font-size: 11px; color: #888;}
+.complete-bar .label {font-size: 18px; font-weight: 500; color: #010519; margin: 0;}
+.complete-bar .stats {font-size: 28px; font-weight: 600; color: #010519; margin: 0;}
+.complete-bar .stats small {font-size: 14px; color: #888;}
 .metric-grid-3 {display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px;}
 .metric-grid-2 {display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px;}
 .metric {background: #f5f5f7; border-radius: 10px; padding: 10px 12px; min-width: 0;}
@@ -302,7 +302,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.1.0</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.1.0</p>
 </div>
 """, unsafe_allow_html=True)
 
