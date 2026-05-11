@@ -10,6 +10,20 @@
 
 ---
 
+## [1.2.04] - 2026-05-11
+
+### Removed (撤去)
+- **イントロスプラッシュ実装を撤去** (v1.2.00 〜 v1.2.03 を巻き戻し)
+  - 削除した CSS: `.intro-splash` / `.intro-splash .intro-ai` / `.intro-splash .intro-sub` および `@keyframes intro-life / intro-ai-life / intro-sub-life`
+  - 削除した Python: `if 'intro_shown' not in st.session_state` のレンダリングブロック
+  - 残置: `_build_particles_html()` および `_PARTICLES_HTML` 定数（loader が使用するため）
+- **撤去の理由**:
+  - Streamlit のレンダリングパイプライン（Python 経由で逐次マークダウン送信）の構造上、CSS のみで初期 UI のチラ見え (FOUC) を完全に防ぐことが困難
+  - 試した手法（z-index 引き上げ、inline 重要スタイル、CSS markdown より先に DOM 投入、グラデーション遷移）でも改善せず、起動が 4.5 秒遅くなる代償の方が大きかった
+  - 将来再実装する場合は `st.set_page_config` レベルでのカスタム HTML 注入や、JavaScript ベースのアプローチが必要
+
+---
+
 ## [1.2.03] - 2026-05-11
 
 ### Fixed (重要な修正)
