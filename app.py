@@ -3,6 +3,8 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整
 #
+# v1.1.3 - 2026-05-11
+#   - 包括的な README.md を整備（プロジェクト概要・アーキテクチャ・業務ルール・セットアップ）
 # v1.1.2 - 2026-05-11
 #   - 速度改善: to_b64() の per-image キャッシュ化（JPEG エンコード重複排除）
 #   - dead code 削除: 未使用 HTML 属性 (data-metric / data-value / data-rowidx)
@@ -307,7 +309,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.1.2</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.1.3</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1302,6 +1304,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.1.3** (2026-05-11): README.md 整備（プロジェクトの全記録ドキュメント）
 - **v1.1.2** (2026-05-11): 速度改善（画像エンコードのキャッシュ化）、dead code 削除
 - **v1.1.1** (2026-05-11): 表示の微調整（バージョン番号拡大・タイトル下余白削減・完成バー拡大）
 - **v1.1.0** (2026-05-11): 障害者割引（障割）対応の本格実装、整合性チェック修正、税抜運収の表示修正など
