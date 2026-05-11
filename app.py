@@ -3,6 +3,11 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.3.01 - 2026-05-11
+#   - アップロード後の体感速度を大幅改善: st.file_uploader 受信直後に normalize_upload_bytes()
+#     で EXIF orientation 適用 → 3000px 上限 → JPEG q=92 に正規化してから session_state 保持。
+#     元 5〜8MB → 0.5〜1MB に縮小され、プレビュー描画・HEIC 再デコード・再 rerun の負荷を削減。
+#   - OCR 送信サイズは元々 to_b64() で 3000px 上限に縮小されているため、API コスト・精度は不変。
 # v1.3.00 - 2026-05-11
 #   - OCR プロバイダ抽象化: parse_meter をディスパッチャ化し、_ocr_vision_claude /
 #     _ocr_claude / _ocr_gemini をプラガブルに切替可能に（OCR_PROVIDERS 経由）。
@@ -384,7 +389,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.3.00</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.3.01</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -413,6 +418,20 @@ def fix_orientation(img):
             elif o == 8: img = img.rotate(90, expand=True)
     except: pass
     return img
+
+def normalize_upload_bytes(raw_bytes):
+    """アップロード受信バイト列を正規化: EXIF orientation 適用 → 3000px 上限 → JPEG q=92。
+    元 5〜8MB のスマホ写真を 0.5〜1MB 程度に縮め、session_state 保持・プレビュー描画・
+    HEIC 再デコード等のサーバ負荷を削減する。OCR 入力サイズは to_b64() で同じ 3000px 上限
+    に既に縮小されているため、API への送信サイズと OCR 精度には影響しない。"""
+    img = fix_orientation(Image.open(io.BytesIO(raw_bytes)))
+    if img.mode in ('RGBA', 'LA', 'P'):
+        img = img.convert('RGB')  # JPEG は alpha 非対応
+    img.thumbnail((3000, 3000))
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=92)
+    return buf.getvalue()
+
 
 def to_b64(img):
     """画像を base64 JPEG にエンコード。同一 img オブジェクトには結果をキャッシュ
@@ -1350,12 +1369,14 @@ if st.session_state.get('result_rows'):
 new_files = st.file_uploader('日報と営業明細書をアップしてください', type=['jpg','jpeg','png','heic'], accept_multiple_files=True, key=f"uploader_{st.session_state.uploader_counter}")
 
 if new_files:
+    # size は重複検出用に元アップロードサイズを保持（bytes は正規化済みなので size と一致しない）
     existing_keys = {(kf['name'], kf['size']) for kf in st.session_state.kept_files}
     added = False
     for f in new_files:
         key = (f.name, f.size)
         if key not in existing_keys:
-            st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': f.getvalue()})
+            normalized = normalize_upload_bytes(f.getvalue())
+            st.session_state.kept_files.append({'name': f.name, 'size': f.size, 'bytes': normalized})
             added = True
     if added:
         st.session_state.uploader_counter += 1
@@ -1365,7 +1386,8 @@ imgs = []
 if st.session_state.kept_files:
     cols = st.columns(len(st.session_state.kept_files))
     for i, kf in enumerate(st.session_state.kept_files):
-        img = fix_orientation(Image.open(io.BytesIO(kf['bytes'])))
+        # 受信時に fix_orientation 済みなのでここでは不要、Image.open のみで OK
+        img = Image.open(io.BytesIO(kf['bytes']))
         imgs.append(img)
         with cols[i]:
             st.image(img, use_container_width=True)
@@ -1430,6 +1452,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.3.01** (2026-05-11): アップロード後の体感速度を改善（受信時に 3000px JPEG に正規化、5〜8MB → 0.5〜1MB 化）。API コスト・OCR 精度は不変。
 - **v1.3.00** (2026-05-11): OCR プロバイダ抽象化（Vision+Claude / Gemini / Claude を `[ocr] provider` で切替、失敗時は Claude 単独に自動フォールバック）
 - **v1.2.04** (2026-05-11): イントロスプラッシュ撤去（v1.2.00〜v1.2.03 を巻き戻し）
 - **v1.2.03** (2026-05-11): FOUC 対策（UI 一瞬見え解消）・AI / TAXI NIPPOU の視覚中心揃え
