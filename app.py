@@ -3,6 +3,13 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.3.00 - 2026-05-11
+#   - OCR プロバイダ抽象化: parse_meter をディスパッチャ化し、_ocr_vision_claude /
+#     _ocr_claude / _ocr_gemini をプラガブルに切替可能に（OCR_PROVIDERS 経由）。
+#     secrets.toml の [ocr] provider = "vision_claude" | "gemini" | "claude" で選択。
+#     失敗時は常に Claude 単独に最終フォールバック。コスト最適 OCR への乗り換えを容易化。
+#   - Gemini 対応追加: GEMINI_API_KEY が secrets/env にあれば gemini-2.0-flash で動作
+#     （[ocr] gemini_model でモデル名上書き可）。google-generativeai を requirements に追加。
 # v1.2.04 - 2026-05-11
 #   - イントロスプラッシュ実装を撤去（v1.2.00〜v1.2.03 を巻き戻し）。
 #     理由: Streamlit のレンダリングパイプライン上、CSS のみで完全な FOUC 防止が困難で、
@@ -377,7 +384,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.04</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.3.00</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -482,12 +489,21 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
     return False, (m.group(1).strip() if m else '画像が不鮮明です')
 
 
-# Stage 1: メーター明細書を OCR → {'rows': [{no, time, amount}, ...]}
+# ============================================================
+# Stage 1: メーター明細書 OCR（プロバイダ切替式）
+# ============================================================
 # 出力金額は build_report で「真実」として使用される。
+#
+# プロバイダ追加の手順:
+#   1. _ocr_xxx(meter_img, claude_client) -> {'rows': [...], 'total': N} | None を実装
+#      （成功時は dict / 失敗時は None を返す。例外も許容、parse_meter 側で吸収）
+#   2. OCR_PROVIDERS に名前で登録
+#   3. secrets.toml で [ocr] provider = "xxx" を指定
+#
+# 既定は "vision_claude"（従来挙動）。設定値が未知の場合も既定にフォールバック。
+# 選択したプロバイダが失敗した場合は最終フォールバックとして _ocr_claude を呼ぶ。
 
-def _parse_meter_claude(client, meter_img):
-    """メーターレシート画像を Claude に直接送って JSON で返させる。"""
-    prompt = """このタクシーメーターのレシート画像から全乗車明細を読み取り、
+JSON_PROMPT_DIRECT = """このタクシーメーターのレシート画像から全乗車明細を読み取り、
 以下のJSON形式のみで返答せよ。説明文は不要。
 
 {"rows": [
@@ -499,18 +515,41 @@ def _parse_meter_claude(client, meter_img):
 ・timeは降車時刻（HH:MM形式）
 ・amountは¥の金額（数値のみ）
 ・JSON以外出力しない"""
-    res = client.messages.create(
+
+
+def _finalize_rows(rows):
+    """rows -> {rows, total} に正規化。total は amount 合計を再計算。"""
+    rows = rows or []
+    return {'rows': rows, 'total': sum(int(r.get('amount', 0)) for r in rows)}
+
+
+def _extract_json_rows(text):
+    """応答テキストから {...} を取り出し rows を返す。見つからなければ None。"""
+    m = re.search(r'\{.*\}', text or '', re.DOTALL)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+    rows = data.get('rows')
+    return rows if rows else None
+
+
+def _ocr_claude(meter_img, claude_client):
+    """Claude に画像を直接渡して JSON 構造化。外部依存なしで動く最終フォールバック。"""
+    res = claude_client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
             {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(meter_img)}},
-            {'type': 'text', 'text': prompt},
+            {'type': 'text', 'text': JSON_PROMPT_DIRECT},
         ]}]
     )
     text = res.content[0].text.strip()
-    m = re.search(r'\{.*\}', text, re.DOTALL)
-    if not m:
+    rows = _extract_json_rows(text)
+    if rows is None:
         raise ValueError(f'メーター明細のJSONが見つかりません。応答: {text[:300]}')
-    return json.loads(m.group(0))
+    return _finalize_rows(rows)
 
 
 @st.cache_resource
@@ -532,9 +571,11 @@ def get_vision_client():
     return None
 
 
-def _parse_meter_vision(client_vision, meter_img, claude_client):
-    """ハイブリッド: Vision API で OCR した生テキストを Claude に渡して JSON 構造化。
-    claude_client は parse_meter 経由で main から渡される（毎回生成しない）。"""
+def _ocr_vision_claude(meter_img, claude_client):
+    """ハイブリッド: Vision API で OCR した生テキストを Claude に渡して JSON 構造化。"""
+    client_vision = get_vision_client()
+    if client_vision is None:
+        return None
     buf = io.BytesIO()
     meter_img.save(buf, format='JPEG', quality=95)
     image = vision.Image(content=buf.getvalue())
@@ -562,28 +603,80 @@ def _parse_meter_vision(client_vision, meter_img, claude_client):
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': prompt}]
     )
-    text = res.content[0].text.strip()
-    m = re.search(r'\{.*\}', text, re.DOTALL)
-    if not m:
+    rows = _extract_json_rows(res.content[0].text.strip())
+    return _finalize_rows(rows) if rows else None
+
+
+@st.cache_resource
+def get_gemini_model():
+    """Gemini モデル取得。GEMINI_API_KEY / secrets / google-generativeai のどれかが
+    欠けていれば None。インポートは遅延（プロバイダ未使用時に依存を強制しない）。"""
+    api_key = os.environ.get('GEMINI_API_KEY')
+    if not api_key:
+        try:
+            api_key = st.secrets.get('GEMINI_API_KEY')
+        except Exception:
+            api_key = None
+    if not api_key:
         return None
-    data = json.loads(m.group(0))
-    rows = data.get('rows', [])
-    if not rows:
+    try:
+        import google.generativeai as genai
+    except Exception:
         return None
-    return {'rows': rows, 'total': sum(r['amount'] for r in rows)}
+    try:
+        genai.configure(api_key=api_key)
+        try:
+            model_name = st.secrets.get('ocr', {}).get('gemini_model', 'gemini-2.0-flash')
+        except Exception:
+            model_name = 'gemini-2.0-flash'
+        return genai.GenerativeModel(model_name)
+    except Exception:
+        return None
+
+
+def _ocr_gemini(meter_img, claude_client):
+    """Gemini に画像を直接渡して JSON 構造化。claude_client は未使用だが署名統一のため受け取る。"""
+    model = get_gemini_model()
+    if model is None:
+        return None
+    try:
+        resp = model.generate_content([JSON_PROMPT_DIRECT, meter_img])
+        text = (getattr(resp, 'text', '') or '').strip()
+    except Exception:
+        return None
+    rows = _extract_json_rows(text)
+    return _finalize_rows(rows) if rows else None
+
+
+OCR_PROVIDERS = {
+    'vision_claude': _ocr_vision_claude,
+    'gemini': _ocr_gemini,
+    'claude': _ocr_claude,
+}
+OCR_DEFAULT_PROVIDER = 'vision_claude'
+
+
+def _get_configured_ocr_provider():
+    """secrets.toml [ocr] provider を読む。未設定/不正値は既定にフォールバック。"""
+    try:
+        name = st.secrets.get('ocr', {}).get('provider', OCR_DEFAULT_PROVIDER)
+    except Exception:
+        name = OCR_DEFAULT_PROVIDER
+    return name if name in OCR_PROVIDERS else OCR_DEFAULT_PROVIDER
 
 
 def parse_meter(client, meter_img):
-    """Stage 1 ディスパッチャ: Vision+Claude ハイブリッド優先、失敗時のみ Claude 単独にフォールバック。"""
-    vc = get_vision_client()
-    if vc is not None:
+    """Stage 1 ディスパッチャ: 設定プロバイダ → 失敗時は Claude 単独に最終フォールバック。"""
+    provider_name = _get_configured_ocr_provider()
+    provider_fn = OCR_PROVIDERS[provider_name]
+    if provider_fn is not _ocr_claude:
         try:
-            result = _parse_meter_vision(vc, meter_img, client)
+            result = provider_fn(meter_img, client)
             if result is not None:
                 return result
         except Exception:
             pass
-    return _parse_meter_claude(client, meter_img)
+    return _ocr_claude(meter_img, client)
 
 
 # Stage 2: 日報のみから乗客行を分類 → {'rides': [...]}
@@ -1302,7 +1395,7 @@ if len(imgs) == 2:
             if isinstance(e, RuntimeError):
                 st.error(str(e))
             elif isinstance(e, (json.JSONDecodeError, ValueError)):
-                # JSON 抽出失敗または JSON が見つからない (_parse_meter_claude / classify_nippou が raise)
+                # JSON 抽出失敗または JSON が見つからない (_ocr_claude / classify_nippou が raise)
                 st.error(f'AI応答のJSON解析に失敗しました: {e}\nもう一度お試しください。')
             else:
                 st.error(f'処理中にエラーが発生しました: {type(e).__name__}: {e}')
@@ -1337,6 +1430,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.3.00** (2026-05-11): OCR プロバイダ抽象化（Vision+Claude / Gemini / Claude を `[ocr] provider` で切替、失敗時は Claude 単独に自動フォールバック）
 - **v1.2.04** (2026-05-11): イントロスプラッシュ撤去（v1.2.00〜v1.2.03 を巻き戻し）
 - **v1.2.03** (2026-05-11): FOUC 対策（UI 一瞬見え解消）・AI / TAXI NIPPOU の視覚中心揃え
 - **v1.2.02** (2026-05-11): イントロ演出を 4 フェーズの滑らかな遷移に再設計（粒子先行 → AI登場 → 静止 → グラデーション溶解）

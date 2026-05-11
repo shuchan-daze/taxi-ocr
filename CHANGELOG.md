@@ -10,6 +10,30 @@
 
 ---
 
+## [1.3.00] - 2026-05-11
+
+### Added (追加)
+- **OCR プロバイダ抽象化** — 時代ごとの最適 OCR への乗り換えを容易にする差し替え機構
+  - `parse_meter()` をディスパッチャ化し、`OCR_PROVIDERS` レジストリ経由で実装を選択
+  - 既存: `_ocr_vision_claude`（Google Vision + Claude ハイブリッド、従来の既定挙動）
+  - 既存: `_ocr_claude`（Claude 単独、外部依存ゼロの最終フォールバック）
+  - **新規**: `_ocr_gemini`（Gemini に画像を直接渡し JSON 構造化）
+- **`secrets.toml` で切替可能**: `[ocr] provider = "vision_claude" | "gemini" | "claude"`
+  - 既定は `"vision_claude"`（後方互換）。未知の値は既定にフォールバック。
+  - Gemini モデル名は `[ocr] gemini_model` で上書き可（既定 `gemini-2.0-flash`）。
+- **`google-generativeai`** を `requirements.txt` に追加（インポートは遅延・未使用なら不要）
+
+### Changed (変更)
+- `_ocr_claude` の戻り値に `total` キーを追加し、全プロバイダで `{rows, total}` 形式に統一
+- 設定プロバイダが失敗した場合、自動で `_ocr_claude` に最終フォールバック（従来は Vision 失敗時のみ）
+
+### Why (なぜ)
+- Cloud Vision の単価がコスト課題。Gemini は同等性能で 5〜20 倍安いケースがあり乗り換え動機が大きい
+- ただし将来の値上げ・無料枠縮小・円安リスクに備え、**プロバイダ差し替えを 1 行設定で完結**できる構造に
+- 既存呼び出し側 (`app.py:930` 周辺) は無変更で済むよう、戻り値 shape を維持
+
+---
+
 ## [1.2.04] - 2026-05-11
 
 ### Removed (撤去)
