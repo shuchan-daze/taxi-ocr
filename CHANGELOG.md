@@ -10,6 +10,18 @@
 
 ---
 
+## [1.2.00] - 2026-05-11
+
+### Added (機能追加)
+- **イントロスプラッシュ画面**: セッション初回起動時に「AI」を中央に大表示、下段に "TAXI NIPPOU" を表示する立ち上がり演出を追加。
+  - 既存のパーティクル CSS (`_PARTICLES_HTML` / spiral / drift / rise) をそのまま再利用
+  - 起動から約 3 秒で CSS animation により自動フェードアウト（JS 不使用）
+  - `st.session_state.intro_shown` フラグで「初回のみ表示」を制御（rerun では再表示しない）
+  - `pointer-events: none` により表示中もユーザー操作をブロックしない
+- `_build_particles_html()` および `_PARTICLES_HTML` 定数を CSS 直後に前倒し配置（intro と loader 両方で参照するため）
+
+---
+
 ## [1.1.04] - 2026-05-11
 
 ### Changed (表記規約)

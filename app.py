@@ -3,6 +3,10 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.2.00 - 2026-05-11
+#   - イントロスプラッシュ追加: セッション初回起動時に「AI / TAXI NIPPOU」を
+#     中央に大表示、既存パーティクルがダイナミックに動き、3 秒で自動フェードアウト。
+#     CSS のみで実装（JS 不使用）。intro_shown フラグで初回のみ表示。
 # v1.1.04 - 2026-05-11
 #   - PATCH 番号を 2 桁ゼロパディングに統一（例: v1.1.4 → v1.1.04）。
 #     これにより PATCH 99 まで視覚的に揃った表記が可能になる。
@@ -266,6 +270,47 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     20%  { opacity: 1; }
     100% { transform: translateY(-110vh) translateX(var(--dx, 0)) scale(1.4); opacity: 0; }
 }
+/* === イントロスプラッシュ（初回セッションのみ表示、CSS のみで自動フェードアウト） === */
+.intro-splash {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #010519;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 99998;
+    pointer-events: none;
+    animation: intro-fade-out 3.2s ease-in-out 0.3s forwards;
+}
+.intro-splash .intro-ai {
+    font-size: clamp(96px, 24vw, 220px);
+    font-weight: 900;
+    color: #d4af37;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-shadow:
+        0 0 30px rgba(212, 175, 55, 0.6),
+        0 0 60px rgba(212, 175, 55, 0.4),
+        0 0 100px rgba(212, 175, 55, 0.2);
+    animation: intro-text-in 1.0s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.intro-splash .intro-sub {
+    font-size: clamp(14px, 3vw, 22px);
+    color: rgba(255, 255, 255, 0.8);
+    letter-spacing: 0.4em;
+    font-weight: 400;
+    margin: 12px 0 0;
+    animation: intro-text-in 1.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes intro-fade-out {
+    0%, 70%  { opacity: 1; }
+    100%     { opacity: 0; visibility: hidden; }
+}
+@keyframes intro-text-in {
+    0%   { opacity: 0; transform: translateY(24px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
 [data-testid="stExpander"] [data-testid="stMarkdownContainer"] *,
 [data-testid="stExpander"] p,
 [data-testid="stExpander"] li,
@@ -306,13 +351,64 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 </style>
 """, unsafe_allow_html=True)
 
+# パーティクル HTML を先に構築（intro と loader の両方で再利用）
+def _build_particles_html():
+    """40 個の白いパーティクル HTML を構築（決定論的、毎回同じ出力）。
+    3 種類の動き(spiral/drift/rise)を index で割り当て、サイズ 15〜40px / duration 1.5〜5s /
+    delay 0〜4s をすべて分散（JS 不使用、ちらつかない）。"""
+    patterns = ['p-spiral', 'p-drift', 'p-rise']
+    parts = []
+    for i in range(40):
+        pat = patterns[i % 3]
+        size = 15 + (i * 13) % 26
+        delay = (i * 0.17) % 4
+        duration = 1.5 + (i * 0.23) % 3.5
+        if pat == 'p-spiral':
+            pos_style = ''
+        elif pat == 'p-drift':
+            x_pct = (i * 73 + 5) % 95
+            y_pct = (i * 41 + 10) % 90
+            pos_style = f'left:{x_pct}%;top:{y_pct}%;'
+        else:  # p-rise
+            x_pct = (i * 83 + 7) % 100
+            dx = ((i * 31) % 400) - 200
+            pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
+        parts.append(
+            f'<span class="particle {pat}" style="'
+            f'{pos_style}'
+            f'width:{size}px;height:{size}px;'
+            f'animation-delay:-{delay:.2f}s;'
+            f'animation-duration:{duration:.2f}s;'
+            f'"></span>'
+        )
+    return ''.join(parts)
+
+
+# モジュール起動時に 1 回だけ構築してキャッシュ（intro / loader から共有）
+_PARTICLES_HTML = _build_particles_html()
+
+
+# イントロスプラッシュ（セッション初回のみ）
+#   - 「AI」を中央に大表示、下段に "TAXI NIPPOU"
+#   - 既存のパーティクル (_PARTICLES_HTML) をそのまま再利用
+#   - CSS animation のみで 3 秒後に自動フェードアウト（JS 不使用）
+if 'intro_shown' not in st.session_state:
+    st.session_state.intro_shown = True
+    st.markdown(f"""
+<div class="intro-splash">
+  <div class="particles-container">{_PARTICLES_HTML}</div>
+  <h1 class="intro-ai">AI</h1>
+  <p class="intro-sub">TAXI NIPPOU</p>
+</div>
+""", unsafe_allow_html=True)
+
 # タイトルブロック（ページ最上部、常時表示。結果の有無に関わらず常に最上段）
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.1.04</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.00</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -738,42 +834,7 @@ def validate_meter_sequence(meter_data):
 
 
 # Loader 演出ヘルパー（CSS のみ: %数値 + ラベル + パーティクル）
-
-def _build_particles_html():
-    """40 個の白いパーティクル HTML を構築（決定論的、毎回同じ出力）。
-    3 種類の動き(spiral/drift/rise)を index で割り当て、サイズ 15〜40px / duration 1.5〜5s /
-    delay 0〜4s をすべて分散（JS 不使用、ちらつかない）。"""
-    patterns = ['p-spiral', 'p-drift', 'p-rise']
-    parts = []
-    for i in range(40):
-        pat = patterns[i % 3]
-        size = 15 + (i * 13) % 26
-        delay = (i * 0.17) % 4
-        duration = 1.5 + (i * 0.23) % 3.5
-        if pat == 'p-spiral':
-            pos_style = ''
-        elif pat == 'p-drift':
-            x_pct = (i * 73 + 5) % 95
-            y_pct = (i * 41 + 10) % 90
-            pos_style = f'left:{x_pct}%;top:{y_pct}%;'
-        else:  # p-rise
-            x_pct = (i * 83 + 7) % 100
-            dx = ((i * 31) % 400) - 200
-            pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
-        parts.append(
-            f'<span class="particle {pat}" style="'
-            f'{pos_style}'
-            f'width:{size}px;height:{size}px;'
-            f'animation-delay:-{delay:.2f}s;'
-            f'animation-duration:{duration:.2f}s;'
-            f'"></span>'
-        )
-    return ''.join(parts)
-
-
-# 速度改善: パーティクル HTML はパイプライン中 50+ 回 show_loader から呼ばれるが
-# 出力は毎回同じ（決定論的）。モジュール起動時に一度だけ構築してキャッシュ。
-_PARTICLES_HTML = _build_particles_html()
+# 注: _PARTICLES_HTML はイントロスプラッシュでも使うため、ファイル冒頭側に前倒しで定義済み。
 
 
 def show_loader(loader, pct, label, anim_class=''):
@@ -1307,6 +1368,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.2.00** (2026-05-11): イントロスプラッシュ追加（AI / TAXI NIPPOU と粒子の演出、3秒で自動フェード）
 - **v1.1.04** (2026-05-11): バージョン表記を 2 桁ゼロパディングに統一（例: 1.1.4 → 1.1.04）
 - **v1.1.03** (2026-05-11): README.md 整備（プロジェクトの全記録ドキュメント）
 - **v1.1.02** (2026-05-11): 速度改善（画像エンコードのキャッシュ化）、dead code 削除
