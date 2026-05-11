@@ -5,6 +5,10 @@ key.json
 secrets.toml
 .streamlit/secrets.toml
 
+# 検証用テスト画像（プライバシー保護）
+test_data/
+test_images/
+
 # Python
 __pycache__/
 *.py[cod]

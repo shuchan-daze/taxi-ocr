@@ -3,6 +3,21 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.4.01 - 2026-05-11
+#   - 精度検証完了 → 本番構成を確定: 日報は **Claude Opus 4.5 を維持**。
+#     検証結果（compare_nippou.py で 8 画像 × 4 モデル）:
+#       - Gemini 2.5 Flash: 致命的誤読多数（金額・人数・現収/未収・行数）。商用 NG
+#       - Claude Opus 4.7: 出力が Opus 4.5 と微妙に違う、精度差は要追加検証
+#       - Claude Sonnet 4.6: Opus 4.5 より誤差大、精度劣化
+#       - Prompt Caching (system prompt 版): 構造変更で出力挙動が変わる、節約も $2/人で小
+#   - 結論: 精度妥協ナシ縛りで API コストを下げる打ち手は今日の技術スタックには無い。
+#     ¥5,000/月 × 月 20 枚プラン等、価格設計で吸収する方針に切替。
+#   - 本番推奨設定 (secrets.toml):
+#       [ocr] provider = "vision_claude"   ← Gemini からこれに戻す
+#       [nippou]
+#       provider = "claude"                 ← 既定だが明示推奨
+#       compare_mode = false               ← 検証フェーズ終了で削除/false
+#   - コード自体は v1.4.00 と同等（プロバイダ抽象化は保持、本番設定で精度パスを選ぶ運用）
 # v1.4.00 - 2026-05-11
 #   - 日報分類 (classify_nippou) もプロバイダ抽象化: secrets.toml [nippou] provider で
 #     "claude" | "gemini" を切替可能に。既定は "claude"（精度優先・後方互換）。
@@ -398,7 +413,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.4.00</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.4.01</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -672,9 +687,9 @@ def get_gemini_model():
     try:
         genai.configure(api_key=api_key)
         try:
-            model_name = st.secrets.get('ocr', {}).get('gemini_model', 'gemini-2.0-flash')
+            model_name = st.secrets.get('ocr', {}).get('gemini_model', 'gemini-2.5-flash')
         except Exception:
-            model_name = 'gemini-2.0-flash'
+            model_name = 'gemini-2.5-flash'
         return genai.GenerativeModel(model_name)
     except Exception:
         return None
@@ -1593,6 +1608,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.4.01** (2026-05-11): 精度検証の結果、日報は Claude Opus 4.5 維持で確定（Gemini/Sonnet/Opus 4.7 / Caching すべて出力ズレあり）。コスト削減は価格設計で吸収する方針へ
 - **v1.4.00** (2026-05-11): 日報分類もプロバイダ抽象化（`[nippou] provider` で claude/gemini 切替、`compare_mode` で A/B 比較）。identify/clarity を Gemini 優先化。1 枚 $0.30 → $0.002 想定（要 A/B 検証）
 - **v1.3.01** (2026-05-11): アップロード後の体感速度を改善（受信時に 3000px JPEG に正規化、5〜8MB → 0.5〜1MB 化）。API コスト・OCR 精度は不変。
 - **v1.3.00** (2026-05-11): OCR プロバイダ抽象化（Vision+Claude / Gemini / Claude を `[ocr] provider` で切替、失敗時は Claude 単独に自動フォールバック）
