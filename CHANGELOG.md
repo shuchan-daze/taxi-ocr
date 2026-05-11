@@ -10,6 +10,23 @@
 
 ---
 
+## [1.2.03] - 2026-05-11
+
+### Fixed (重要な修正)
+- **FOUC（Flash of Unstyled Content）対策**: イントロ起動時に UI が一瞬見えてから黒に変わる問題を解消
+  - イントロ splash の DOM を**メイン CSS の `<style>` タグより前**に投入
+  - intro 要素に **inline 重要スタイル** (`position:fixed; inset:0; background:#010519; z-index:999999`) を直接付与
+  - CSS 解析より前から黒い背景が確保され、Streamlit 内部要素も完全に隠蔽される
+  - 副次効果として `_build_particles_html()` / `_PARTICLES_HTML` 定数も上部に移動
+
+### Fixed (見た目の修正)
+- **AI と TAXI NIPPOU の視覚中心がずれていた問題を修正**:
+  - `letter-spacing` は末尾文字の後にも空白を生むため、要素幅が視覚中心より広くなり、flex 中央寄せでも見た目の中心がずれる
+  - 両テキストに `padding-left` で letter-spacing と同値（AI: 0.08em / sub: 0.4em）を加えて視覚中心 = 要素中心 = flex 中心に揃える
+  - `text-align: center` を明示
+
+---
+
 ## [1.2.02] - 2026-05-11
 
 ### Changed (演出再設計)

@@ -3,6 +3,12 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.2.03 - 2026-05-11
+#   - FOUC (UI 一瞬見え) 対策: イントロを CSS markdown より先にレンダリング、
+#     inline 重要スタイル (position:fixed; inset:0; background:#010519; z-index:999999)
+#     で CSS 解析前から黒画面を確保。
+#   - AI と TAXI NIPPOU の視覚中心のズレを修正: letter-spacing 分の末尾空白を
+#     padding-left で相殺して、両テキストの視覚中心を flex 中心に揃える。
 # v1.2.02 - 2026-05-11
 #   - イントロ演出を 3.5s → 4.5s に拡張、4 フェーズの滑らかな遷移に再設計:
 #     ① 黒+粒子のみ → ② AI 登場 → ③ 静止 → ④ グラデーション的にフェードアウト
@@ -56,6 +62,59 @@ from concurrent.futures import ThreadPoolExecutor
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', layout='centered', initial_sidebar_state='collapsed')
+
+# (intro より先に必要なため、CSS markdown より前に配置)
+# パーティクル HTML を先に構築（intro と loader の両方で再利用）
+def _build_particles_html():
+    """40 個の白いパーティクル HTML を構築（決定論的、毎回同じ出力）。
+    3 種類の動き(spiral/drift/rise)を index で割り当て、サイズ 15〜40px / duration 1.5〜5s /
+    delay 0〜4s をすべて分散（JS 不使用、ちらつかない）。"""
+    patterns = ['p-spiral', 'p-drift', 'p-rise']
+    parts = []
+    for i in range(40):
+        pat = patterns[i % 3]
+        size = 15 + (i * 13) % 26
+        delay = (i * 0.17) % 4
+        duration = 1.5 + (i * 0.23) % 3.5
+        if pat == 'p-spiral':
+            pos_style = ''
+        elif pat == 'p-drift':
+            x_pct = (i * 73 + 5) % 95
+            y_pct = (i * 41 + 10) % 90
+            pos_style = f'left:{x_pct}%;top:{y_pct}%;'
+        else:  # p-rise
+            x_pct = (i * 83 + 7) % 100
+            dx = ((i * 31) % 400) - 200
+            pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
+        parts.append(
+            f'<span class="particle {pat}" style="'
+            f'{pos_style}'
+            f'width:{size}px;height:{size}px;'
+            f'animation-delay:-{delay:.2f}s;'
+            f'animation-duration:{duration:.2f}s;'
+            f'"></span>'
+        )
+    return ''.join(parts)
+
+
+# モジュール起動時に 1 回だけ構築してキャッシュ（intro / loader から共有）
+_PARTICLES_HTML = _build_particles_html()
+
+# イントロスプラッシュ（セッション初回のみ）
+#   - 「AI」を中央に大表示、下段に "TAXI NIPPOU"
+#   - 既存のパーティクル (_PARTICLES_HTML) をそのまま再利用
+#   - CSS animation のみで滑らかにフェードアウト（JS 不使用）
+#   - inline 重要スタイルで CSS 解析前から黒画面を確保（FOUC 防止）
+if 'intro_shown' not in st.session_state:
+    st.session_state.intro_shown = True
+    st.markdown(f"""
+<div class="intro-splash" style="position:fixed;inset:0;background:#010519;z-index:999999;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+  <div class="particles-container" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;">{_PARTICLES_HTML}</div>
+  <h1 class="intro-ai">AI</h1>
+  <p class="intro-sub">TAXI NIPPOU</p>
+</div>
+""", unsafe_allow_html=True)
+
 
 st.markdown("""
 <style>
@@ -306,6 +365,10 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     font-weight: 900;
     color: #ffffff;
     letter-spacing: 0.08em;
+    /* letter-spacing は末尾文字の後にも空白を生み、要素幅が視覚的中心より広くなる。
+       padding-left に同値を入れて左右バランスを取り、視覚中心 = 要素中心 = flex 中心に。 */
+    padding-left: 0.08em;
+    text-align: center;
     margin: 0;
     text-shadow:
         0 0 24px rgba(255, 255, 255, 0.85),
@@ -317,6 +380,8 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     font-size: clamp(14px, 3vw, 22px);
     color: rgba(255, 255, 255, 0.85);
     letter-spacing: 0.4em;
+    padding-left: 0.4em;            /* 同じく末尾空白を相殺して視覚中心揃え */
+    text-align: center;
     font-weight: 400;
     margin: 18px 0 0;
     animation: intro-sub-life 4.5s cubic-bezier(0.3, 0, 0.3, 1) forwards;
@@ -393,64 +458,13 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 </style>
 """, unsafe_allow_html=True)
 
-# パーティクル HTML を先に構築（intro と loader の両方で再利用）
-def _build_particles_html():
-    """40 個の白いパーティクル HTML を構築（決定論的、毎回同じ出力）。
-    3 種類の動き(spiral/drift/rise)を index で割り当て、サイズ 15〜40px / duration 1.5〜5s /
-    delay 0〜4s をすべて分散（JS 不使用、ちらつかない）。"""
-    patterns = ['p-spiral', 'p-drift', 'p-rise']
-    parts = []
-    for i in range(40):
-        pat = patterns[i % 3]
-        size = 15 + (i * 13) % 26
-        delay = (i * 0.17) % 4
-        duration = 1.5 + (i * 0.23) % 3.5
-        if pat == 'p-spiral':
-            pos_style = ''
-        elif pat == 'p-drift':
-            x_pct = (i * 73 + 5) % 95
-            y_pct = (i * 41 + 10) % 90
-            pos_style = f'left:{x_pct}%;top:{y_pct}%;'
-        else:  # p-rise
-            x_pct = (i * 83 + 7) % 100
-            dx = ((i * 31) % 400) - 200
-            pos_style = f'left:{x_pct}%;top:100vh;--dx:{dx}px;'
-        parts.append(
-            f'<span class="particle {pat}" style="'
-            f'{pos_style}'
-            f'width:{size}px;height:{size}px;'
-            f'animation-delay:-{delay:.2f}s;'
-            f'animation-duration:{duration:.2f}s;'
-            f'"></span>'
-        )
-    return ''.join(parts)
-
-
-# モジュール起動時に 1 回だけ構築してキャッシュ（intro / loader から共有）
-_PARTICLES_HTML = _build_particles_html()
-
-
-# イントロスプラッシュ（セッション初回のみ）
-#   - 「AI」を中央に大表示、下段に "TAXI NIPPOU"
-#   - 既存のパーティクル (_PARTICLES_HTML) をそのまま再利用
-#   - CSS animation のみで 3 秒後に自動フェードアウト（JS 不使用）
-if 'intro_shown' not in st.session_state:
-    st.session_state.intro_shown = True
-    st.markdown(f"""
-<div class="intro-splash">
-  <div class="particles-container">{_PARTICLES_HTML}</div>
-  <h1 class="intro-ai">AI</h1>
-  <p class="intro-sub">TAXI NIPPOU</p>
-</div>
-""", unsafe_allow_html=True)
-
 # タイトルブロック（ページ最上部、常時表示。結果の有無に関わらず常に最上段）
 st.markdown("""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.02</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.03</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1410,6 +1424,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.2.03** (2026-05-11): FOUC 対策（UI 一瞬見え解消）・AI / TAXI NIPPOU の視覚中心揃え
 - **v1.2.02** (2026-05-11): イントロ演出を 4 フェーズの滑らかな遷移に再設計（粒子先行 → AI登場 → 静止 → グラデーション溶解）
 - **v1.2.01** (2026-05-11): イントロ調整（背景完全カバー・AI 白グロー・文字拡大・粒子先行）
 - **v1.2.00** (2026-05-11): イントロスプラッシュ追加（AI / TAXI NIPPOU と粒子の演出、3秒で自動フェード）
