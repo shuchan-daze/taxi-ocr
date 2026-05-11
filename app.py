@@ -1,3 +1,14 @@
+# バージョニング規約: SemVer 2.0 (MAJOR.MINOR.PATCH)
+#   MAJOR: 大きな変更・仕様変更（後方互換なし）
+#   MINOR: 部分的な機能追加・改善（後方互換あり）
+#   PATCH: バグ修正・小さな調整
+#
+# v1.1.0 - 2026-05-11
+#   - 障害者割引（障割）対応の本格実装
+#   - sequence ベースアライメント（meter_no が連番でない場合も正しく動作）
+#   - 障割を日報順に '6+' 形式で挿入
+#   - +α 要素（passengers=NULL の orphan ride）の救済
+#   - 整合性チェックの誤検知修正、税抜運収の小数表示修正、ほか
 # v1.0.0 - 2026-05-10 初回リリース
 import streamlit as st
 import streamlit.components.v1 as components
@@ -291,7 +302,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.0.0</p>
+  <p style="color: rgba(255,255,255,0.55); font-size: 11px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.1.0</p>
 </div>
 """, unsafe_allow_html=True)
 
