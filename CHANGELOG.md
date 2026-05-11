@@ -10,6 +10,45 @@
 
 ---
 
+## [1.4.00] - 2026-05-11
+
+### Added (追加)
+- **日報分類 (classify_nippou) のプロバイダ抽象化**
+  - `NIPPOU_PROVIDERS` レジストリで `_classify_nippou_claude` / `_classify_nippou_gemini` を切替
+  - `secrets.toml [nippou] provider = "claude" | "gemini"` で選択（既定 `"claude"`、後方互換）
+  - 失敗時は `_classify_nippou_claude` に最終フォールバック
+- **A/B 比較モード**: `secrets.toml [nippou] compare_mode = true`
+  - 両プロバイダを `ThreadPoolExecutor` で並列実行
+  - 結果と失敗理由を `st.session_state['_nippou_compare']` に保存
+  - 結果画面に「🧪 Stage 2 A/B: 日報プロバイダ比較」expander を表示（ride 数メトリクス + 両者の JSON 並列表示）
+  - 検証完了後は `compare_mode` を外し `provider = "gemini"` に切替する想定
+
+### Changed (変更)
+- **identify_image / check_clarity を Gemini 優先化**
+  - `_ai_call_text(prompt, images, claude_client, max_tokens)` ヘルパーを新設
+  - Gemini Flash で実行、未設定/失敗時のみ Claude Opus にフォールバック
+  - これら 2 箇所だけで 1 枚あたり推定 ~$0.11 削減
+
+### Performance / Cost
+- 想定コスト試算（1 人 100 枚 × 1000 人 = 100,000 枚/月）:
+  - **v1.3 まで**: 1 枚 ~$0.29 / 1 人 ~$29 / 月総額 ~$29,000
+  - **v1.4 (本番 gemini 化後)**: 1 枚 ~$0.002 / 1 人 ~$0.20 / 月総額 ~$200
+  - 約 **150 倍のコスト削減**（A/B で精度同等を確認後）
+
+### Why (なぜ)
+- 1 人あたり ¥500（≒ $3.3）の料金設計で 1000 人 / 月 100 枚を捌くには、1 枚 ≤ $0.01 が必須
+- 日報は手書き + 業務ルール（から回し・障割・現収未収判定）が絡むため精度劣化リスクが大きい
+  → A/B 比較ツールで実データ検証後に切替する設計に
+- 他 4 箇所（identify×2 / clarity / meter）は判定が単純なため即 Gemini 化（リスク低）
+
+### How to validate (使い方)
+1. `secrets.toml` に `[nippou]\nprovider = "claude"\ncompare_mode = true` を追記
+2. 過去テスト済みの日報を数枚アップ → 結果画面の 🧪 expander で claude/gemini を比較
+3. ride 数・各フィールドが完全一致するなら `provider = "gemini"` に切替、`compare_mode` 削除
+4. 一致しない箇所があれば claude 維持、または精度差をログ化して再評価
+
+---
+
 ## [1.3.01] - 2026-05-11
 
 ### Performance (速度改善)
