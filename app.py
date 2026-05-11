@@ -3,6 +3,12 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.2.01 - 2026-05-11
+#   - イントロスプラッシュの調整:
+#     • z-index: 99998 → 999999（背景の UI が透けて見える問題を解消）
+#     • AI 文字を白に変更（金グロー → 白グロー）
+#     • AI 文字サイズを clamp(160px, 36vw, 360px) に拡大
+#     • 演出順序を調整: 粒子が先に動き、0.5s 後に AI 文字が現れる
 # v1.2.00 - 2026-05-11
 #   - イントロスプラッシュ追加: セッション初回起動時に「AI / TAXI NIPPOU」を
 #     中央に大表示、既存パーティクルがダイナミックに動き、3 秒で自動フェードアウト。
@@ -271,40 +277,41 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     100% { transform: translateY(-110vh) translateX(var(--dx, 0)) scale(1.4); opacity: 0; }
 }
 /* === イントロスプラッシュ（初回セッションのみ表示、CSS のみで自動フェードアウト） === */
+/* 演出順序: t=0 で粒子だけ動く → t=0.5s 頃 AI 文字が現れる → t=0.8s 頃 サブテキスト → t=2.5s フェード開始 */
 .intro-splash {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: #010519;
+    background: #010519 !important;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: 99998;
+    z-index: 999999;          /* Streamlit のヘッダー等より上に */
     pointer-events: none;
-    animation: intro-fade-out 3.2s ease-in-out 0.3s forwards;
+    animation: intro-fade-out 3.5s ease-in-out forwards;
 }
 .intro-splash .intro-ai {
-    font-size: clamp(96px, 24vw, 220px);
+    font-size: clamp(160px, 36vw, 360px);  /* 大きく */
     font-weight: 900;
-    color: #d4af37;
+    color: #ffffff;                          /* 白に */
     letter-spacing: 0.08em;
     margin: 0;
     text-shadow:
-        0 0 30px rgba(212, 175, 55, 0.6),
-        0 0 60px rgba(212, 175, 55, 0.4),
-        0 0 100px rgba(212, 175, 55, 0.2);
-    animation: intro-text-in 1.0s cubic-bezier(0.2, 0.7, 0.2, 1);
+        0 0 24px rgba(255, 255, 255, 0.85),
+        0 0 60px rgba(255, 255, 255, 0.55),
+        0 0 120px rgba(255, 255, 255, 0.35);
+    animation: intro-text-in 1.0s cubic-bezier(0.2, 0.7, 0.2, 1) 0.5s both;
 }
 .intro-splash .intro-sub {
     font-size: clamp(14px, 3vw, 22px);
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(255, 255, 255, 0.85);
     letter-spacing: 0.4em;
     font-weight: 400;
-    margin: 12px 0 0;
-    animation: intro-text-in 1.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+    margin: 18px 0 0;
+    animation: intro-text-in 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.8s both;
 }
 @keyframes intro-fade-out {
-    0%, 70%  { opacity: 1; }
+    0%, 75%  { opacity: 1; }
     100%     { opacity: 0; visibility: hidden; }
 }
 @keyframes intro-text-in {
@@ -408,7 +415,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.00</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.2.01</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1368,6 +1375,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.2.01** (2026-05-11): イントロ調整（背景完全カバー・AI 白グロー・文字拡大・粒子先行）
 - **v1.2.00** (2026-05-11): イントロスプラッシュ追加（AI / TAXI NIPPOU と粒子の演出、3秒で自動フェード）
 - **v1.1.04** (2026-05-11): バージョン表記を 2 桁ゼロパディングに統一（例: 1.1.4 → 1.1.04）
 - **v1.1.03** (2026-05-11): README.md 整備（プロジェクトの全記録ドキュメント）
