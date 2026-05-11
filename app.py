@@ -1073,11 +1073,13 @@ if st.session_state.get('result_rows'):
 
         # 値の破壊検出（Stage1 vs 最終出力の整合性）
         # 各 meter_no について、メーター額とテーブル出力 (gen+mi) の合計が一致するか検証。
-        # 障割行は build_report で独立 meter_no を持ち mi=meter_amount として出力されるため、
-        # 通常行と同じ枠組みで検証できる。
+        # 障割（state='discount'）は nippou_amount を真値とする独立調整行のため、
+        # メーター行の合算からは除外する（同じ '6+' ラベルでも overage と別扱い）。
         meter_amounts = {r['no']: int(r['amount']) for r in meter_data.get('rows', [])}
         sum_by_no = {}
         for r in rows:
+            if r.get('state') == 'discount':
+                continue  # 障割は独立した調整行、メーター額検証の対象外
             no = r.get('no')
             # メーター超過の "22+" のような string は元の meter_no に正規化して合算
             if isinstance(no, str) and no.endswith('+'):
