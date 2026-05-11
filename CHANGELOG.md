@@ -10,6 +10,22 @@
 
 ---
 
+## [1.1.2] - 2026-05-11
+
+### Performance (速度改善)
+- `to_b64()` に per-image キャッシュ機構を追加。pipeline 中 identify_image / check_clarity / parse_meter / classify_nippou で同じ画像が複数回 JPEG エンコードされていた問題を解消。1 画像あたり 3 回 → 1 回。
+
+### Removed (dead code 削除)
+- HTML 未使用属性を削除:
+  - `data-metric="..."` 計 5 箇所（render_summary）
+  - `data-value="..."` 計 2 箇所（render_detail_table）
+  - `data-rowidx="..."` 1 箇所（render_detail_table、enumerate も削除）
+- 旧 dblclick 編集 UI の名残 CSS を削除:
+  - `cursor: pointer` および `:hover` outline（クリック編集 JS が無いため誤誘導になっていた）
+  - `.detail-table td input.cell-edit` クラス
+
+---
+
 ## [1.1.1] - 2026-05-11
 
 ### Changed (表示調整)
