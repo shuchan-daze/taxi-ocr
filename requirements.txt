@@ -1,6 +1,5 @@
 streamlit
 anthropic
 google-cloud-vision
-google-generativeai
 pillow
 pillow-heif

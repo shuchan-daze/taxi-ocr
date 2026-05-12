@@ -3,21 +3,28 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.5.01 - 2026-05-12
+#   - _ocr_vision_claude の Claude 構造化部分を Opus 4.5 → Sonnet 4.6 に変更。
+#     Vision API が読んだ clean な印字テキストを JSON 化するだけのタスクで、
+#     Opus と完全同等の出力（20行 receipt 実測で完全一致）かつコスト 1/5。
+#     画像認識ではないので Sonnet で精度は落ちない。JSON 不正時は parse_meter が
+#     _ocr_claude (Opus 画像直叩き) にフォールバックする安全網は維持。
+#   - 1枚あたり OCR 構造化部分のコスト: $0.04 → $0.008 (-80%)。
+#     100枚/月で約 ¥480/人 削減。
+# v1.5.00 - 2026-05-12
+#   - v1.4 で残った A/B 検証用コードと Gemini 経路を全撤去（本番構成確定済のため）。
+#     対象: _ai_call_text / get_gemini_model / _ocr_gemini / _classify_nippou_gemini /
+#     OCR_PROVIDERS / NIPPOU_PROVIDERS / _is_nippou_compare_mode / _nippou_compare UI /
+#     compare_nippou.py / requirements の google-generativeai。
+#   - 体感フリーズ対策: ローダーを全フェーズでポーリング型に統一。さらに pipeline を
+#     identify×2 並列 → clarity + parse_meter + classify_nippou の 3 並列 に再構成し、
+#     14% / 31% / 85% で進捗が止まって見える問題を解消。
+#   - identify / clarity を Gemini ファースト → Claude 直叩きに変更（Gemini 画像呼出が
+#     10〜30s と遅く、フリーズの主因だったため）。コスト増は v1.4.01 の価格設計で吸収。
 # v1.4.01 - 2026-05-11
 #   - 精度検証完了 → 本番構成を確定: 日報は **Claude Opus 4.5 を維持**。
-#     検証結果（compare_nippou.py で 8 画像 × 4 モデル）:
-#       - Gemini 2.5 Flash: 致命的誤読多数（金額・人数・現収/未収・行数）。商用 NG
-#       - Claude Opus 4.7: 出力が Opus 4.5 と微妙に違う、精度差は要追加検証
-#       - Claude Sonnet 4.6: Opus 4.5 より誤差大、精度劣化
-#       - Prompt Caching (system prompt 版): 構造変更で出力挙動が変わる、節約も $2/人で小
-#   - 結論: 精度妥協ナシ縛りで API コストを下げる打ち手は今日の技術スタックには無い。
-#     ¥5,000/月 × 月 20 枚プラン等、価格設計で吸収する方針に切替。
-#   - 本番推奨設定 (secrets.toml):
-#       [ocr] provider = "vision_claude"   ← Gemini からこれに戻す
-#       [nippou]
-#       provider = "claude"                 ← 既定だが明示推奨
-#       compare_mode = false               ← 検証フェーズ終了で削除/false
-#   - コード自体は v1.4.00 と同等（プロバイダ抽象化は保持、本番設定で精度パスを選ぶ運用）
+#     Gemini 2.5 Flash は致命的誤読で商用 NG、Opus 4.7 / Sonnet 4.6 も精度劣化。
+#   - 価格設計で吸収する方針に切替（¥5,000/月 × 月 20 枚 等）。
 # v1.4.00 - 2026-05-11
 #   - 日報分類 (classify_nippou) もプロバイダ抽象化: secrets.toml [nippou] provider で
 #     "claude" | "gemini" を切替可能に。既定は "claude"（精度優先・後方互換）。
@@ -413,7 +420,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.4.01</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.5.01</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -475,41 +482,10 @@ def to_b64(img):
     return b64
 
 
-# ============================================================
-# 汎用 AI ヘルパー: 画像 + プロンプト → テキスト応答
-# ============================================================
-# Gemini Flash を優先（コスト 1/100 以下）、未設定/失敗時のみ Claude Opus にフォールバック。
-# 単純判定タスク (identify_image / check_clarity) で使用。
-# 複雑な日報分類は classify_nippou 側のディスパッチャを別途使う（A/B 検証のため）。
-
-def _ai_call_text(prompt, images, claude_client, max_tokens, claude_model='claude-opus-4-5'):
-    """画像 + プロンプトを送り、テキスト応答を返す。Gemini → Claude フォールバック。"""
-    gemini_model = get_gemini_model()
-    if gemini_model is not None:
-        try:
-            resp = gemini_model.generate_content([prompt, *images])
-            text = (getattr(resp, 'text', '') or '').strip()
-            if text:
-                return text
-        except Exception:
-            pass
-    # Claude フォールバック
-    content = [
-        {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(img)}}
-        for img in images
-    ]
-    content.append({'type': 'text', 'text': prompt})
-    res = claude_client.messages.create(
-        model=claude_model, max_tokens=max_tokens, temperature=0,
-        messages=[{'role': 'user', 'content': content}]
-    )
-    return res.content[0].text.strip()
-
-
 # 画像識別
 
 def identify_image(client, img):
-    """画像を判定して 'meter' / 'nippou' / 'unclear' を返す。Gemini 優先。"""
+    """画像を判定して 'meter' / 'nippou' / 'unclear' を返す。"""
     prompt = '''この画像を判定してください。
 
 - メーター明細書（営業明細書）：機械印字、時刻と金額の2列構造、ヘッダに「営業明細書」または「明細」表記
@@ -520,7 +496,14 @@ def identify_image(client, img):
 meter
 nippou
 unclear'''
-    answer = _ai_call_text(prompt, [img], client, max_tokens=20).lower()
+    res = client.messages.create(
+        model='claude-opus-4-5', max_tokens=20, temperature=0,
+        messages=[{'role': 'user', 'content': [
+            {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(img)}},
+            {'type': 'text', 'text': prompt},
+        ]}]
+    )
+    answer = res.content[0].text.strip().lower()
     if 'meter' in answer:
         return 'meter'
     if 'nippou' in answer or '日報' in answer:
@@ -531,7 +514,7 @@ unclear'''
 # 鮮明度チェック
 
 def check_clarity(client, meter_img, nippou_img):
-    """両画像が読み取り可能な品質か判定。返値: (ok: bool, reason: str)。Gemini 優先。"""
+    """両画像が読み取り可能な品質か判定。返値: (ok: bool, reason: str)。"""
     prompt = '''1枚目はメーター明細書、2枚目は日報です。
 
 各画像が読み取り可能な品質か確認してください：
@@ -543,7 +526,15 @@ clarity: ok
 または
 clarity: ng
 reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か）>'''
-    text = _ai_call_text(prompt, [meter_img, nippou_img], client, max_tokens=200)
+    res = client.messages.create(
+        model='claude-opus-4-5', max_tokens=200, temperature=0,
+        messages=[{'role': 'user', 'content': [
+            {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(meter_img)}},
+            {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(nippou_img)}},
+            {'type': 'text', 'text': prompt},
+        ]}]
+    )
+    text = res.content[0].text.strip()
     if 'clarity: ok' in text.lower() or 'clarity:ok' in text.lower():
         return True, ''
     m = re.search(r'reason:\s*(.+)', text, re.DOTALL)
@@ -551,18 +542,11 @@ reason: <NGの場合の具体的な理由（どの画像のどこが不鮮明か
 
 
 # ============================================================
-# Stage 1: メーター明細書 OCR（プロバイダ切替式）
+# Stage 1: メーター明細書 OCR
 # ============================================================
 # 出力金額は build_report で「真実」として使用される。
-#
-# プロバイダ追加の手順:
-#   1. _ocr_xxx(meter_img, claude_client) -> {'rows': [...], 'total': N} | None を実装
-#      （成功時は dict / 失敗時は None を返す。例外も許容、parse_meter 側で吸収）
-#   2. OCR_PROVIDERS に名前で登録
-#   3. secrets.toml で [ocr] provider = "xxx" を指定
-#
-# 既定は "vision_claude"（従来挙動）。設定値が未知の場合も既定にフォールバック。
-# 選択したプロバイダが失敗した場合は最終フォールバックとして _ocr_claude を呼ぶ。
+# 既定経路: Vision API + Claude 構造化 (_ocr_vision_claude)
+# Vision 未認証 / 失敗時は _ocr_claude (Claude 単体) にフォールバック。
 
 JSON_PROMPT_DIRECT = """このタクシーメーターのレシート画像から全乗車明細を読み取り、
 以下のJSON形式のみで返答せよ。説明文は不要。
@@ -660,98 +644,35 @@ def _ocr_vision_claude(meter_img, claude_client):
 {{"rows": [{{"no": 1, "time": "10:32", "amount": 4100}}]}}
 
 ・noはレシートの行番号（整数）・timeは降車時刻（HH:MM形式）・amountは¥の金額（数値のみ）・JSON以外出力しない"""
+    # OCR 後の clean な印字テキストを JSON 化するだけのタスクのため Sonnet で十分。
+    # 実測 (20行 receipt): Opus と完全一致、コスト 1/5。JSON 不正時は parse_meter が
+    # _ocr_claude (画像直渡し Opus) にフォールバックする安全網あり。
     res = claude_client.messages.create(
-        model='claude-opus-4-5', max_tokens=4000, temperature=0,
+        model='claude-sonnet-4-6', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': prompt}]
     )
     rows = _extract_json_rows(res.content[0].text.strip())
     return _finalize_rows(rows) if rows else None
 
 
-@st.cache_resource
-def get_gemini_model():
-    """Gemini モデル取得。GEMINI_API_KEY / secrets / google-generativeai のどれかが
-    欠けていれば None。インポートは遅延（プロバイダ未使用時に依存を強制しない）。"""
-    api_key = os.environ.get('GEMINI_API_KEY')
-    if not api_key:
-        try:
-            api_key = st.secrets.get('GEMINI_API_KEY')
-        except Exception:
-            api_key = None
-    if not api_key:
-        return None
-    try:
-        import google.generativeai as genai
-    except Exception:
-        return None
-    try:
-        genai.configure(api_key=api_key)
-        try:
-            model_name = st.secrets.get('ocr', {}).get('gemini_model', 'gemini-2.5-flash')
-        except Exception:
-            model_name = 'gemini-2.5-flash'
-        return genai.GenerativeModel(model_name)
-    except Exception:
-        return None
-
-
-def _ocr_gemini(meter_img, claude_client):
-    """Gemini に画像を直接渡して JSON 構造化。claude_client は未使用だが署名統一のため受け取る。"""
-    model = get_gemini_model()
-    if model is None:
-        return None
-    try:
-        resp = model.generate_content([JSON_PROMPT_DIRECT, meter_img])
-        text = (getattr(resp, 'text', '') or '').strip()
-    except Exception:
-        return None
-    rows = _extract_json_rows(text)
-    return _finalize_rows(rows) if rows else None
-
-
-OCR_PROVIDERS = {
-    'vision_claude': _ocr_vision_claude,
-    'gemini': _ocr_gemini,
-    'claude': _ocr_claude,
-}
-OCR_DEFAULT_PROVIDER = 'vision_claude'
-
-
-def _get_configured_ocr_provider():
-    """secrets.toml [ocr] provider を読む。未設定/不正値は既定にフォールバック。"""
-    try:
-        name = st.secrets.get('ocr', {}).get('provider', OCR_DEFAULT_PROVIDER)
-    except Exception:
-        name = OCR_DEFAULT_PROVIDER
-    return name if name in OCR_PROVIDERS else OCR_DEFAULT_PROVIDER
-
-
 def parse_meter(client, meter_img):
-    """Stage 1 ディスパッチャ: 設定プロバイダ → 失敗時は Claude 単独に最終フォールバック。"""
-    provider_name = _get_configured_ocr_provider()
-    provider_fn = OCR_PROVIDERS[provider_name]
-    if provider_fn is not _ocr_claude:
-        try:
-            result = provider_fn(meter_img, client)
-            if result is not None:
-                return result
-        except Exception:
-            pass
+    """Stage 1: Vision API + Claude 構造化 → 失敗時は Claude 単独にフォールバック。"""
+    try:
+        result = _ocr_vision_claude(meter_img, client)
+        if result is not None:
+            return result
+    except Exception:
+        pass
     return _ocr_claude(meter_img, client)
 
 
 # ============================================================
-# Stage 2: 日報分類（プロバイダ切替式 + A/B 比較モード）
+# Stage 2: 日報分類（Claude Opus 4.5）
 # ============================================================
 # 日報のみから乗客行を分類 → {'rides': [...]}
 # meter_data に依存せず、meter_no は日報の上から 1 始まり連番で割当。
 # 金額の主要値は読まないが、mismatch 検出のため nippou_amount として
 # 日報の手書き金額を任意で記録する（読めない場合は null）。
-#
-# プロバイダ抽象化（v1.4.00 〜）:
-#   secrets.toml [nippou] provider = "claude" | "gemini"  既定 "claude"（精度優先）
-#   secrets.toml [nippou] compare_mode = true             A/B 比較モード（UI に差分表示）
-#   失敗時は常に Claude 単独に最終フォールバック。
 
 NIPPOU_PROMPT = """これはタクシー乗務員の手書き日報です。
 日報の各行を上から順に処理し、以下のルールで JSON 配列を返してください。
@@ -805,9 +726,9 @@ def _extract_nippou_rides(text):
         return None
 
 
-def _classify_nippou_claude(nippou_img, claude_client):
-    """Claude Opus 4.5 で日報分類。高精度・高コストの基準実装。"""
-    res = claude_client.messages.create(
+def classify_nippou(client, nippou_img):
+    """Stage 2: Claude Opus 4.5 で日報分類。"""
+    res = client.messages.create(
         model='claude-opus-4-5', max_tokens=4000, temperature=0,
         messages=[{'role': 'user', 'content': [
             {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(nippou_img)}},
@@ -817,81 +738,8 @@ def _classify_nippou_claude(nippou_img, claude_client):
     text = res.content[0].text.strip()
     rides = _extract_nippou_rides(text)
     if rides is None:
-        raise ValueError(f'日報のJSON配列が見つかりません(claude)。応答: {text[:300]}')
+        raise ValueError(f'日報のJSON配列が見つかりません。応答: {text[:300]}')
     return {'rides': rides}
-
-
-def _classify_nippou_gemini(nippou_img, claude_client):
-    """Gemini Flash で日報分類。低コスト、精度は要検証（compare_mode で対比可能）。
-    claude_client は署名統一のため受け取るが未使用。"""
-    model = get_gemini_model()
-    if model is None:
-        return None
-    try:
-        resp = model.generate_content([NIPPOU_PROMPT, nippou_img])
-        text = (getattr(resp, 'text', '') or '').strip()
-    except Exception:
-        return None
-    rides = _extract_nippou_rides(text)
-    return {'rides': rides} if rides is not None else None
-
-
-NIPPOU_PROVIDERS = {
-    'claude': _classify_nippou_claude,
-    'gemini': _classify_nippou_gemini,
-}
-NIPPOU_DEFAULT_PROVIDER = 'claude'
-
-
-def _get_nippou_provider():
-    """secrets.toml [nippou] provider を読む。未設定/不正値は claude にフォールバック。"""
-    try:
-        name = st.secrets.get('nippou', {}).get('provider', NIPPOU_DEFAULT_PROVIDER)
-    except Exception:
-        name = NIPPOU_DEFAULT_PROVIDER
-    return name if name in NIPPOU_PROVIDERS else NIPPOU_DEFAULT_PROVIDER
-
-
-def _is_nippou_compare_mode():
-    """secrets.toml [nippou] compare_mode = true で A/B 比較モード。両プロバイダを並列実行。"""
-    try:
-        return bool(st.secrets.get('nippou', {}).get('compare_mode', False))
-    except Exception:
-        return False
-
-
-def classify_nippou(client, nippou_img):
-    """Stage 2 ディスパッチャ。compare_mode ON で両プロバイダを並列実行し session_state に保存。
-    返値は設定プロバイダの結果（失敗時は Claude 単独に最終フォールバック）。"""
-    provider_name = _get_nippou_provider()
-
-    if _is_nippou_compare_mode():
-        def _safe(fn):
-            try:
-                return ('ok', fn(nippou_img, client))
-            except Exception as e:
-                return ('error', f'{type(e).__name__}: {e}')
-        with ThreadPoolExecutor(max_workers=len(NIPPOU_PROVIDERS)) as ex:
-            futures = {name: ex.submit(_safe, fn) for name, fn in NIPPOU_PROVIDERS.items()}
-            outcomes = {name: fut.result() for name, fut in futures.items()}
-        results = {n: o[1] for n, o in outcomes.items() if o[0] == 'ok' and o[1] is not None}
-        errors = {n: (o[1] if o[0] == 'error' else 'プロバイダが None を返却') for n, o in outcomes.items() if n not in results}
-        st.session_state['_nippou_compare'] = {'primary': provider_name, 'results': results, 'errors': errors}
-        if provider_name in results:
-            return results[provider_name]
-        if 'claude' in results:
-            return results['claude']
-        raise RuntimeError(f'日報分類が両プロバイダで失敗: {errors}')
-
-    primary_fn = NIPPOU_PROVIDERS[provider_name]
-    if primary_fn is not _classify_nippou_claude:
-        try:
-            result = primary_fn(nippou_img, client)
-            if result is not None:
-                return result
-        except Exception:
-            pass
-    return _classify_nippou_claude(nippou_img, client)
 
 
 # Stage 3: 純 Python でメーター×日報を統合（AIは関与しない）
@@ -1138,14 +986,38 @@ def aggregate_totals(rows):
 
 # パイプライン本体
 
+def _poll_until_done(loader, futures, pct_range, label):
+    """futures が全て完了するまで pct を進めながらローダーを更新。
+    完了済み futures が増えるたびに pct を 1 つ進めて完了感を出す。"""
+    start, end = pct_range
+    span = max(1, end - start)
+    while True:
+        done = sum(1 for f in futures if f.done())
+        # 完了割合に応じて pct を補間、未完了の間は end-1 を上限に進める
+        pct = start + min(span - 1, int(span * done / max(1, len(futures))))
+        show_loader(loader, pct, label)
+        if done == len(futures):
+            return
+        time.sleep(LOADER_POLL_SLEEP)
+
+
 def run_pipeline(client, imgs, loader):
-    """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff, meter_data, nippou_data)"""
-    # 最初のステップでフェードイン演出（1% 刻み × 短sleep で滑らかに）
-    loader_steps(loader, list(range(3, 15)), '画像を判別中', sleep=0.04, anim_class='entering')
-    # 2 枚の判別は互いに独立なため並列実行（API レイテンシを 1 回分に短縮）
+    """End-to-end pipeline. 失敗時は RuntimeError。返値: (rows, valid, diff, meter_data, nippou_data)
+
+    並列構成:
+      Phase 1 (3-25%):  identify×2 (どちらがメーター/日報か特定が後段の前提)
+      Phase 2 (25-92%): clarity + parse_meter + classify_nippou を 3 並列
+                        clarity NG なら parse/classify の結果は破棄して中断
+      Phase 3 (92-100%): build + validate (純 Python、瞬時)
+    """
+    # フェードイン演出（1% 刻み × 短sleep）
+    loader_steps(loader, list(range(3, 10)), '画像を判別中', sleep=0.04, anim_class='entering')
+
+    # Phase 1: 2 枚の判別を並列実行
     with ThreadPoolExecutor(max_workers=2) as executor:
         f1 = executor.submit(identify_image, client, imgs[0])
         f2 = executor.submit(identify_image, client, imgs[1])
+        _poll_until_done(loader, [f1, f2], (10, 25), '画像を判別中')
         kind1 = f1.result()
         kind2 = f2.result()
 
@@ -1161,28 +1033,25 @@ def run_pipeline(client, imgs, loader):
     else:
         meter_img, nippou_img = imgs[1], imgs[0]
 
-    loader_steps(loader, list(range(18, 31)), '鮮明度を確認中', sleep=0.035)
-    ok, reason = check_clarity(client, meter_img, nippou_img)
-    if not ok:
-        raise RuntimeError(f'画像の鮮明度が不足しています：{reason}\n撮り直して再アップしてください。')
-
-    # Step 3+4: メーター明細と日報を並列読み取り（互いに独立なため同時実行）
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    # Phase 2: 鮮明度 + メーター OCR + 日報分類 を 3 並列
+    # 鮮明度 NG の場合 parse/classify は無駄になるが、ハッピーパスでの体感速度を優先。
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        clarity_future = executor.submit(check_clarity, client, meter_img, nippou_img)
         meter_future = executor.submit(parse_meter, client, meter_img)
         nippou_future = executor.submit(classify_nippou, client, nippou_img)
-
-        # 両 future 完了までローダーを動かす（早期完了なら break、1% 刻み）
-        for pct in range(35, 85):
-            if meter_future.done() and nippou_future.done():
-                break
-            show_loader(loader, pct, 'メーター明細と日報を並列読み取り中')
-            time.sleep(LOADER_POLL_SLEEP)
-
-        # 結果取得（例外があれば伝搬）
+        _poll_until_done(
+            loader,
+            [clarity_future, meter_future, nippou_future],
+            (25, 92),
+            'メーター明細と日報を読み取り中',
+        )
+        ok, reason = clarity_future.result()
+        if not ok:
+            raise RuntimeError(f'画像の鮮明度が不足しています：{reason}\n撮り直して再アップしてください。')
         meter_data = meter_future.result()
         nippou_data = nippou_future.result()
 
-    loader_steps(loader, list(range(88, 101)), '統合中', sleep=0.035)
+    loader_steps(loader, list(range(92, 101)), '統合中', sleep=0.03)
     report_rows = build_report(meter_data, nippou_data)
     valid, diff = validate(report_rows, meter_data, nippou_data)
     return report_rows, valid, diff, meter_data, nippou_data
@@ -1190,7 +1059,7 @@ def run_pipeline(client, imgs, loader):
 
 # Reset / state
 
-_RESULT_KEYS = ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou', '_nippou_compare')
+_RESULT_KEYS = ('result_rows', 'result_valid', 'result_diff', 'result_meter', 'result_nippou')
 
 
 def _clear_results():
@@ -1462,33 +1331,6 @@ if st.session_state.get('result_rows'):
             st.markdown(f'📋 **日報数値一覧:** {compact2}')
             st.json(nippou_data)
 
-        # Stage 2 A/B: 日報プロバイダ比較モード結果（[nippou] compare_mode = true のとき表示）
-        _cmp = st.session_state.get('_nippou_compare')
-        if _cmp:
-            _results = _cmp.get('results', {})
-            _errors = _cmp.get('errors', {})
-            _primary = _cmp.get('primary')
-            with st.expander(f'🧪 Stage 2 A/B: 日報プロバイダ比較（primary = {_primary}）', expanded=True):
-                # ride 数だけの差分サマリ
-                _summary_cols = st.columns(max(1, len(NIPPOU_PROVIDERS)))
-                for _i, _name in enumerate(NIPPOU_PROVIDERS.keys()):
-                    with _summary_cols[_i]:
-                        if _name in _results:
-                            _n_rides = len(_results[_name].get('rides', []))
-                            st.metric(f'{_name}', f'{_n_rides} 件', help='ride 数（rides 配列の要素数）')
-                        else:
-                            st.error(f'{_name}: {_errors.get(_name, "失敗")}')
-                # 各プロバイダの rides を JSON で並べて表示
-                _show_cols = st.columns(max(1, len([n for n in NIPPOU_PROVIDERS if n in _results])))
-                _ci = 0
-                for _name in NIPPOU_PROVIDERS.keys():
-                    if _name in _results:
-                        with _show_cols[_ci]:
-                            st.markdown(f'**{_name}**' + ('（primary・採用）' if _name == _primary else ''))
-                            st.json(_results[_name])
-                        _ci += 1
-                st.caption('両プロバイダで rides が完全一致なら gemini 採用可。違いがあれば claude を維持。')
-
         # Stage 3: build_report 入出力
         with st.expander('🔧 Stage 3: build_report 入出力'):
             st.markdown('**No ごとの突き合わせ（Stage1金額 vs テーブル出力）:**')
@@ -1608,6 +1450,8 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.5.01** (2026-05-12): メーター明細 OCR の JSON 構造化を Opus 4.5 → Sonnet 4.6 に変更（実測で完全同等の出力、コスト 1/5）。Vision API が読み取った印字テキストを JSON 化するだけのタスクで精度は落ちない設計
+- **v1.5.00** (2026-05-12): A/B 検証用コードと Gemini 経路を撤去（本番構成確定済）。パイプラインを 3 並列化（鮮明度＋OCR＋日報を同時処理）+ ローダーを全段ポーリング型に統一して「途中で固まって見える」問題を解消
 - **v1.4.01** (2026-05-11): 精度検証の結果、日報は Claude Opus 4.5 維持で確定（Gemini/Sonnet/Opus 4.7 / Caching すべて出力ズレあり）。コスト削減は価格設計で吸収する方針へ
 - **v1.4.00** (2026-05-11): 日報分類もプロバイダ抽象化（`[nippou] provider` で claude/gemini 切替、`compare_mode` で A/B 比較）。identify/clarity を Gemini 優先化。1 枚 $0.30 → $0.002 想定（要 A/B 検証）
 - **v1.3.01** (2026-05-11): アップロード後の体感速度を改善（受信時に 3000px JPEG に正規化、5〜8MB → 0.5〜1MB 化）。API コスト・OCR 精度は不変。
