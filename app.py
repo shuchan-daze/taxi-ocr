@@ -3,6 +3,12 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.5.03 - 2026-05-12
+#   - 分割払い（現金 + チケット併用等）に対応。NIPPOU_PROMPT に case="split" の判定ルールを追加し、
+#     1 乗車で「現収」「未収」両方の欄に金額が書かれているケースを正しく検出。
+#   - build_report に case='split' 分岐を追加: gen_amount → gen 列、mi_amount → mi 列に
+#     両方計上する。gen_amount + mi_amount がメーター額と一致しなければ state='mismatch'。
+#   - データモデルに後方互換あり（既存の normal/overage/discount は影響なし）。
 # v1.5.02 - 2026-05-12
 #   - 立ち上がり体感を改善: .streamlit/config.toml でテーマを dark + 濃紺
 #     (backgroundColor="#010519") に設定。Streamlit のロード画面の段階から
@@ -426,7 +432,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.5.02</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.5.03</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -690,6 +696,18 @@ NIPPOU_PROMPT = """これはタクシー乗務員の手書き日報です。
 - 摘要に「Visa」「Uber」「Suica」「交通系」「PayPay」等のカード/電子マネー名 → 必ず「未収」
 - 摘要が空欄、または「現金」 → 「現収」
 
+【分割払い行】
+- 1 つの乗車で「現収」欄と「未収」欄の**両方に金額**が書かれている場合（現金 + チケット併用、
+  現金 + Suica 併用 等の併用支払）。
+- case="split" として判定する。
+- gen_amount に現収欄の金額、mi_amount に未収欄の金額を数値で記録する。
+- gen_amount + mi_amount がメーター額と一致するのが正しい分割（一致しなければ mismatch 扱い）。
+- 摘要欄には支払方法の組み合わせ（"現金+チケット" 等）が書かれることが多い。
+- この case の場合、kind / nippou_amount フィールドは出力しなくてよい。
+
+分割払いの例: メーター ¥5,400 を 現金 ¥3,000 + チケット ¥2,400 で支払い
+{"meter_no": 5, "passengers": 1, "case": "split", "gen_amount": 3000, "mi_amount": 2400, "memo": "現金+チケット"}
+
 【nippou_amount について】
 - 日報の現収/未収欄に手書きで書かれている金額をそのまま読み取る（数値のみ、カンマ無し）。
 - 読み取れない・書かれていない・かすれている場合は null を返す。
@@ -711,6 +729,7 @@ case="discount" として判定し、割引額を nippou_amount に記録する�
 [
   {"meter_no": 1, "passengers": 2, "kind": "未収", "memo": "アプリ", "case": "normal", "nippou_amount": 1500},
   {"meter_no": 2, "passengers": 1, "kind": "現収", "memo": "現金", "case": "normal", "nippou_amount": null},
+  {"meter_no": 5, "passengers": 1, "case": "split", "gen_amount": 3000, "mi_amount": 2400, "memo": "現金+チケット"},
   {"meter_no": 21, "passengers": 2, "kind": "未収", "memo": "Visa", "case": "overage", "overage_amount": 100, "nippou_amount": 1600}
 ]
 
@@ -753,7 +772,8 @@ def classify_nippou(client, nippou_img):
 # overage 行は客分 (meter - overage) と超過分 (overage) の 2 行に分割。
 
 def _split_rides(rides):
-    """rides を「通常乗車（normal/overage）」と「障割（discount）」に分離。"""
+    """rides を「通常乗車（normal/overage/split）」と「障割（discount）」に分離。
+    split（分割払い）はメーター 1 行に対応するので real 側に含める。"""
     real = [r for r in rides if r.get('case') != 'discount']
     adjustments = [r for r in rides if r.get('case') == 'discount']
     return real, adjustments
@@ -770,6 +790,8 @@ def build_report(meter_data, nippou_data):
 
     case の扱い:
       - 'overage': 客分行 + 超過分(state='special')行の 2 行に分割
+      - 'split':   現金 + チケット等の併用。gen_amount/mi_amount を両方計上、合計が
+                   メーター額と一致しなければ state='mismatch'
       - 'discount': 別ループで nippou_amount を mi に計上、state='discount'
       - その他 ('normal' or 不明): kind に従って gen/mi に振り分け 1 行出力
     日報金額（nippou_amount）がメーター額と異なる場合は state='mismatch' を立てる
@@ -830,6 +852,18 @@ def build_report(meter_data, nippou_data):
                 'no': f'{meter_no}+', 'passengers': passengers, 'time': time_str,
                 'gen': overage, 'mi': 0,
                 'memo': 'メーター超過', 'state': 'special',
+            })
+        elif case == 'split':
+            # 現金 + チケット等の併用支払。gen_amount + mi_amount = メーター額が正しい分割。
+            gen_amt = int(r.get('gen_amount') or 0)
+            mi_amt = int(r.get('mi_amount') or 0)
+            split_state = 'ok' if (gen_amt + mi_amt) == meter_amount else 'mismatch'
+            output.append({
+                'no': meter_no, 'passengers': passengers, 'time': time_str,
+                'gen': gen_amt,
+                'mi': mi_amt,
+                'memo': memo or '現金+チケット',
+                'state': split_state,
             })
         else:  # 'normal' or 不明
             row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
@@ -1313,8 +1347,35 @@ if st.session_state.get('result_rows'):
         # Stage 2: 日報分類生データ
         with st.expander('🔧 Stage 2: 日報分類生データ'):
             rides = nippou_data.get('rides', [])
+
+            def _ride_amount_cell(r):
+                """case ごとに表示する金額情報を組み立てる。"""
+                c = r.get('case') or 'normal'
+                if c == 'split':
+                    g = r.get('gen_amount') or 0
+                    m = r.get('mi_amount') or 0
+                    return f'現{g:,}+未{m:,}'
+                if c == 'overage':
+                    o = r.get('overage_amount') or 0
+                    n = r.get('nippou_amount')
+                    base = f'¥{n:,}' if isinstance(n, (int, float)) else '?'
+                    return f'{base} (+{o})'
+                # normal / discount
+                n = r.get('nippou_amount')
+                return f'¥{n:,}' if isinstance(n, (int, float)) else ''
+
+            def _ride_compact(r):
+                """1 行コンパクト表示。"""
+                no = r.get('meter_no')
+                c = r.get('case') or 'normal'
+                if c == 'split':
+                    return f'**{no}**:{r.get("gen_amount", 0)}+{r.get("mi_amount", 0)}(分割)'
+                amt = r.get('nippou_amount')
+                kind_initial = (r.get('kind') or '?')[0]
+                return f'**{no}**:{amt if amt is not None else "?"}({kind_initial})'
+
             if rides:
-                parts = ['<table class="detail-table"><thead><tr><th>meter_no</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>overage</th></tr></thead><tbody>']
+                parts = ['<table class="detail-table"><thead><tr><th>meter_no</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>金額</th></tr></thead><tbody>']
                 for r in rides:
                     parts.append(
                         f'<tr><td>{r.get("meter_no", "")}</td>'
@@ -1322,7 +1383,7 @@ if st.session_state.get('result_rows'):
                         f'<td>{r.get("kind", "")}</td>'
                         f'<td>{r.get("memo", "")}</td>'
                         f'<td>{r.get("case", "")}</td>'
-                        f'<td>{r.get("overage_amount") or ""}</td></tr>'
+                        f'<td>{_ride_amount_cell(r)}</td></tr>'
                     )
                 parts.append('</tbody></table>')
                 st.markdown(''.join(parts), unsafe_allow_html=True)
@@ -1330,10 +1391,7 @@ if st.session_state.get('result_rows'):
                 st.info('日報の分類データなし')
 
             st.markdown('**生 JSON:**')
-            compact2 = '  '.join(
-                f'**{r.get("meter_no")}**:{r.get("nippou_amount") or "?"}({(r.get("kind") or "?")[0]})'
-                for r in rides
-            )
+            compact2 = '  '.join(_ride_compact(r) for r in rides)
             st.markdown(f'📋 **日報数値一覧:** {compact2}')
             st.json(nippou_data)
 
@@ -1456,6 +1514,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.5.03** (2026-05-12): 分割払い（現金+チケット併用等）に対応。1乗車で現収・未収両方に金額が書かれている場合を case="split" として正しく集計。合計がメーター額と一致すれば OK、ズレれば mismatch ハイライト
 - **v1.5.02** (2026-05-12): 立ち上がり体感の改善。Streamlit テーマを濃紺＋ダーク基調に設定し、ロード画面の段階から最終形と同じ背景色になるようにした（白フラッシュ撲滅）。実時間は変わらないが「スパッと開いた」感じに
 - **v1.5.01** (2026-05-12): メーター明細 OCR の JSON 構造化を Opus 4.5 → Sonnet 4.6 に変更（実測で完全同等の出力、コスト 1/5）。Vision API が読み取った印字テキストを JSON 化するだけのタスクで精度は落ちない設計
 - **v1.5.00** (2026-05-12): A/B 検証用コードと Gemini 経路を撤去（本番構成確定済）。パイプラインを 3 並列化（鮮明度＋OCR＋日報を同時処理）+ ローダーを全段ポーリング型に統一して「途中で固まって見える」問題を解消

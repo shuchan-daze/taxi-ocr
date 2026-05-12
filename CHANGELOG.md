@@ -10,6 +10,52 @@
 
 ---
 
+## [1.5.03] - 2026-05-12
+
+### Added (新機能)
+- **分割払い（現金 + チケット併用等）対応**: `case="split"` を新設
+  - `NIPPOU_PROMPT` に 【分割払い行】 セクション追加
+  - `build_report` に `case='split'` 分岐追加: `gen_amount` → 現収列、`mi_amount` → 未収列に両計上
+  - `gen_amount + mi_amount` がメーター額と一致しなければ `state='mismatch'`
+- Stage 2 デバッグ表示も split 対応（金額列で `現3000+未2400` のように表示）
+
+### 後方互換
+既存の normal / overage / discount ロジックは無変更。split 行を含まない日報は v1.5.02 と完全同等の出力。
+
+---
+
+## [1.5.02] - 2026-05-12
+
+### Performance (体感速度)
+- `.streamlit/config.toml` でテーマを `base="dark"` + `backgroundColor="#010519"` に設定。Streamlit のロード画面の段階から最終形と同じ濃紺背景になり、起動直後の白フラッシュ (~1〜2 秒) を撲滅。実時間は変わらないが「スパッと開いた」体感に。
+- `page_icon='🚖'` を `st.set_page_config` に追加。ブラウザタブの瞬間表示で識別性向上。
+
+---
+
+## [1.5.01] - 2026-05-12
+
+### Changed (コスト最適化)
+- `_ocr_vision_claude` の JSON 構造化を Claude Opus 4.5 → Claude Sonnet 4.6 に変更。Vision API が読み取った clean な印字テキストを JSON 化するだけのタスクで、画像認識ではないため精度劣化なし。実測 20 行 receipt で Opus と完全同等出力、コスト 1/5。
+- JSON 不正時は `_ocr_claude` (Opus 画像直叩き) にフォールバックする安全網は維持。
+- 100 枚/月で約 ¥480/人 削減。
+
+---
+
+## [1.5.00] - 2026-05-12
+
+### Removed (撤去)
+- v1.4 の A/B 検証用コードと Gemini 経路を全撤去（本番構成確定済のため）。対象: `_ai_call_text` / `get_gemini_model` / `_ocr_gemini` / `_classify_nippou_gemini` / `OCR_PROVIDERS` / `NIPPOU_PROVIDERS` / `_is_nippou_compare_mode` / `_nippou_compare` UI / `compare_nippou.py` / `requirements.txt` の `google-generativeai`。
+- `identify_image` / `check_clarity` を Claude Opus 直叩きに変更（Gemini 画像呼び出しが 10〜30s と遅くフリーズの主因だったため）。
+
+### Performance
+- `run_pipeline` を 3 並列化: `identify×2` → `clarity + parse_meter + classify_nippou`。
+- `_poll_until_done` で全フェーズをポーリング型に統一し、14% / 31% / 85% で進捗が止まって見える問題を解消。
+
+### コスト影響
+1 人/100 枚/月 で約 ¥4,460 → ¥3,780（15% 削減、v1.5.01 と合わせて）。
+
+---
+
 ## [1.4.01] - 2026-05-11
 
 ### Decision (技術検証結果と方針確定)
