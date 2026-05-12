@@ -1,0 +1,11 @@
+[theme]
+# 白フラッシュ撲滅: Streamlit のロード画面の段階から最終形と同じ濃紺背景にする。
+# インライン CSS は Streamlit 本体がロードされてから評価されるため、それ以前の
+# 1〜2 秒間は素の Streamlit 背景色（白）が見える。テーマ設定はそれより前段で効く。
+base = "dark"
+backgroundColor = "#010519"
+primaryColor = "#d4af37"
+
+[server]
+# uploaded ファイルの最大サイズ（タクシー画像は HEIC で 3-5MB なので余裕を持って 30MB）
+maxUploadSize = 30

@@ -3,6 +3,12 @@
 #   MINOR: 部分的な機能追加・改善（後方互換あり）
 #   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
 #
+# v1.5.02 - 2026-05-12
+#   - 立ち上がり体感を改善: .streamlit/config.toml でテーマを dark + 濃紺
+#     (backgroundColor="#010519") に設定。Streamlit のロード画面の段階から
+#     最終形と同じ背景色になり、起動直後の白フラッシュ (~1-2s) を撲滅。
+#     実時間は変わらないが「アプリが起動してる」と即座に伝わる。
+#   - page_icon に 🚖 を追加（ブラウザタブの瞬間表示で識別性向上）。
 # v1.5.01 - 2026-05-12
 #   - _ocr_vision_claude の Claude 構造化部分を Opus 4.5 → Sonnet 4.6 に変更。
 #     Vision API が読んだ clean な印字テキストを JSON 化するだけのタスクで、
@@ -108,7 +114,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 register_heif_opener()
-st.set_page_config(page_title='タクシー日報', layout='centered', initial_sidebar_state='collapsed')
+st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
 
 # (intro より先に必要なため、CSS markdown より前に配置)
 # パーティクル HTML を先に構築（intro と loader の両方で再利用）
@@ -420,7 +426,7 @@ st.markdown("""
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.5.01</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.5.02</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1450,6 +1456,7 @@ with st.expander('？ このアプリについて・使い方'):
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
 ### 5. 更新履歴
+- **v1.5.02** (2026-05-12): 立ち上がり体感の改善。Streamlit テーマを濃紺＋ダーク基調に設定し、ロード画面の段階から最終形と同じ背景色になるようにした（白フラッシュ撲滅）。実時間は変わらないが「スパッと開いた」感じに
 - **v1.5.01** (2026-05-12): メーター明細 OCR の JSON 構造化を Opus 4.5 → Sonnet 4.6 に変更（実測で完全同等の出力、コスト 1/5）。Vision API が読み取った印字テキストを JSON 化するだけのタスクで精度は落ちない設計
 - **v1.5.00** (2026-05-12): A/B 検証用コードと Gemini 経路を撤去（本番構成確定済）。パイプラインを 3 並列化（鮮明度＋OCR＋日報を同時処理）+ ローダーを全段ポーリング型に統一して「途中で固まって見える」問題を解消
 - **v1.4.01** (2026-05-11): 精度検証の結果、日報は Claude Opus 4.5 維持で確定（Gemini/Sonnet/Opus 4.7 / Caching すべて出力ズレあり）。コスト削減は価格設計で吸収する方針へ
