@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.20.00 (2026-05-15)
+# 現バージョン: v1.21.00 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -749,6 +749,7 @@ NIPPOU_COLUMNS = [
     {'name': 'mi_cell',       'label': '未収欄',                'type': 'amount_or_marker'},
     {'name': 'memo',          'label': '摘要',                  'type': 'string'},
     {'name': 'strikethrough', 'label': '乗車区間の取り消し線', 'type': 'boolean'},
+    {'name': 'needs_review',  'label': 'AI の確信度 (この行に digit OCR の自信が無い・既知ケースに当てはまらない・memo が見慣れない時のみ true、それ以外は false)', 'type': 'boolean'},
 ]
 
 
@@ -830,6 +831,18 @@ def _build_nippou_prompt(columns):
 【memo】
 - 摘要欄に書かれた文字をそのまま (Visa / Uber / 現金 / 障割 / AMEX 等)
 - 読めない文字は推測せず ""（空文字）。「たこ焼」のような幻覚は禁止
+
+【needs_review — 自信シグナル】
+- デフォルト false。**本当に自信が無い行だけ true**。
+- true にする条件 (どれか):
+  - digit が滲んで読めず推測で埋めた (例: 1090 か 1000 か明らかに分からない)
+  - 既知の支払い種別 (現金/カード/Uber/Visa/JCB/AMEX/Suica/PASMO 等) に該当しない見慣れない memo
+  - セルに見慣れない文字 / 記号がある
+  - 現収欄・未収欄の数字が部分的にしか読めない
+- false にする条件:
+  - 普通に読めた行 (大多数はこれ)
+  - 何も書かれていない empty 行
+- **過剰に true を付けない**。全行 true になると人間が確認できない。年に 1-2 行レベルの精度で。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【出力例】
@@ -1042,11 +1055,18 @@ def interpret_raw_rows(raw_rows):
         if t == 'empty' or t == 'invalid':
             continue
 
+        # AI の自信シグナル: raw_row.needs_review があれば ride に伝播
+        # (karamawashi は別、直前の ride に足すので flag だけ後で吸収)
+        needs_review = bool(raw.get('needs_review'))
+
         if t == 'karamawashi':
             # 直前の通常行/分割行に overage_amount を足す
             if rides and rides[-1].get('case') in ('normal', 'split'):
                 rides[-1]['case'] = 'overage'
                 rides[-1]['overage_amount'] = interp.get('overage_amount') or 0
+                # からまわし行の needs_review も親 ride に伝播
+                if needs_review:
+                    rides[-1]['needs_review'] = True
             continue
 
         if t == 'overage':
@@ -1060,6 +1080,7 @@ def interpret_raw_rows(raw_rows):
                 'nippou_amount': interp.get('customer_amount'),
                 'overage_amount': interp.get('overage_amount') or 0,
                 'memo': interp.get('memo') or '',
+                'needs_review': needs_review,
             })
             continue
 
@@ -1068,6 +1089,7 @@ def interpret_raw_rows(raw_rows):
                 'case': 'discount',
                 'nippou_amount': interp.get('amount'),
                 'memo': interp.get('memo'),
+                'needs_review': needs_review,
             })
             continue
 
@@ -1079,6 +1101,7 @@ def interpret_raw_rows(raw_rows):
                 'gen_amount': interp.get('gen'),
                 'mi_amount': interp.get('mi'),
                 'memo': interp.get('memo') or '',
+                'needs_review': needs_review,
             })
             continue
 
@@ -1090,6 +1113,7 @@ def interpret_raw_rows(raw_rows):
                 'case': 'normal',
                 'nippou_amount': interp.get('amount'),
                 'memo': interp.get('memo') or '',
+                'needs_review': needs_review,
             })
     return rides
 
@@ -1153,6 +1177,7 @@ def _finalize_rides(rides):
             'memo': memo, 'case': case,
             'nippou_amount': nippou_amount, 'overage_amount': overage_amount,
             'gen_amount': gen_amount, 'mi_amount': mi_amount,
+            'needs_review': bool(r.get('needs_review')),
         })
 
     return {'rides': normalized, 'issues': issues}
@@ -1442,6 +1467,7 @@ def build_report(meter_data, nippou_data):
         memo = ride.get('memo') or ''
         nippou_amt = ride.get('nippou_amount')
         nippou_amt = int(nippou_amt) if isinstance(nippou_amt, (int, float)) else None
+        needs_review = bool(ride.get('needs_review'))
 
         if case == 'overage':
             overage = int(ride.get('overage_amount') or 0)
@@ -1453,6 +1479,7 @@ def build_report(meter_data, nippou_data):
                 'mi': client_amount if kind == '未収' else 0,
                 'memo': memo, 'state': client_state,
                 'meter_amount': client_amount,
+                'needs_review': needs_review,
             })
             output.append({
                 'no': f'{meter_no}+', 'passengers': passengers, 'time': time_str,
@@ -1469,6 +1496,7 @@ def build_report(meter_data, nippou_data):
                 'memo': memo or '現金+チケット',
                 'state': split_state,
                 'meter_amount': meter_amount,
+                'needs_review': needs_review,
             })
         else:  # normal or 不明
             row_state = 'mismatch' if (nippou_amt is not None and nippou_amt != meter_amount) else 'ok'
@@ -1482,6 +1510,7 @@ def build_report(meter_data, nippou_data):
                 'memo': memo, 'state': row_state,
                 'meter_amount': meter_amount,
                 'nippou_amount': nippou_amt,  # AI が紙から読んだ値（mismatch 時に表示）
+                'needs_review': needs_review,
             })
 
     # discount 行: meter 行とは独立、別途追加（最後に対応した通常行の no + '+' をラベルに）
@@ -1496,6 +1525,7 @@ def build_report(meter_data, nippou_data):
             'gen': 0, 'mi': int(n_amt),
             'memo': r.get('memo') or '障割',
             'state': 'discount',
+            'needs_review': bool(r.get('needs_review')),
         })
 
     # 障割の数学検出 (ヒント表示のみ、自動確定はしない)
@@ -1779,6 +1809,9 @@ def render_detail_table(rows):
                 state_display = '🟠 日報の数字を確認'
         elif state == 'missing_nippou' and isinstance(meter_amt, int):
             state_display = f'🔴 未記載・¥{meter_amt:,} を書く'
+        elif r.get('needs_review') and state in ('ok', '', None):
+            # AI が確信を持てなかった行 (mismatch じゃない時のみヒント表示、mismatch なら mismatch を優先)
+            state_display = '⚠ AI 確信なし、紙を確認'
         elif state == 'special':
             state_display = 'メーター超過'
         elif state == 'discount':

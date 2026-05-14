@@ -10,6 +10,24 @@
 
 ---
 
+## [1.21.00] - 2026-05-15
+
+### Added (AI 自信シグナル — unknown pattern detector)
+
+- AI が「この行は digit OCR の自信が無い / 既知ケースに当てはまらない / memo が見慣れない」と感じた行に `needs_review: true` を返せるようにした。プロンプトに strict な使用条件を記載 (過剰に true にしないよう「年に 1-2 行レベル」と明示)
+- `NIPPOU_COLUMNS` に `needs_review` (boolean) を追加。プロンプト自動生成に乗る
+- `interpret_raw_rows` / `_finalize_rides` / `build_report` で needs_review を伝播
+- `render_detail_table`: mismatch / missing_nippou ではない行で needs_review が立ってる時のみ「⚠ AI 確信なし、紙を確認」を状態列に表示
+- 既存の state (mismatch / missing_nippou) と排他: アラインメント警告がある行ではそちらを優先
+
+### 設計判断
+
+- 元の案 (`case='unknown'`) は v1.9.00 以降のアーキ (AI は case を返さない、Python が判定) と合わなかったので、**「自信シグナル」フラグ** に再設計
+- 自動修正はせず、ユーザーが目視確認するヒントとして機能 ([[feedback_proceed_is_confirm]] と整合)
+- 過剰検出を防ぐため、プロンプトで「滅多に true にしない」を強調
+
+---
+
 ## [1.20.00] - 2026-05-15
 
 ### Added (テスト整備)
