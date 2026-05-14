@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.17.02 (2026-05-14)
+# 現バージョン: v1.19.00 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 import streamlit as st
@@ -1497,7 +1497,128 @@ def build_report(meter_data, nippou_data):
             'state': 'discount',
         })
 
+    # 障割の数学検出 (ヒント表示のみ、自動確定はしない)
+    _add_discount_hints(output, meter_rows_list)
+
     return output
+
+
+def _add_discount_hints(report_rows, meter_rows_list):
+    """障害者割引の数学的検出 (ヒントのみ、case 変更や集計影響は無し)。
+
+    根拠: 日本のタクシー障害者割引は「メーター額 = 原運賃 × 0.9 (既に1割引で表示)」。
+    別途、運転手が会社に未収請求する 1割分 (= 原運賃 × 0.1 = メーター × 1/9) が
+    日報の別行に記録される。memo に「障割」キーワードが無くても、額の比率で検出可能。
+
+    判定: mismatch 行で nippou_amount × 9 ≒ いずれかのメーター額 (±15円) なら障割候補。
+          row に `discount_hint=True` と `discount_hint_for_meter=<メーター額>` を立てる。
+    描画: render_detail_table が hint を見て「💡 障割の可能性 (No.X)」と表示する。
+    """
+    # 同金額のメーター行が複数あり得るので list of (no, amount) で保持
+    meter_pairs = [(m.get('no'), int(m.get('amount') or 0)) for m in meter_rows_list]
+    TOLERANCE = 10  # 円 (10円単位丸めの誤差吸収)
+    for row in report_rows:
+        if row.get('state') != 'mismatch':
+            continue
+        n = row.get('nippou_amount')
+        if not isinstance(n, int) or n <= 0 or n > 500:
+            continue  # 障割は通常 100〜500 円程度
+        # いずれかのメーター額の 1/9 値と一致するか
+        for m_no, m_amt in meter_pairs:
+            if m_amt <= 0:
+                continue
+            expected_discount = m_amt / 9
+            if abs(n - expected_discount) <= TOLERANCE:
+                row['discount_hint'] = True
+                row['discount_hint_for_meter'] = m_no
+                row['discount_hint_meter_amount'] = m_amt
+                break
+
+
+def reverify_mismatches(client, nippou_img, report_rows):
+    """第 2 段 OCR: mismatch 行を AI に再確認させ、補正可能なら適用。
+
+    1 段目 OCR (classify_nippou) で paper の値が meter と一致しなかった行について、
+    AI に「メーター額が読める可能性は?」と再質問。AI が「やっぱりメーター額に見える」
+    と訂正したら state を 'ok' に戻し、紙の数字も meter 値に揃える。
+    紙が本当に違う数字を書いてる場合は AI が "keep" を返すので mismatch のまま。
+
+    cost 対策: mismatch 行が無い時は呼ばれない (run_pipeline 側で条件分岐)。
+    精度対策: prompt で「自信無いなら keep」と明示 (誤訂正の防止)。
+    """
+    mismatches = []
+    for orig_i, r in enumerate(report_rows):
+        if r.get('state') != 'mismatch':
+            continue
+        if r.get('discount_hint'):
+            continue  # 障割候補はメーターに寄せると害になる
+        if not isinstance(r.get('nippou_amount'), int):
+            continue
+        if not isinstance(r.get('meter_amount'), int):
+            continue
+        mismatches.append((orig_i, r))
+
+    if not mismatches:
+        return report_rows
+
+    lines = [
+        f'行 {idx}: メーター ¥{r["meter_amount"]:,} ({r.get("time") or "時刻不明"}) — '
+        f'AI は前回 ¥{r["nippou_amount"]:,} と読んだ'
+        for idx, (_, r) in enumerate(mismatches)
+    ]
+
+    prompt = (
+        f'これは先程と同じタクシー日報の写真です。\n'
+        f'以下の {len(mismatches)} 個の行で、メーター額 (印字なので正解) と AI 読み取り値が一致しません。\n'
+        f'日報の該当行を改めてよく見て、メーター額が読み取れる可能性があるか判定してください。\n\n'
+        + '\n'.join(lines)
+        + '\n\n【判定ルール】\n'
+        '- "confirm": よく見たらメーター額の通り読める (前回の読み取りは digit OCR ミス)\n'
+        '- "keep": やはり AI の読み取り値で正しい (紙の数字がメーターと違う = 紙のミス)\n'
+        '- "uncertain": 判定できない\n\n'
+        '【厳守】\n'
+        '- メーター額に寄せる確信がない時は "keep" (誤訂正を避ける)\n'
+        '- 障害者割引等で意図的に違う額の場合も "keep"\n\n'
+        'JSON 配列のみ返す (前後にコメント不要):\n'
+        '[{"row_index": 0, "verdict": "confirm" or "keep" or "uncertain"}, ...]\n'
+    )
+
+    try:
+        res = client.messages.create(
+            model='claude-opus-4-5',
+            max_tokens=1500,
+            temperature=0,
+            messages=[{'role': 'user', 'content': [
+                {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': to_b64(nippou_img)}},
+                {'type': 'text', 'text': prompt},
+            ]}]
+        )
+    except Exception:
+        return report_rows  # API 失敗時は補正せず元のまま (mismatch のまま見せる)
+
+    text = res.content[0].text.strip()
+    m = re.search(r'\[.*\]', text, re.DOTALL)
+    if not m:
+        return report_rows
+    try:
+        verdicts = json.loads(m.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return report_rows
+
+    for v in verdicts:
+        if not isinstance(v, dict):
+            continue
+        ri = v.get('row_index')
+        if not isinstance(ri, int) or ri < 0 or ri >= len(mismatches):
+            continue
+        if v.get('verdict') != 'confirm':
+            continue
+        _, row = mismatches[ri]
+        # AI が「やっぱりメーター額」と再確認した → mismatch を解消
+        row['state'] = 'ok'
+        row['nippou_amount'] = row['meter_amount']
+        row['reverified'] = True
+    return report_rows
 
 
 # 整合性チェック
@@ -1642,10 +1763,14 @@ def render_detail_table(rows):
 
         # 状態列: テーブルの数値はメーター (正解) を表示してる前提で、
         # mismatch 行は「紙の方が違う」を AI 読み取り値で具体的に示す。
+        # 障割の数学検出ヒントがあれば併記 ('障割の可能性'，自動確定はしない)。
         meter_amt = r.get('meter_amount')
         nippou_amt = r.get('nippou_amount')
         if state == 'mismatch':
-            if isinstance(nippou_amt, int) and isinstance(meter_amt, int):
+            if r.get('discount_hint'):
+                dh_meter = r.get('discount_hint_for_meter')
+                state_display = f'💡 No.{dh_meter} の障割の可能性 (紙 ¥{nippou_amt:,})'
+            elif isinstance(nippou_amt, int) and isinstance(meter_amt, int):
                 state_display = f'🟠 AI 読み ¥{nippou_amt:,} / メーター ¥{meter_amt:,}'
             elif isinstance(meter_amt, int):
                 state_display = f'🟠 メーター ¥{meter_amt:,}（日報の数字を確認）'
@@ -1802,8 +1927,19 @@ def run_pipeline(client, imgs, loader):
         _poll_until_done(loader, [nippou_future], (60, 92), '日報を読み取り中 (メーター照合)')
         nippou_data = nippou_future.result()
 
-    loader_steps(loader, list(range(92, 101)), '統合中', sleep=0.03)
+    # Phase 4 (92-95%): 統合
+    loader_steps(loader, list(range(92, 96)), '統合中', sleep=0.03)
     report_rows = build_report(meter_data, nippou_data)
+
+    # Phase 4.5 (96-99%): mismatch があれば AI に第 2 段 OCR で再確認
+    # 1 段目で digit OCR ミスがあれば、ここで AI 自身が「やっぱりメーター値」と訂正
+    # する可能性。mismatch が無ければスキップ (コストゼロ)。
+    if any(r.get('state') == 'mismatch' for r in report_rows):
+        loader_steps(loader, list(range(96, 99)), '違和感を AI に再確認中', sleep=0.04)
+        report_rows = reverify_mismatches(client, nippou_img, report_rows)
+
+    # Phase 5 (99-100%): 検証
+    loader_steps(loader, list(range(99, 101)), '検証中', sleep=0.03)
     valid, diff = validate(report_rows, meter_data, nippou_data)
     return report_rows, valid, diff, meter_data, nippou_data
 

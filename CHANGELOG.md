@@ -10,6 +10,44 @@
 
 ---
 
+## [1.19.00] - 2026-05-15
+
+### Added (新機能)
+
+- **第 2 段 OCR (mismatch 行の AI 再確認)**: build_report で `state='mismatch'` 行が検出された時、AI に「メーター額が読める可能性は?」と再質問する Phase 4.5 を追加。AI が `"confirm"` を返したら mismatch を解消 (digit OCR ミスのリカバー)。`"keep"` なら mismatch のまま (紙が実際に違う数字)。mismatch 無し時はスキップでコストゼロ。プロンプトに「自信無いなら keep」を厳守させて誤訂正を防止
+- **障割 (障害者割引) の数学的検出**: メーター額 = 原運賃 × 0.9 (1割引で印字)、障割額 = 原運賃 / 10 = メーター額 / 9 の関係を利用。mismatch 行で `paper_amount ≈ meter_amount / 9 (±10円)` を満たすケースを検出し、`💡 No.X の障割の可能性 (紙 ¥Y)` ヒントを表示。自動確定はせず、ユーザー判断に委ねる
+
+### 設計の根拠
+
+- ([[project_correction_philosophy]]): AI は既知情報で自動補完。Shuchan の要望「いちいち確認してたら日が暮れる」に従い、第 2 段 OCR で自律的に digit OCR ミスを救う
+- ([[feedback_proceed_is_confirm]]): ただし AI が判定に迷う時は `keep` で訂正しない (ユーザーが見て判断する余地を残す)
+- ([[project_paper_constraints.md]]): 障割の数学的検出は memo に「障割」キーワードが無くても数値で拾える、ユーザーが書き忘れた場合の安全網
+
+### コスト影響
+
+- mismatch 無し: 追加コスト 0
+- mismatch あり: 1 回の追加 API 呼び出し (Claude Opus 4.5)。普通は 1-3 件なので $0.01-0.05 程度
+
+---
+
+## [1.18.00] - 2026-05-15
+
+### Refactor
+
+- 大規模クリーンアップ Phase 1+2+3+6 を実施 (2938 → 2380 行, -19%):
+  - **Phase 1**: 冒頭 changelog (476 行) を CHANGELOG.md に移管
+  - **Phase 2**: `except: pass` を `except (AttributeError, KeyError)` に絞り込み
+  - **Phase 3**: 旧形式 (`_OLD_FORMAT_KEYS`) 後方互換削除 (現プロンプトでは到達不能)
+  - **Phase 6 (本丸)**: `meter_no` フィールドの完全撤去
+    - v1.14.00 以降「日報には No 列が無い」前提に変わったのに、ride dict には死蔵されていた
+    - `_to_user_where` の `meter_no=` 正規表現マスクは典型的なパッチ → 撲滅
+    - Stage B debug display の meter_no カラム削除
+    - 残存 `meter_no` シンボルは alignment 内部の「メーター行の no」のみ、意味的に正しいので残置
+- 副次: 死蔵コメント整理、在アプリの更新履歴を最新 5 バージョン + CHANGELOG.md ポインタに圧縮
+- Phase 4/5 (HTML 統合、金額抽出統合) は精査の結果「やる方が複雑化する」「責務が違うものを統合は誤り」と判断、見送り
+
+---
+
 ## [1.17.02] - 2026-05-14
 
 - 開発者デバッグ UI をデフォルトで完全に隠す形に変更。v1.17.01 で「仕切り + 注意書き」を入れたが、それでも expander 自体は画面に出てたので一般ユーザーが触ってしまう可能性があった。
