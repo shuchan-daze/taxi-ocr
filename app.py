@@ -1,7 +1,8 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.19.00 (2026-05-15)
+# 現バージョン: v1.20.00 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
+# テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
 import streamlit as st
 import streamlit.components.v1 as components
 import anthropic

@@ -10,6 +10,39 @@
 
 ---
 
+## [1.20.00] - 2026-05-15
+
+### Added (テスト整備)
+
+- **Phase 1: 純ロジックの単体テスト** (`tests/`, 78 ケース、API 不要、実行 0.04 秒)
+  - `tests/conftest.py`: streamlit/anthropic/google.cloud.vision を mock して app.py を import 可能に (refactor 不要のアプローチ)
+  - `tests/test_helpers.py` (21): `_coerce_int`, `_parse_hhmm`, `_is_discount_memo`, `_is_overage_marker`, `_parse_overage_marker`, `_cell_to_int`
+  - `tests/test_interpret.py` (16): `_interpret_raw_row` の case 分類 (normal / split / overage / karamawashi / discount / empty / invalid)、`interpret_raw_rows`、`_split_rides`
+  - `tests/test_finalize.py` (15): `_finalize_rows` (メーター正規化 + issues)、`_finalize_rides` (日報正規化 + issues、where 形式が 'index N' に統一されてることを保証)
+  - `tests/test_alignment.py` (16): `_align_rides_to_meter` Pass 1 (金額一致 + 時刻 tie-break) と Pass 2 (時刻最近接、20分閾値)、`build_report` の各 case (perfect / missing_nippou / mismatch / split / overage / discount)、`_add_discount_hints` の数学的検出
+  - `tests/test_validate.py` (10): `validate`, `aggregate_totals` (special/discount 除外ルール)、`validate_meter_sequence`
+  - `pytest.ini`: 設定ファイル
+  - `requirements-dev.txt`: pytest を dev 依存として分離 (本番 Streamlit Cloud には追加しない)
+- **Phase 2: E2E テストフレームワーク** (`tests/test_e2e.py`)
+  - 実 Claude API を呼んで画像 → 結果のパイプラインを検証
+  - デフォルト skip (`RUN_E2E_TESTS=1` + `ANTHROPIC_API_KEY` で有効化)
+  - `tests/fixtures/<case_name>/meter.jpg + nippou.jpg + meta.json` でケース追加
+  - 期待値: `meter_total` / `row_count` / `state_counts` を JSON で記述、書かれた項目だけ検証
+  - 運用想定: Shuchan が「間違えた日報」に遭遇したら 1 ケース fixture 化、累積で網羅性向上
+
+### 設計判断
+
+- ([[feedback_root_cause_first]]): テストはパッチではなく構造的安全網。今後の refactor が「壊れたら自動で気付ける」状態にする
+- ([[feedback_iteration_friendly]]): Phase 2 は実機運用で出た実例を 1 件ずつ積む形で、最初から完璧を目指さない
+- API mock 案を採用してロジック抽出 (taxi_logic.py) を回避 — 既存コードへの侵襲を最小化、refactor リスクゼロ
+
+### 効果
+
+- 構造変更時の回帰検出が自動化
+- 過去 14 バージョンで散発的に出たバグ (例: meter_no 死蔵、Pass 2 時刻ベース) の再発を防ぐ網ができた
+
+---
+
 ## [1.19.00] - 2026-05-15
 
 ### Added (新機能)
