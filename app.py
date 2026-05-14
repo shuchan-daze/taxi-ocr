@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.21.00 (2026-05-15)
+# 現バージョン: v1.21.01 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -298,6 +298,10 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     line-height: 1;
     margin-bottom: 16px;
     font-size: 140px;
+    /* 視覚的中心調整: 大きな数字 + 小さい % だと、% の幅 (0.28em) 分だけ
+       数値が左に偏って見える。translateX で右へ 0.06em (= 140px 換算で約 8px)
+       ずらして光学的中心を合わせる。em 単位なので画面/フォントサイズに自動追従。 */
+    transform: translateX(0.06em);
 }
 .big-num .num-value {
     font-size: inherit;
