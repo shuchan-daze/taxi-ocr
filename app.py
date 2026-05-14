@@ -1,479 +1,7 @@
-# バージョニング規約: SemVer 2.0 (MAJOR.MINOR.PATCH)
-#   MAJOR: 大きな変更・仕様変更（後方互換なし）
-#   MINOR: 部分的な機能追加・改善（後方互換あり）
-#   PATCH: バグ修正・小さな調整（常に 2 桁ゼロパディング表記、例: 1.1.04）
-#
-# v1.17.02 - 2026-05-14
-#   - 開発者デバッグ UI をデフォルトで完全に隠す形に変更。
-#     v1.17.01 で「仕切り + 注意書き」を入れたが、それでも expander 自体は
-#     画面に出てたので一般ユーザーが触ってしまう可能性があった。
-#     新方式: 「🛠️ 開発者メニューを開く」トグルボタンを設置。押すまで Stage 1/2/3
-#     expander は一切レンダリングしない (st.stop で打ち切り)。再度押すと閉じる。
-#     ボタン自体も控えめなグレー色で「これは目立たないやつだよ」と暗示。
-# v1.17.00 - 2026-05-14
-#   - **完了導線の哲学転換**: 「直して再アップロード」強制ループからの脱却。
-#     これまでの UX は「🟠 🔴 がすべて消えるまで完成じゃない」と促す形だったが、
-#     紙の物理制約 (行追加できない / 修正ペン無し / 斜線で AI が混乱) を考えると
-#     AI 読み違いケースで詰む。
-#     新方針: 警告は情報として残すが、ユーザーが「次へ進む」を選んだら
-#     アプリは結果を尊重する (= 暗黙の確定)。判定 UI (per-row OK ボタン等) は
-#     足さない (UI 増えると別バグの温床)。
-#     表示文言:
-#       旧: 🔄 手書き日報を直したら、もう一度写真を撮って再アップロード
-#           🟠 🔴 がすべて消えたら完成です
-#       新: 🟠 🔴 の行を確認してください
-#           紙に書き漏れ・誤記があれば修正して再アップ。
-#           AI の読み違いなら、このまま完了で OK です。
-#   - mismatch 状態列の文言を「紙の数字」から「AI 読み」に修正。
-#     旧: 🟠 紙の数字 ¥1,090 → ¥1,200
-#     新: 🟠 AI 読み ¥1,090 / メーター ¥1,200
-#     「紙」って何だよ感を解消、AI が読み取った値だと明示。
-# v1.16.05 - 2026-05-14
-#   - missing_nippou 行の memo 文言再調整。「何が問題か」を先に説明する語順に。
-#     新: この金額の記入が漏れています。新しい行を作成して現収か未収の欄に記入してください。
-# v1.16.04 - 2026-05-14
-#   - missing_nippou 行の memo 文言修正。「入金確認」だと「客が払ったか確かめろ」
-#     と誤解される（実際は「日報に書け」が本質）。Siri 流の端的なアクション指示に
-#     差し替え:
-#     旧: ⚠ 自動で「現収」と仮定。実際は未収かもしれないので入金確認してください
-#     新: 日報に新しい行を追加して、現収 or 未収欄に記入してください
-# v1.16.03 - 2026-05-14
-#   - revert v1.16.02: input オーバーレイで iOS Chrome の白タブを止めようとしたが
-#     実機検証で効果なし。原因は JS 間接呼び出しではなく、WebKit-on-iOS Chrome の
-#     `<input type="file">` 自体の挙動 — ピッカーを about:blank コンテキストで
-#     描く設計なので、JS 経路を変えても変わらない。CSS で解決不能なので撤去。
-#     代替: ユーザーには iPhone Safari の使用を案内する (Safari では出ない)。
-# v1.16.02 - 2026-05-14
-#   - iOS Chrome 白タブ (about:blank) 対策の再投入。
-#     `<input type="file">` を dropzone セクション全体に透明オーバーレイし、
-#     ユーザーのタップがネイティブ input に直接届くようにする。Streamlit の
-#     JS 経由クリック (input.click()) を回避するので iOS Chrome の popup blocker
-#     を通過する。
-#     前回 (v1.15.02) で同じアプローチを試した時は section の幅が崩れたが、
-#     当時は block-container 自体も壊れていて副作用に見えただけ。v1.15.04 で
-#     block-container を `width: 100% !important` で固定したので前提が変わった。
-#     section にも `width: 100%` + `box-sizing: border-box` を明示して
-#     再発防止。崩れたらまた剥がす。
-# v1.16.01 - 2026-05-14
-#   - 検証ロジックのゴミ削除: _finalize_rides の `missing_meter_no` チェック撤去。
-#     v1.14.00 以降、日報には No 列が存在しないと判明 → プロンプトも「行番号は与え
-#     ない」設計に変更済。なのに検証側だけ「meter_no が None なら issue」と旧前提
-#     のまま動いていた。結果、全 ride で false positive な「日報の左端 No が読めず」
-#     issue が発生。UI 側で v1.15.01 で「画面に🟠🔴が無ければパネル非表示」にして
-#     見えなくしてたが、根本のゴミは残ったままだった。発生源と labels 辞書から
-#     キーごと撤去。
-# v1.16.00 - 2026-05-14
-#   - **アライメント大改善**: build_report の Pass 2 (金額不一致 ride の救済) を
-#     「上から順番割当」から「時刻が近いメーター行への自動推定」に切替。閾値 20 分。
-#     - これまで: 紙が 1 行書き漏れ (例: メーター No.11 ¥900) すると、後続の紙の
-#       行が全部ずれて、メーター No.11 に「紙の ¥1,090 AMEX」という機械的な嘘の
-#       mismatch が表示されてた。AMEX は実は No.13 用なのに。
-#     - 今後: 紙の 18:09 AMEX (1090) は時刻最近接のメーター No.13 (18:08 ¥1,200)
-#       に当たって「¥1,090 → ¥1,200 の mismatch、AMEX memo は維持」と正しく表示。
-#       書き漏れた No.11 (17:14 ¥900) は誰も来ないので 🔴 missing_nippou で
-#       「¥900 を書く」と素直に教える。
-#     - 「AI なら自動で直しつつ、ここを書けと教えてくれ」というユーザー要求への構造的対応。
-# v1.15.04 - 2026-05-14
-#   - レイアウトバグ修正: iOS Chrome で画面幅の 60〜70% しか使えず、右側に 24% も
-#     空白が出ていた問題を修正。原因は .block-container の horizontal padding を
-#     明示していなかったため、Streamlit 1.50 のデフォルト (端末/ブラウザによって
-#     非対称な計算) が残っていた。padding を `1.5rem 1rem 2rem 1rem` で全方向
-#     明示、`margin-left/right: auto` + `width: 100%` + `box-sizing: border-box`
-#     で確実にセンタリング & 全幅活用。!important で内部スタイル上書きも保証。
-# v1.15.03 - 2026-05-14
-#   - revert: v1.15.02 で試した「<input type="file"> をセクション全体に絶対配置で
-#     透明オーバーレイ」する iOS Chrome popup blocker 回避策を撤回。Streamlit の
-#     dropzone セクションは内部 flex で子要素を基準にサイズを決めているらしく、
-#     input を absolute に逃がすとセクションの幅が縮む副作用が出たため。
-#     iOS Chrome の初回 about:blank は「下スワイプで消せば以降は出ない」ワンタイム
-#     挙動だと判明したので、UX 影響度を考えて一旦受容する。
-# v1.15.02 - 2026-05-14
-#   - UX バグ修正（矛盾警告の撲滅）: 結果画面上部の「メーターレシートと日報の内容が
-#     大きく乖離しています」が、下の「✅ 読み取り完了」と同時に出る矛盾を解消。
-#     原因: 乖離判定が raw rides の meter_no 充足率で測っていたため、AI が左端 No を
-#     読めない (missing_meter_no) と amount/time マッチで揃ってても「100% 乖離」と
-#     誤検出していた。
-#     修正: 乖離判定を build_report 後の最終テーブルベースに統一。
-#     state='missing_nippou' の行数・金額で測るので、上下で同じ事実を見るように。
-# v1.15.01 - 2026-05-14
-#   - UX バグ修正: 結果画面に「🟠 🔴 がすべて消えたら完成です」の修正導線が常時
-#     出ていた問題を修正。表に 🟠 (mismatch) / 🔴 (missing_nippou) が無い かつ
-#     合計も合っている時は「✅ 読み取り完了 — このまま日報として使えます」を出す。
-#   - UX バグ修正: 「⚠ 読み取り時に検出された問題」パネルが内部用語まみれだった
-#     (meter_no / build_report / index N) のを全部ユーザー言語に書き換え。さらに、
-#     画面上に 🟠 🔴 が出ていない時はこのパネル自体を表示しない（後段で自動補完
-#     済の AI ゆらぎを「直せ」と見せても混乱するだけ）。
-# v1.15.00 - 2026-05-14
-#   - **constraint-aware OCR**: 日報 OCR (Opus 4.5) にメーターデータを参考情報として渡す。
-#     - 目的: 手書きの曖昧な digit (8 vs 5、1 vs 7 等) を AI が disambiguate する時、
-#       メーター値と整合する候補を選べるようにする。
-#     - auto-correct ではない: 紙に明確に書かれた数字はそのまま読む。メーター情報は
-#       「曖昧な手書きを推測する補助材料」としてのみ使う、というプロンプト指示を厳守。
-#     - 例: AI が paper の 800 を 500 と誤読しがちなケース → メーター 1,800 と整合する
-#       800 を選んでくれるようになる。
-#   - パイプライン構成変更:
-#     - 旧: Phase 2 で clarity / parse_meter / classify_nippou を 3 並列
-#     - 新: Phase 2 で clarity || parse_meter を並列、Phase 3 で classify_nippou を
-#           meter_data を文脈に渡して実行 (sequential)
-#     - 並列度低下で +3〜5 秒の体感遅延、引き換えに OCR 精度向上
-#   - split mismatch 等での post-processing 補正は導入しない (AI 側で digit を正しく
-#     読めることを期待)。建前通り「メーター = 金額の絶対」「AI = 列位置の絶対」を
-#     維持しつつ、AI の OCR ステップを賢くする。
-# v1.14.00 - 2026-05-14
-#   - **アラインメント大改修 + 列構造のデータ宣言化**:
-#     現実の日報レイアウト確認の結果、最左端は 時間 列で「No 列」は存在しないことが
-#     判明。v1.10.00 の「AI に最左端 No 列を読ませる」設計は前提が崩壊しており、
-#     AI は仕方なく 人数 列を meter_no として返していた → アラインメント崩壊。
-#   - **NIPPOU_COLUMNS データ宣言を導入**: 列を 1 箇所のリストで定義し、プロンプトは
-#     `_build_nippou_prompt(NIPPOU_COLUMNS)` で自動生成。新しい列を増やす場合は
-#     COLUMNS に 1 行追加で済む。プロンプト本文・出力スキーマ・例文が自動追従。
-#     (フル汎用化 (業種跨ぎ) はまだ premature だが、列レベルの拡張性は早めに入れる)
-#   - **alignment を amount-first に書き換え**:
-#     Pass 1: 金額完全一致で割当 (同金額複数なら時刻が近い ride を tie-break)
-#     Pass 2: 残り meter ←→ 残り ride を出現順に強制割当 (mismatch 表示)
-#     meter_no 概念を使わない。AI は単純に「列構造を維持して上から順に抽出」するだけ。
-#   - Stage A デバッグ表示の "meter_no" カラムを "順" (上から N 番目) に変更。
-#   - interpret_raw_row 内の meter_no 参照は残置 (None になるだけで害なし)。
-# v1.13.01 - 2026-05-14
-#   - v1.13.00 で normal mismatch 行を「AI 読み取り値」表示にしたが、ユーザー指摘で
-#     方針を見直し: **メーターは絶対的に正しい（印字）から、テーブルの数値は
-#     メーター値 (正解) を表示する**。集計もメーター値で確定。
-#     アプリの役割は「紙のミスを指摘する」であって「数字を訂正する」ではない。
-#     ユーザー本人「を訂正するのではなく合うように導いていくのが君の仕事だ」
-#   - 状態列の mismatch を「🟠 紙の数字 ¥X → ¥Y」形式に変更。AI が読んだ紙の
-#     違う値 ¥X とメーター正解 ¥Y を並べる → ユーザーは紙のどこを直すか一目で分かる。
-#   - mismatch セルのピンク色塗りを撤去 (テーブルが正解値を表示してるので、
-#     セル色付けは「値がおかしい」誤解を招く)。行全体のピンク背景は維持。
-#   - build_report に nippou_amount フィールド追加 (AI が紙から読んだ値を保持、
-#     state 列の表示で使う)。
-# v1.13.00 - 2026-05-14
-#   - **訂正 UX を「視覚情報だけで完結」に再構築**:
-#     ユーザー本人「タップしたらすべてやり直しになっちゃう。ポップアップで
-#     直そう言われても何が間違ってるかわからない。視覚情報で導いてほしい」。
-#     ミッション: 「手書き日報を完成させるサジェスト」、デジタル編集はしない。
-#   - detail-table のセルタップ機構を全撤去 (?edit=N アンカー / ダイアログ /
-#     edit_row_target / クエリパラメータハンドラ全部削除)。タップで状態消失
-#     する不具合も同時解消。
-#   - 状態列を具体化:
-#     - 'mismatch' → 「🟠 メーター ¥1,600」(正解値が直接見える)
-#     - 'missing_nippou' → 「🔴 未記載・¥1,000 を書く」(やることが直接見える)
-#     - 'ok' → 空 (ノイズなし)
-#   - normal mismatch の gen/mi 表示を AI 読み取り値に変更 (従来は meter_amount
-#     を仮置きしていたため、視覚的にズレが分からなかった)。これで「行に AI が
-#     読んだ違う値、状態列に正解」のペアで一目で理解できる。
-#   - 問題サマリ expander の重複を削除: missing_nippou_row / count_short の項目
-#     は detail-table の状態列で全部見えるので、別パネルに重複表示しない。
-#   - 再アップ導線をテーブル下に金色枠で目立たせる:「直したら撮り直して再アップ。
-#     🟠🔴 が全部消えたら完成」が唯一のアクション。脳の選択肢 1 つだけ。
-#   - build_report の row dict に meter_amount フィールドを追加 (render_detail_table
-#     から正解値にアクセスできるように)。
-# v1.12.01 - 2026-05-14
-#   - ローダーの 2 つの UX バグを構造修正:
-#     1. **数字が戻る問題**: show_loader が prev > pct (新規パイプライン開始等で
-#        前回 100 が残った状態で新 3% 来る) を「リセット → 1, 2, 3 をアニメ」
-#        として描画していたため、画面上 100→1→2→3 で「戻った」と見えていた。
-#        修正: prev >= pct なら即時ジャンプ (アニメしない)。さらに「日報を完成
-#        させる」ボタン押下時に _loader_prev_pct を 0 にリセットして、開始時の
-#        ステイル値を確実に破棄。
-#     2. **途中で止まる問題**: _poll_until_done の creep が creep_target に
-#        追いついた後、次の future 完了まで完全停止していた = 「動いてはピタッ
-#        と止まる」リズム。
-#        修正: drift モード追加。cur >= creep_target でも end-1 までは 250ms に
-#        1 ずつ drift し続ける。future 完了で real_target が上がれば 50ms に 1 ずつ
-#        の fast advance に戻る。「絶対に止まらない」体感を実現。
-# v1.12.00 - 2026-05-14
-#   - **アプリのミッションを再定義**: 「手書き日報を完成させるサジェストツール」。
-#     iterative ループ: 写真 → サジェスト → 紙を直す → 再アップ → 確認 → ...完成
-#     [[project-mission]] / [[project-correction-philosophy]] に反映済み。
-#   - 上記に伴いデジタル編集機構を全撤去:
-#     - session_state.row_overrides / apply_overrides() / state='edited' 削除
-#     - ダイアログを read-only サジェスト表示に書き換え（編集フォーム廃止）
-#     - ダイアログ内容: メーター額(正解) / AI 読み取り結果 / 「紙のここを直して」サジェスト /
-#       「もう一度写真撮って再アップを」案内 / 閉じるボタンのみ
-#     - mismatch / missing_nippou の理由別に「桁違い / 現収未収取り違え / +100 自腹漏れ」等の
-#       具体的なヒントも表示
-#   - tr.edited 用 CSS, _RESULT_KEYS の row_overrides 除去
-#   - 結果: アプリが「紙を直す→再アップ」ループの advisor に純化、デジタルが
-#     「直されたフリ」をすることがなくなった
-# v1.11.00 - 2026-05-14
-#   - **訂正 UX を「紙の日報を直す助言者」モデルに再構築** (ミッション再定義):
-#     これまでの訂正 UI は「デジタル出力を編集する」モードで、テーブル外に別パネルを
-#     設置して same item を 2 箇所に重複させていた ([[feedback-one-entry-point]] 違反)。
-#     さらに「ユーザーが直すべきは紙の日報そのもの」というアプリの本質的価値を
-#     見失っていた ([[project-mission]] の「手書き日報の苦しみ解消」)。
-#     - 訂正専用セクションを撤去
-#     - detail-table の編集可能セル (missing_nippou / mismatch / edited) を
-#       <a href="?edit=N"> で全面タップ可能に。状態セルに ✏️ アイコンで誘導
-#     - クエリパラメータ ?edit を session_state.edit_row_target に転写してダイアログを開く
-#     - ダイアログを「紙のここに何を書くか」フレームに書き換え:
-#       - タイトル: 「📝 紙の日報を直そう」
-#       - メーター額を「印字なので正解」と明示
-#       - 入力後に「✏️ 手書き日報の Row N に書いてください: 現収欄 / 未収欄 / 摘要」を
-#         金色枠で表示し、紙への転記を主役にする
-#       - 保存ボタンも「✓ 紙を直した」に
-# v1.10.05 - 2026-05-14
-#   - ローダーが API 待ちで止まって見える件を UX 修正:
-#     _poll_until_done に creep ロジック導入。50ms に 1 unit 進め、実 target より
-#     CREEP_LEAD だけ先行表示する。実 future 完了で target が上がれば cur も追従。
-#     フェーズ end の 1 手前で頭打ちにして「勝手に完了表示」は防ぐ。
-#     これで「処理してるのに数字が止まる → フリーズに見える」が解消。
-#     表示 pct は厳密な進捗ではなく「動いてる感」を優先した演出値 (UX 系数値の
-#     位置づけ)。金額等の判断材料数値は引き続き嘘つかない。
-# v1.10.04 - 2026-05-14
-#   - ローダーの「1 ずつ滑らかに動く」を確実に実現するため、Python 側で fine-grained
-#     pct を 20ms 刻みで送る方式に切替:
-#     - これまで試した CSS @keyframes / transition + @property + counter 案は、
-#       iOS Safari の counter() が整数アニメ中の中間値を反映してくれない実装で
-#       実機が動かなかった。markdown 内の <script> は Streamlit が無効化、
-#       components.html は iframe で重い → Python 送信が一番確実
-#     - show_loader は前回値を session_state に保持し、新値との差を 1 ずつ刻んで送る
-#     - 数値は <span class="num-value">、% は <span class="num-pct"> で別要素化、
-#       % は 0.28em + baseline 配置（底辺合わせ）
-#   - メーター/日報の件数乖離アラート文を「写真が正しいか…」から
-#     「手書きの日報に書かれている内容が正しいか…」に変更（写真ではなく中身が
-#     問題のニュアンスへ）。
-# v1.10.03 - 2026-05-14
-#   - v1.10.02 のローダーが 3% で止まる症状を構造修正:
-#     - 原因: @keyframes animation は要素新規作成時にしか発火しない仕様。
-#       Streamlit は markdown 更新を inline-style の差分更新で済ませるため、
-#       要素が再作成されず animation が再発火しなかった。
-#     - 修正: animation を CSS transition に置き換え。transition は --to-pct の
-#       値変更で毎回自動発火するので、Streamlit の更新方式に依存しない。
-#     - 副次効果: show_loader から from_pct と session_state 管理を撤去できて
-#       コードがシンプル化（transition は現在値から自動補間するので、from を
-#       管理する必要が無い）。
-#   - % 記号を vertical-align: baseline に変更（数値の底辺合わせ）、0.28em に微縮小。
-# v1.10.02 - 2026-05-14
-#   - ローダー UI 改善:
-#     - % 記号を数字より小さく
-#     - 数値を CSS counter + @property で前回値から滑らかにアニメ
-# v1.10.01 - 2026-05-14
-#   - 「+N」マーカーを構造的に overage として解釈（v1.5.03 までの挙動を完全復元）:
-#     _interpret_raw_row で gen_cell が "+100" 形式なら type='overage' を返す。
-#     これまで _cell_to_int で +100 を普通の数字 100 と同等扱いし split として
-#     処理していたのを廃止。+ 記号の semantic を最後まで保つ。
-#   - 結果: Row 16 (+100 自腹 / 1500 Visa) は
-#     「Row 16: 1500 未収 Visa」+「Row 16+: 100 現収 メーター超過 (special)」
-#     の 2 行に展開されるように。これは build_report が既に case='overage' を
-#     2 行展開する仕組みを持っていたので、interpret 段の構造修正だけで完結。
-#   - **CSS 修正**: 訂正セクション / st.dialog の文字が黒で暗背景に埋もれていた件。
-#     原因は `h1,h2,...,p,div,label {color: #010519}` が全ページに適用されていた
-#     こと。`.upload-card, .result-card` の子孫だけにスコープ限定。これでカード外
-#     （暗背景）は Streamlit dark theme のデフォルト明色文字が効くように。
-# v1.10.00 - 2026-05-14
-#   - **構造修正: AI の meter_no を一次アラインメント信号に戻す**
-#     v1.5.03 まで AI は meter_no を直接出力していた（精度高）。v1.9.x で「no = 日報上から
-#     連番」に変えて、Python の金額一致だけでアラインしたら、似た金額が並ぶケースで
-#     「+100 が 1 行下にズレる」「ライドが 1 行ズレる」などの破綻が頻発。
-#     パッチで補正する案も検討したが、複雑化して詰むので根本から修正:
-#     - NIPPOU_PROMPT: AI に「日報最左端 No 列の手書き行番号」を meter_no として返させる
-#     - _align_rides_to_meter: Pass 1 で ride.meter_no を直接 meter に当てる（最優先）。
-#       Pass 2 で meter_no 無し ride を金額一致で補完。Pass 3 で残りを順番割当（保険）
-#     - v1.9.02 の「メーター超過セーフティネット」パッチを撤回（構造で解決済み）
-#   - **validate 失敗時の UI 強化**: 合計タイルを赤背景 + ダーク部グレーアウトに切替。
-#     「OK っぽく見える成功状態」を絶対に表示しない。yellow warning ではなく red error。
-# v1.9.02 - 2026-05-14
-#   - 重大バグ修正: 結果表示の問題サマリ expander 内で変数 `rows` を HTML 文字列リストで
-#     上書きしていたため、後段の訂正リスト ( `rows` を辞書として参照 ) で AttributeError
-#     → Stage 2 デバッグ expander と「新しい日報を作成」ボタンが描画されない症状を解消。
-#     ローカル変数を `_issue_html` に改名して衝突回避。
-#   - アライメントにメーター超過セーフティネット追加: 現 meter 額が ride 額より少しだけ
-#     大きく、差が 50〜500円の 50円刻みなら、AI が「+100」マーカーを取りこぼした可能性が
-#     高いと判定し、lookahead より先に現位置に assign（mismatch として表示）。
-#     これで Row 16 (¥1600 メーター / ¥1500 ride) が誤って missing_nippou になり
-#     後続の Row 17 (¥1500) と入れ違いになる症状を防ぐ。
-#     - v1.5.03 で動いていた挙動の復元（AI が overage を直接出力できた頃の動作と
-#       同等の結果を Python 側で担保）。
-# v1.9.01 - 2026-05-14
-#   - メーター超過自腹補填パターン（現収=+100, 未収=1500）の取りこぼし対策:
-#     1) NIPPOU_PROMPT を強化、「+100」のような追加表記を絶対に省略しないよう厳命
-#     2) interpret_raw_rows に後方互換層追加。AI が万一 case/kind を含む旧形式で
-#        返してきても rides としてそのまま通す（空行扱いで捨てない）
-#     3) 空 raw_row でも meter_no があれば nippou_amount=None の placeholder ride
-#        を残し、alignment ずれを防止
-#     4) Stage 2 debug expander に Stage A (AI 抽出 raw) と Stage B (Python 解釈後)
-#        の二段表示を追加。赤色で「+N」を強調し、両欄が捕捉できたか即確認可能。
-# v1.9.00 - 2026-05-14
-#   - **アーキテクチャ大改革: AI と Python の役割を完全分離**
-#     Stage A (AI): 日報のセルを純粋抽出のみ。raw_rows = {no, time, gen_cell, mi_cell, memo,
-#       strikethrough}。case や kind の判定は一切させない。「+100」等は文字列のまま記録。
-#     Stage B (Python): interpret_raw_rows() が特殊ケースを 1 個ずつ別関数で判定。
-#       - _interpret_raw_row: からまわし / 障害者割引 / 分割 / 通常 / 空 を排他的に分類
-#       - 各ケースが独立関数 → 互いに干渉しない、テスト容易、debug 容易
-#       - 「現金+たこ焼」のような AI 幻覚や、split 検出漏れ が構造的に起こせない設計
-#   - NIPPOU_PROMPT は短くシンプルに（読み取りに集中させる）。
-#   - 後段の _finalize_rides / build_report は無変更（interpret 結果がそのまま流れる）。
-# v1.8.00 - 2026-05-14
-#   - ユーザー訂正 UI を追加（コア機能、慎重実装）:
-#     AI が自信を持てなかった行 (missing_nippou / mismatch) と訂正済み行 (edited) を
-#     結果テーブルの下に「✎ 訂正」セクションとして並べる。各行に「編集」ボタンを置き、
-#     タップで st.dialog が開く。
-#   - ダイアログ: 種別 (通常/分割) を選び、現収/未収 or gen/mi 金額・人数・摘要を編集可能。
-#     メーター額は印字なので変更不可、参考表示のみ。
-#   - 訂正は session_state.row_overrides に保存。レンダリング時に apply_overrides() で
-#     上書き反映、合計・validate も再計算。state='edited' で黄色ハイライト。
-#   - 「新しい日報を作成」リセットボタンで訂正履歴もクリア (_RESULT_KEYS 拡張)。
-#   - 哲学: AI は 80% を仕上げる、ユーザーが 20% を 30秒で完成させる。OCR 再実行不要。
-# v1.7.05 - 2026-05-14
-#   - NIPPOU_PROMPT の判定順序を再構成。「分割払い」判定を最優先(STEP 2)に上げ、
-#     通常行/kind 判定より先に「現収欄と未収欄の両方を見る」を強制。
-#     これまで AI が通常行ルールを先に当てて split を見落としていたケースを解消。
-#   - 「から回し」と「自腹補填」の見分け方を明示。取り消し線**あり**ならから回し、
-#     取り消し線**なし**で現収"+100"+未収金額 なら split (自腹補填) と判定。
-#     これでメーター回し過ぎでドライバーが自腹補填した行が split として正しく出る。
-#   - 出力例にも自腹補填パターンを追加。
-# v1.7.04 - 2026-05-14
-#   - アライメントを保守化: missing_nippou 判定は金額完全一致 (signal=2) を要求するように
-#     変更。時刻一致だけ (signal=1) では missing 確定せず、強制 assign (mismatch 警告)
-#     に倒す。これで「日報に書いてあるのに missing 扱い」される誤検出を抑制。
-#   - NIPPOU_PROMPT の split 判定を強化: 「両欄に数字があれば必ず split」と明示。
-#     頻出パターンを列挙 (現金+カード/電子マネー/配車アプリ)。
-#     メーター回し過ぎでドライバー自腹補填するケース（現収¥100+未収¥1,500 等）も
-#     split として扱う旨を明示。
-#   - 障害者割引（障割）ロジックは現状維持で健全に動作（case='discount'）。
-# v1.7.03 - 2026-05-14
-#   - UI 微調整:
-#     - ファイルアップローダーの英語デフォルト文（Drag and drop / Limit / 拡張子）を
-#       しっかり隠し、カスタムテキスト「📷 写真をアップ」を短くして折り返しを防止。
-#       padding も増やしてスッキリ感アップ。
-#     - mismatch 行で現収・未収 両方のセルが薄赤になってたのを、値が入ってる側
-#       (gen > 0 か mi > 0) だけ塗るように変更。間違っていない列が無駄に色付かない。
-# v1.7.02 - 2026-05-14
-#   - 「人間が間違える前提、AI が黙って働く答えを作る」原則を build_report に実装。
-#     missing_nippou 行は kind 不明だが、メーター額は既知なので「現収」と仮定して
-#     gen 列に充填。合計が成立する状態を作り、ユーザーの「計算したくない」要求に応える。
-#     視覚的には引き続き真っ赤背景 + 白文字で「要確認」を強調、後から訂正できる。
-#   - aggregate_totals: missing_nippou を件数・人数に含める（1 件 1 人と仮定）。
-#   - validate: missing_nippou も合計貢献として期待値に算入。
-# v1.7.01 - 2026-05-14
-#   - アラインメントを time + amount のダブルシグナル化:
-#     NIPPOU_PROMPT に "time" (降車時刻) フィールドを追加し、AI が日報の時刻も拾う。
-#     _ride_meter_signal_match で「金額一致 / 時刻 ±5分以内」を強い指標として評価。
-#     どちらか一方でも信頼できる signal があれば確実に揃え、両方ズレた時だけ
-#     missing_nippou 判定 + 先読み再評価する。1 行抜けの検出精度が大幅向上。
-#   - missing_nippou 行の見た目を「真っ赤背景 + 白抜き文字」に刷新。一目で気付ける。
-# v1.7.00 - 2026-05-14
-#   - build_report を v2 に再構築: メーター明細書をマスター（行数・順序・金額の絶対真実）
-#     として扱い、必ず N 行（=メーター行数）の出力を作るように変更。
-#     これまでは日報の rides 数に依存していたため「日報 17件 / メーター 18件」のように
-#     1 行抜けてるとアラインメントが連鎖崩壊して mismatch が大量に出ていた。
-#   - 新アルゴリズム _align_rides_to_meter: nippou_amount をヒントに greedy + 先読み
-#     （3 行先まで）で対応 ride を探す。対応が無いメーター行は state='missing_nippou'。
-#   - 問題パネルに「件数不足」と「メーター Row X に対応する日報記載が無い」を具体的に
-#     追加。ユーザーは「どの行を追記すれば直るか」が一目で分かるように。
-#   - validate / aggregate_totals も meter-master に合わせて期待値を再計算
-#     （missing_nippou 行は集計対象外）。
-#   - CSS: missing_nippou 行は黄色ハイライト + 「日報に未記載」表記でテーブル内に明示。
-# v1.6.00 - 2026-05-14
-#   - Stage1/2 出力の堅牢化: AI 出力の欠損・null・型不正を normalize 段で吸収。
-#     _coerce_int ヘルパー / _finalize_rows と _finalize_rides の正規化処理を追加。
-#     行番号が読めない・金額が null・case 値不正 等が来てもパイプラインが破綻しなくなった。
-#   - 検出した問題を issues 配列として回収し、UI 上に専用パネル
-#     「⚠ 読み取り時に検出された問題」で一覧表示。
-#     どの行で何が起きたか（時刻欠損 / 金額0 / kind不明 / split金額欠損 等）が一目で分かる。
-#   - 下流ロジック (build_report / validate / aggregate_totals) は無変更で、後方互換 100%。
-#     既存の happy path 出力は v1.5.03 と完全同等。
-# v1.5.03 - 2026-05-12
-#   - 分割払い（現金 + チケット併用等）に対応。NIPPOU_PROMPT に case="split" の判定ルールを追加し、
-#     1 乗車で「現収」「未収」両方の欄に金額が書かれているケースを正しく検出。
-#   - build_report に case='split' 分岐を追加: gen_amount → gen 列、mi_amount → mi 列に
-#     両方計上する。gen_amount + mi_amount がメーター額と一致しなければ state='mismatch'。
-#   - データモデルに後方互換あり（既存の normal/overage/discount は影響なし）。
-# v1.5.02 - 2026-05-12
-#   - 立ち上がり体感を改善: .streamlit/config.toml でテーマを dark + 濃紺
-#     (backgroundColor="#010519") に設定。Streamlit のロード画面の段階から
-#     最終形と同じ背景色になり、起動直後の白フラッシュ (~1-2s) を撲滅。
-#     実時間は変わらないが「アプリが起動してる」と即座に伝わる。
-#   - page_icon に 🚖 を追加（ブラウザタブの瞬間表示で識別性向上）。
-# v1.5.01 - 2026-05-12
-#   - _ocr_vision_claude の Claude 構造化部分を Opus 4.5 → Sonnet 4.6 に変更。
-#     Vision API が読んだ clean な印字テキストを JSON 化するだけのタスクで、
-#     Opus と完全同等の出力（20行 receipt 実測で完全一致）かつコスト 1/5。
-#     画像認識ではないので Sonnet で精度は落ちない。JSON 不正時は parse_meter が
-#     _ocr_claude (Opus 画像直叩き) にフォールバックする安全網は維持。
-#   - 1枚あたり OCR 構造化部分のコスト: $0.04 → $0.008 (-80%)。
-#     100枚/月で約 ¥480/人 削減。
-# v1.5.00 - 2026-05-12
-#   - v1.4 で残った A/B 検証用コードと Gemini 経路を全撤去（本番構成確定済のため）。
-#     対象: _ai_call_text / get_gemini_model / _ocr_gemini / _classify_nippou_gemini /
-#     OCR_PROVIDERS / NIPPOU_PROVIDERS / _is_nippou_compare_mode / _nippou_compare UI /
-#     compare_nippou.py / requirements の google-generativeai。
-#   - 体感フリーズ対策: ローダーを全フェーズでポーリング型に統一。さらに pipeline を
-#     identify×2 並列 → clarity + parse_meter + classify_nippou の 3 並列 に再構成し、
-#     14% / 31% / 85% で進捗が止まって見える問題を解消。
-#   - identify / clarity を Gemini ファースト → Claude 直叩きに変更（Gemini 画像呼出が
-#     10〜30s と遅く、フリーズの主因だったため）。コスト増は v1.4.01 の価格設計で吸収。
-# v1.4.01 - 2026-05-11
-#   - 精度検証完了 → 本番構成を確定: 日報は **Claude Opus 4.5 を維持**。
-#     Gemini 2.5 Flash は致命的誤読で商用 NG、Opus 4.7 / Sonnet 4.6 も精度劣化。
-#   - 価格設計で吸収する方針に切替（¥5,000/月 × 月 20 枚 等）。
-# v1.4.00 - 2026-05-11
-#   - 日報分類 (classify_nippou) もプロバイダ抽象化: secrets.toml [nippou] provider で
-#     "claude" | "gemini" を切替可能に。既定は "claude"（精度優先・後方互換）。
-#   - A/B 比較モード追加: [nippou] compare_mode = true で両プロバイダを並列実行し、
-#     UI 上で rides の差分を可視化できる（精度検証用）。一致確認後に gemini へ移行する流れ。
-#   - identify_image / check_clarity を Gemini Flash 優先・Claude フォールバック化
-#     (_ai_call_text ヘルパー経由)。これら 2 箇所だけで 1 枚あたり ~$0.11 削減。
-#   - 全箇所 Gemini 化想定の総コスト試算: 1 枚 $0.30 → $0.002（約 150 倍削減）。
-#     ただし日報は A/B で精度検証してから本番切替する設計。
-# v1.3.01 - 2026-05-11
-#   - アップロード後の体感速度を大幅改善: st.file_uploader 受信直後に normalize_upload_bytes()
-#     で EXIF orientation 適用 → 3000px 上限 → JPEG q=92 に正規化してから session_state 保持。
-#     元 5〜8MB → 0.5〜1MB に縮小され、プレビュー描画・HEIC 再デコード・再 rerun の負荷を削減。
-#   - OCR 送信サイズは元々 to_b64() で 3000px 上限に縮小されているため、API コスト・精度は不変。
-# v1.3.00 - 2026-05-11
-#   - OCR プロバイダ抽象化: parse_meter をディスパッチャ化し、_ocr_vision_claude /
-#     _ocr_claude / _ocr_gemini をプラガブルに切替可能に（OCR_PROVIDERS 経由）。
-#     secrets.toml の [ocr] provider = "vision_claude" | "gemini" | "claude" で選択。
-#     失敗時は常に Claude 単独に最終フォールバック。コスト最適 OCR への乗り換えを容易化。
-#   - Gemini 対応追加: GEMINI_API_KEY が secrets/env にあれば gemini-2.0-flash で動作
-#     （[ocr] gemini_model でモデル名上書き可）。google-generativeai を requirements に追加。
-# v1.2.04 - 2026-05-11
-#   - イントロスプラッシュ実装を撤去（v1.2.00〜v1.2.03 を巻き戻し）。
-#     理由: Streamlit のレンダリングパイプライン上、CSS のみで完全な FOUC 防止が困難で、
-#     起動が遅くなる代償の方が大きかった。粒子インフラ (_PARTICLES_HTML) は loader 用に残す。
-# v1.2.03 - 2026-05-11
-#   - FOUC (UI 一瞬見え) 対策: イントロを CSS markdown より先にレンダリング、
-#     inline 重要スタイル (position:fixed; inset:0; background:#010519; z-index:999999)
-#     で CSS 解析前から黒画面を確保。
-#   - AI と TAXI NIPPOU の視覚中心のズレを修正: letter-spacing 分の末尾空白を
-#     padding-left で相殺して、両テキストの視覚中心を flex 中心に揃える。
-# v1.2.02 - 2026-05-11
-#   - イントロ演出を 3.5s → 4.5s に拡張、4 フェーズの滑らかな遷移に再設計:
-#     ① 黒+粒子のみ → ② AI 登場 → ③ 静止 → ④ グラデーション的にフェードアウト
-#   - 背景: 不透明 #010519 → 下から透明グラデーション → 完全透明（UI へ自然に繋がる）
-#   - AI 文字: 退場時に scale(1.18) + blur(8px) で溶けるように消える
-#   - 各要素を 1 本のアニメーションに統合（intro-life / intro-ai-life / intro-sub-life）
-# v1.2.01 - 2026-05-11
-#   - イントロスプラッシュの調整:
-#     • z-index: 99998 → 999999（背景の UI が透けて見える問題を解消）
-#     • AI 文字を白に変更（金グロー → 白グロー）
-#     • AI 文字サイズを clamp(160px, 36vw, 360px) に拡大
-#     • 演出順序を調整: 粒子が先に動き、0.5s 後に AI 文字が現れる
-# v1.2.00 - 2026-05-11
-#   - イントロスプラッシュ追加: セッション初回起動時に「AI / TAXI NIPPOU」を
-#     中央に大表示、既存パーティクルがダイナミックに動き、3 秒で自動フェードアウト。
-#     CSS のみで実装（JS 不使用）。intro_shown フラグで初回のみ表示。
-# v1.1.04 - 2026-05-11
-#   - PATCH 番号を 2 桁ゼロパディングに統一（例: v1.1.4 → v1.1.04）。
-#     これにより PATCH 99 まで視覚的に揃った表記が可能になる。
-# v1.1.03 - 2026-05-11
-#   - 包括的な README.md を整備（プロジェクト概要・アーキテクチャ・業務ルール・セットアップ）
-# v1.1.02 - 2026-05-11
-#   - 速度改善: to_b64() の per-image キャッシュ化（JPEG エンコード重複排除）
-#   - dead code 削除: 未使用 HTML 属性 (data-metric / data-value / data-rowidx)
-#   - dead code 削除: 旧 dblclick 編集 UI の名残 (cursor:pointer / .cell-edit クラス)
-# v1.1.01 - 2026-05-11
-#   - バージョン番号表示を 14px / opacity 0.7 に拡大
-#   - タイトル下の余白を 1.5rem → 0.5rem に削減
-#   - 完成バーのフォント拡大（✓完成:18px / 件数・人数:28px / 単位:14px）
-# v1.1.00 - 2026-05-11
-#   - 障害者割引（障割）対応の本格実装
-#   - sequence ベースアライメント（meter_no が連番でない場合も正しく動作）
-#   - 障割を日報順に '6+' 形式で挿入
-#   - +α 要素（passengers=NULL の orphan ride）の救済
-#   - 整合性チェックの誤検知修正、税抜運収の小数表示修正、ほか
-# v1.0.00 - 2026-05-10 初回リリース
+# AI タクシー日報 OCR
+# 現バージョン: v1.17.02 (2026-05-14)
+# 変更履歴: CHANGELOG.md を参照
+# バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 import streamlit as st
 import streamlit.components.v1 as components
 import anthropic
@@ -919,7 +447,9 @@ def fix_orientation(img):
             if o == 3: img = img.rotate(180, expand=True)
             elif o == 6: img = img.rotate(270, expand=True)
             elif o == 8: img = img.rotate(90, expand=True)
-    except: pass
+    except (AttributeError, KeyError):
+        # EXIF タグ未対応の画像形式 / 該当キー無し → 回転スキップで元画像返す
+        pass
     return img
 
 def normalize_upload_bytes(raw_bytes):
@@ -1197,7 +727,9 @@ def parse_meter(client, meter_img):
 # Stage 2: 日報分類（Claude Opus 4.5）
 # ============================================================
 # 日報のみから乗客行を分類 → {'rides': [...]}
-# meter_data に依存せず、meter_no は日報の上から 1 始まり連番で割当。
+# AI には行番号は読ませない (実物の日報に No 列が無いため)。
+# 各 ride はメーター行への紐付け属性を持たず、_align_rides_to_meter が
+# 金額 + 時刻で対応 meter 行を判定する。
 # 金額の主要値は読まないが、mismatch 検出のため nippou_amount として
 # 日報の手書き金額を任意で記録する（読めない場合は null）。
 
@@ -1409,7 +941,6 @@ def _interpret_raw_row(raw_row):
             amt = _cell_to_int(gen_cell)
         return {
             'type': 'discount',
-            'meter_no': raw_row.get('meter_no'),
             'amount': amt,
             'memo': memo,
         }
@@ -1424,8 +955,7 @@ def _interpret_raw_row(raw_row):
             # 客は未収側（カード等）で支払い
             return {
                 'type': 'overage',
-                'meter_no': raw_row.get('meter_no'),
-                'time': raw_row.get('time'),
+                    'time': raw_row.get('time'),
                 'passengers': raw_row.get('passengers'),
                 'kind': '未収',
                 'customer_amount': mi_int,
@@ -1435,7 +965,6 @@ def _interpret_raw_row(raw_row):
         # mi も空: 客の支払額不明だが超過マーカーだけある（稀）。後段でメーター額から推測。
         return {
             'type': 'overage',
-            'meter_no': raw_row.get('meter_no'),
             'time': raw_row.get('time'),
             'passengers': raw_row.get('passengers'),
             'kind': '現収',  # 仮置き
@@ -1451,7 +980,6 @@ def _interpret_raw_row(raw_row):
     if gen_int is not None and mi_int is not None:
         return {
             'type': 'split',
-            'meter_no': raw_row.get('meter_no'),
             'time': raw_row.get('time'),
             'passengers': raw_row.get('passengers'),
             'gen': gen_int,
@@ -1463,7 +991,6 @@ def _interpret_raw_row(raw_row):
     if gen_int is not None:
         return {
             'type': 'normal',
-            'meter_no': raw_row.get('meter_no'),
             'time': raw_row.get('time'),
             'passengers': raw_row.get('passengers'),
             'kind': '現収',
@@ -1473,7 +1000,6 @@ def _interpret_raw_row(raw_row):
     if mi_int is not None:
         return {
             'type': 'normal',
-            'meter_no': raw_row.get('meter_no'),
             'time': raw_row.get('time'),
             'passengers': raw_row.get('passengers'),
             'kind': '未収',
@@ -1485,25 +1011,18 @@ def _interpret_raw_row(raw_row):
     return {'type': 'empty'}
 
 
-_OLD_FORMAT_KEYS = {'case', 'kind', 'nippou_amount', 'gen_amount', 'mi_amount', 'overage_amount'}
-_NEW_FORMAT_KEYS = {'gen_cell', 'mi_cell', 'strikethrough'}
-
-
 def interpret_raw_rows(raw_rows):
-    """raw_rows → 既存形式の rides リストに変換。
+    """raw_rows → rides リストに変換。
 
-    AI 出力の形式に応じて挙動を分岐:
-    - 新形式 (gen_cell/mi_cell 等): _interpret_raw_row で特殊ケース判定して ride 化
-    - 旧形式 (case/kind 等): そのまま ride として通す（後方互換）
-    - 形式が混在していても両方処理可能
+    現プロンプト (NIPPOU_PROMPT) は新形式 (gen_cell/mi_cell/strikethrough) のみ
+    出力するので、それを _interpret_raw_row で特殊ケース判定して ride 化する。
 
-    新形式の interp 結果:
+    interp 結果の種類:
       - 'karamawashi': 直前の通常行に overage_amount を付ける
-      - 'discount':   障害者割引行を独立で追加
+      - 'discount':    障害者割引行を独立で追加
       - 'split':       分割払い行を追加
       - 'normal':      通常行を追加
-      - 'empty':       何も書かれていない（スキップ、ただし meter_no があれば
-                       「読み取り失敗」プレースホルダーとして alignment 維持）
+      - 'empty':       何も書かれていない (スキップ)
     """
     rides = []
     raw_rows = raw_rows or []
@@ -1511,36 +1030,15 @@ def interpret_raw_rows(raw_rows):
         if not isinstance(raw, dict):
             continue
 
-        # 形式判定
-        keys = set(raw.keys())
-        has_old = bool(keys & _OLD_FORMAT_KEYS)
-        has_new = bool(keys & _NEW_FORMAT_KEYS)
-
-        # 旧形式 (新形式のキーがなく case/kind 等を持つ) はそのまま ride として通す
-        if has_old and not has_new:
-            rides.append(raw)
-            continue
-
-        # 新形式を解釈
         interp = _interpret_raw_row(raw)
         t = interp.get('type')
 
         if t == 'invalid':
             continue
 
-        if t == 'empty':
-            # 何も書かれていない: meter_no があれば alignment 維持のため空 ride を残す
-            meter_no = raw.get('meter_no')
-            if isinstance(meter_no, int):
-                rides.append({
-                    'meter_no': meter_no,
-                    'time': raw.get('time') or '',
-                    'passengers': raw.get('passengers'),
-                    'case': 'normal',
-                    'kind': '現収',  # 仮置き
-                    'nippou_amount': None,  # 読み取れていない印
-                    'memo': '',
-                })
+        # 'empty' は何も書かれていない行。AI は No 列を読まない設計のため
+        # placeholder ride を残す必要はない (alignment は時刻 + 金額で動く)。
+        if t == 'empty' or t == 'invalid':
             continue
 
         if t == 'karamawashi':
@@ -1554,7 +1052,6 @@ def interpret_raw_rows(raw_rows):
             # メーター超過: 客が支払った額を nippou_amount に、自腹補填額を overage_amount に
             # build_report が 2 行に分けて出力する（客分 + 超過分）
             rides.append({
-                'meter_no': interp.get('meter_no'),
                 'time': interp.get('time') or '',
                 'passengers': interp.get('passengers'),
                 'case': 'overage',
@@ -1567,7 +1064,6 @@ def interpret_raw_rows(raw_rows):
 
         if t == 'discount':
             rides.append({
-                'meter_no': interp.get('meter_no'),
                 'case': 'discount',
                 'nippou_amount': interp.get('amount'),
                 'memo': interp.get('memo'),
@@ -1576,7 +1072,6 @@ def interpret_raw_rows(raw_rows):
 
         if t == 'split':
             rides.append({
-                'meter_no': interp.get('meter_no'),
                 'time': interp.get('time') or '',
                 'passengers': interp.get('passengers'),
                 'case': 'split',
@@ -1588,7 +1083,6 @@ def interpret_raw_rows(raw_rows):
 
         if t == 'normal':
             rides.append({
-                'meter_no': interp.get('meter_no'),
                 'time': interp.get('time') or '',
                 'passengers': interp.get('passengers'),
                 'kind': interp.get('kind'),
@@ -1605,36 +1099,30 @@ _VALID_CASES = {'normal', 'overage', 'discount', 'split'}
 def _finalize_rides(rides):
     """rides -> {rides, issues} に正規化。
     AI 出力の欠損・null・型不正をここで吸収。下流の build_report が安全に動く保証を作る。
+    issues の where は `index N` 形式 (rides 配列の位置)。AI は日報に No 列を読ませない
+    設計なので、ride 自体には行番号属性は無い。
     """
     rides = rides or []
     normalized = []
     issues = []
     for idx, r in enumerate(rides):
+        where = f'index {idx}'
         if not isinstance(r, dict):
-            issues.append({'stage': 'nippou', 'type': 'invalid_row', 'where': f'index {idx}',
+            issues.append({'stage': 'nippou', 'type': 'invalid_row', 'where': where,
                            'detail': f'行データが dict ではない: {type(r).__name__}'})
             continue
-        mn = _coerce_int(r.get('meter_no'))
         case = r.get('case') or 'normal'
         if case not in _VALID_CASES:
-            issues.append({'stage': 'nippou', 'type': 'invalid_case',
-                           'where': f'index {idx} (meter_no={mn})',
-                           'detail': f'未知の case 値「{case}」→ normal として扱う', 'row_no': mn})
+            issues.append({'stage': 'nippou', 'type': 'invalid_case', 'where': where,
+                           'detail': f'未知の case 値「{case}」→ normal として扱う'})
             case = 'normal'
-        # 注: missing_meter_no チェックは v1.16.01 で削除。
-        # 現プロンプト (NIPPOU_PROMPT) は日報の No 列を読ませない設計 (実物の日報に
-        # No 列が存在しないため、v1.14.00 で AI に「行番号は与えない」と明示)。
-        # アライメントは _align_rides_to_meter が amount/time で実施するため
-        # meter_no が None でも正常。にもかかわらず旧 check が残っていて、
-        # 全 ride について「meter_no 読めず」という嘘 issue を発生させていた。
         passengers = _coerce_int(r.get('passengers'), default=1) or 1
         if passengers < 0:
             passengers = 1
         kind = r.get('kind') or '現収'
         if case in ('normal', 'overage') and kind not in ('現収', '未収'):
-            issues.append({'stage': 'nippou', 'type': 'invalid_kind',
-                           'where': f'meter_no={mn}',
-                           'detail': f'kind 値が不正「{kind}」→ 現収 として扱う', 'row_no': mn})
+            issues.append({'stage': 'nippou', 'type': 'invalid_kind', 'where': where,
+                           'detail': f'kind 値が不正「{kind}」→ 現収 として扱う'})
             kind = '現収'
         memo = str(r.get('memo') or '').strip()
         time_str = str(r.get('time') or '').strip()  # 降車時刻、無ければ空文字
@@ -1646,24 +1134,20 @@ def _finalize_rides(rides):
         # 各 case 固有の妥当性
         if case == 'split':
             if gen_amount is None and mi_amount is None:
-                issues.append({'stage': 'nippou', 'type': 'split_missing_amounts',
-                               'where': f'meter_no={mn}',
-                               'detail': 'split なのに gen_amount/mi_amount 両方欠損', 'row_no': mn})
+                issues.append({'stage': 'nippou', 'type': 'split_missing_amounts', 'where': where,
+                               'detail': 'split なのに gen_amount/mi_amount 両方欠損'})
         elif case == 'overage':
             if overage_amount is None or overage_amount <= 0:
-                issues.append({'stage': 'nippou', 'type': 'overage_missing_amount',
-                               'where': f'meter_no={mn}',
-                               'detail': 'overage なのに overage_amount が無効', 'row_no': mn})
+                issues.append({'stage': 'nippou', 'type': 'overage_missing_amount', 'where': where,
+                               'detail': 'overage なのに overage_amount が無効'})
         elif case == 'discount':
             if nippou_amount is None or nippou_amount <= 0:
-                issues.append({'stage': 'nippou', 'type': 'discount_missing_amount',
-                               'where': f'meter_no={mn}',
-                               'detail': 'discount なのに nippou_amount が無効、行スキップ',
-                               'row_no': mn})
+                issues.append({'stage': 'nippou', 'type': 'discount_missing_amount', 'where': where,
+                               'detail': 'discount なのに nippou_amount が無効、行スキップ'})
                 continue  # 金額が無い障割は集計不能、データ破棄
 
         normalized.append({
-            'meter_no': mn, 'time': time_str,
+            'time': time_str,
             'passengers': passengers, 'kind': kind,
             'memo': memo, 'case': case,
             'nippou_amount': nippou_amount, 'overage_amount': overage_amount,
@@ -2434,8 +1918,7 @@ if st.session_state.get('result_rows'):
 
         # 乖離チェック（写真誤り検知）
         # 最終テーブル (build_report 後) で本当に未カバーだったメーター行だけを数える。
-        # AI が meter_no を読めなくても amount/time マッチで揃ったケースを
-        # 「100% 乖離」と誤判定して下の「✅ 読み取り完了」と矛盾する事故を防ぐ。
+        # 上下の警告で同じ事実 (missing_nippou 行) を基準にすることで矛盾を防ぐ。
         _missing_rows = [r for r in rows if r.get('state') == 'missing_nippou']
         _missing_count = len(_missing_rows)
         _missing_amount = sum(int(r.get('meter_amount') or 0) for r in _missing_rows)
@@ -2551,9 +2034,8 @@ if st.session_state.get('result_rows'):
             st.markdown(''.join(parts), unsafe_allow_html=True)
             st.caption('差が出ている No について、下のデバッグセクションで Stage 1 の値と最終出力の値を照合してください。')
 
-        # 「ユーザーが画面で見える問題」があるかどうかで導線を出し分ける。
-        # 🟠/🔴 が出ていない＝後段の補完で揃ってる、ということなので
-        # AI 内部のゆらぎ (meter_no 欠損等) を見せると「直せって言われても何のこっちゃ」になる。
+        # 「画面で見える問題」(🟠/🔴 行 or 合計不一致) が無い時は issues panel を出さない。
+        # AI normalize 段で拾ったゆらぎは後段で吸収済みなので、見せても混乱するだけ。
         _visible_alerts = any(r.get('state') in ('mismatch', 'missing_nippou') for r in rows)
         _has_actionable = _visible_alerts or (not valid)
 
@@ -2562,10 +2044,7 @@ if st.session_state.get('result_rows'):
         _all_issues = _meter_issues + _nippou_issues
 
         if _all_issues and _has_actionable:
-            # 内部用語 (meter_no / case / kind / build_report / index) は使わない。
-            # ユーザーは「日報のどの行で何が起きたか」だけ分かればよい。
-            # 注: 'missing_meter_no' は v1.16.01 で発生源を削除済（日報に No 列が
-            # 存在しない前提なので、そもそも「読めず」という指摘自体が筋違いだった）。
+            # ユーザー言語ラベル (内部用語 case / kind / index 等は出さない)。
             _ISSUE_LABELS = {
                 'invalid_row': '行データが壊れていた',
                 'missing_no': 'メーターの行番号が読めず',
@@ -2593,17 +2072,14 @@ if st.session_state.get('result_rows'):
             _STAGE_LABEL = {'meter': '🚕 メーター', 'nippou': '📝 日報'}
 
             def _to_user_where(where_str):
-                """'index 0' / 'meter_no=5' / 'No.3' をユーザー表現に。"""
+                """issue の where 文字列をユーザー表現に変換。
+                日報側: 'index N' → 'N+1 行目'
+                メーター側: 'No.X' はそのまま (既にユーザー言語)。
+                """
                 s = where_str or ''
-                m = re.match(r'^index (\d+)(.*)$', s)
+                m = re.match(r'^index (\d+)$', s)
                 if m:
-                    base = f'{int(m.group(1)) + 1} 行目'
-                    tail = re.sub(r'\s*\(meter_no=[^)]*\)\s*', '', m.group(2) or '')
-                    return base + tail
-                m = re.match(r'^meter_no=(\S+)', s)
-                if m:
-                    v = m.group(1)
-                    return f'No.{v}' if v.lower() != 'none' else '行未特定'
+                    return f'{int(m.group(1)) + 1} 行目'
                 return s
 
             with st.expander(f'⚠ 読み取りで気になった箇所（{len(_all_issues)} 件）', expanded=False):
@@ -2711,15 +2187,15 @@ if st.session_state.get('result_rows'):
                 n = r.get('nippou_amount')
                 return f'¥{n:,}' if isinstance(n, (int, float)) else ''
 
-            def _ride_compact(r):
-                """1 行コンパクト表示。"""
-                no = r.get('meter_no')
+            def _ride_compact(r, idx):
+                """1 行コンパクト表示 (idx は rides 配列の 0-origin 位置)。"""
                 c = r.get('case') or 'normal'
+                pos = idx + 1
                 if c == 'split':
-                    return f'**{no}**:{r.get("gen_amount", 0)}+{r.get("mi_amount", 0)}(分割)'
+                    return f'**#{pos}**:{r.get("gen_amount", 0)}+{r.get("mi_amount", 0)}(分割)'
                 amt = r.get('nippou_amount')
                 kind_initial = (r.get('kind') or '?')[0]
-                return f'**{no}**:{amt if amt is not None else "?"}({kind_initial})'
+                return f'**#{pos}**:{amt if amt is not None else "?"}({kind_initial})'
 
             # Stage A: AI が抽出した raw_rows（両欄が捕捉できているか確認）
             raw_rows_disp = nippou_data.get('raw_rows') or []
@@ -2748,10 +2224,11 @@ if st.session_state.get('result_rows'):
             # Stage B: Python が解釈した rides
             if rides:
                 st.markdown('**🧠 Stage B: Python 解釈後 rides:**')
-                parts = ['<table class="detail-table"><thead><tr><th>meter_no</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>金額</th></tr></thead><tbody>']
-                for r in rides:
+                parts = ['<table class="detail-table"><thead><tr><th>順</th><th>時刻</th><th>人数</th><th>kind</th><th>memo</th><th>case</th><th>金額</th></tr></thead><tbody>']
+                for idx, r in enumerate(rides, start=1):
                     parts.append(
-                        f'<tr><td>{r.get("meter_no", "")}</td>'
+                        f'<tr><td>{idx}</td>'
+                        f'<td>{r.get("time", "")}</td>'
                         f'<td>{r.get("passengers", "")}</td>'
                         f'<td>{r.get("kind", "")}</td>'
                         f'<td>{r.get("memo", "")}</td>'
@@ -2764,7 +2241,7 @@ if st.session_state.get('result_rows'):
                 st.info('日報の分類データなし')
 
             st.markdown('**生 JSON:**')
-            compact2 = '  '.join(_ride_compact(r) for r in rides)
+            compact2 = '  '.join(_ride_compact(r, i) for i, r in enumerate(rides))
             st.markdown(f'📋 **日報数値一覧:** {compact2}')
             st.json(nippou_data)
 
@@ -2889,50 +2366,15 @@ with st.expander('？ このアプリについて・使い方'):
 ### 4. プライバシー
 写真はこのアプリのサーバーに保存されません。AI処理元（Anthropic社）に一時送信されますが、学習には使われず、30日以内に自動削除されます。
 
-### 5. 更新履歴
-- **v1.15.00** (2026-05-14): constraint-aware OCR を導入。日報 OCR に メーター情報を参考として渡し、AI が曖昧な手書き数字 (8 vs 5 等) でメーター値と整合する候補を選べるように。auto-correct ではなく digit disambiguation のための補助情報。パイプラインは parse_meter → classify_nippou の sequential 構成に変更 (+3〜5 秒遅延の引き換えに OCR 精度向上)
-- **v1.14.00** (2026-05-14): アラインメント大改修 + 列構造のデータ宣言化。日報には「No 列」が無いという前提を反映し、v1.10.00 の「AI に No 列を読ませる」設計を撤去（AI が 人数 列を meter_no と誤読してたのが mismatch 多発の原因）。NIPPOU_COLUMNS リストで列を一元管理、プロンプトは自動生成。アラインメントは「金額一致 → 時刻 tie-break → 順番 fallback」の amount-first 方式に。新しい列を足す時は COLUMNS に 1 行追加で済む構造に
-- **v1.13.01** (2026-05-14): 「テーブルの数値はメーター（正解）を表示する」原則に再修正。v1.13.00 で mismatch 行に AI 読み取り値を出していたのを撤回。アプリの役割は「数字を訂正する」ではなく「紙のミスを指摘する」なので、集計はメーター値で確定し、状態列に「🟠 紙の数字 ¥X → ¥Y」形式で「紙の違う値 → メーター正解」を併記する形に
-- **v1.13.00** (2026-05-14): 訂正 UX を「視覚情報だけで完結」に再構築。セルタップ機構を全撤去（タップで状態消失する不具合も同時解消）、ダイアログ廃止。状態列を「🟠 メーター ¥1,600」「🔴 未記載・¥1,000 を書く」のように具体化して、行を一目見れば「何が間違ってるか」「紙に何を書くか」が分かるように。同じ情報を別パネルに重複させず、再アップ導線を金色枠で唯一のアクションに
-- **v1.12.01** (2026-05-14): ローダーの体感修正。「数字が戻る」「途中で止まる」の 2 つを構造修正。前回完了値が残った状態の新パイプラインで戻るアニメが起きていたのを即時ジャンプに変更 + 新パイプライン開始時にリセット。creep に追いついて停滞する問題を drift モード（250ms に 1）で解消、「絶対に止まらない」体感に
-- **v1.12.00** (2026-05-14): アプリのミッションを「手書き日報を完成させるサジェストツール」に純化。iterative ループ（写真 → サジェスト → 手書き日報を直す → 再アップ → 確認）が本質。デジタル編集機構を全撤去し、ダイアログを read-only のサジェスト表示に。mismatch / missing_nippou の理由別に「桁違い」「現収未収取り違え」「+100 自腹漏れ」等の具体的ヒントを表示。アプリが「直されたフリ」をしなくなった
-- **v1.11.00** (2026-05-14): 訂正 UX を「手書き日報を直す助言者」モデルに再構築。テーブル下の訂正専用セクションを撤去、編集可能セル（missing_nippou / mismatch / edited）をテーブル内で直接タップ可能に（同じ項目が 2 箇所に出る冗長性を解消）。ダイアログも「デジタル編集」から「手書き日報のここに何を書くか」フレームへ書き換え。アプリの本質「手書き日報の苦しみ解消」を UI に反映
-- **v1.10.05** (2026-05-14): ローダーが API 待ちで止まって見える問題を UX 修正。`_poll_until_done` に creep ロジック導入し、50ms に 1 ずつ進めて実 target より少し先行表示するように。実 future 完了で追従、フェーズ末尾 1 手前で頭打ち。「処理中なのに数字が止まる」体感を解消
-- **v1.10.04** (2026-05-14): ローダーを「1 ずつ滑らかに動く」に確実対応。iOS Safari の counter() アニメ実装が中間値を表示しない制限が判明したため、CSS アニメではなく Python 側で 20ms 刻みに pct を送る方式に切替（前回値は session_state で管理、再パイプライン時は自動リセット）。アラート文「写真が正しいか…」を「手書きの日報に書かれている内容が正しいか…」に変更
-- **v1.10.03** (2026-05-14): v1.10.02 のローダーが 3% で止まる症状を構造修正。原因は CSS @keyframes が要素新規作成時しか発火しないこと（Streamlit は属性更新で済ませるので発火せず）。CSS transition に置換することで値変更ごとに自動再発火するように。% は数字の底辺合わせに変更。show_loader から状態管理コードも撤去でシンプル化
-- **v1.10.02** (2026-05-14): ローダー UI 改善試作（@keyframes 版、3% で止まるバグあり、v1.10.03 で構造修正）
-- **v1.10.01** (2026-05-14): 「+100」マーカーを構造的に「メーター超過」として解釈するよう修正。これまで「+100」を普通の数字と同等扱いして split になっていた行（例: Row 16）が、v1.5.03 までと同じく「客の支払い（未収 1500 Uber）」+「メーター超過（現収 100 special、Row 16+）」の 2 行に正しく分解されるように。さらに訂正セクションとダイアログ内の文字が暗背景に埋もれて見えなかった CSS バグも修正
-- **v1.10.00** (2026-05-14): 構造修正。AI の `meter_no` を一次アラインメント信号に戻す（v1.5.03 までの挙動）。v1.9.x で金額一致だけで推測する設計が破綻し「+100 が 1 行下にズレる」現象が再発していたのを根本から解決。AI に日報最左端「No」列の手書き行番号を読ませ、Python は直接対応 meter 行に割当てる。さらに validate 失敗時は合計タイルを赤背景に切替えて「OK っぽい見た目」を絶対に出さないようにした
-- **v1.9.02** (2026-05-14): 重大バグ修正。問題サマリ表示の内部変数衝突で Stage 2 デバッグ expander と「新しい日報を作成」ボタンが描画されない症状を解消。さらに、AI が「+100」マーカーを取りこぼしてもメーター額との差が典型的な超過幅なら現位置に割り当てるセーフティネットを追加（v1.10.00 で構造修正に置き換え）
-- **v1.9.01** (2026-05-14): メーター超過の自腹補填パターン（現収=+100, 未収=1500）の取りこぼし対策。プロンプトで「+N」を絶対に省略しないよう強化、AI が旧形式を返してきても受け止める後方互換層を追加、空 raw でも meter_no があれば alignment 維持。デバッグ画面に AI が両欄を捕捉できたか即確認できる Stage A/B 二段表示を追加
-- **v1.9.00** (2026-05-14): AI と Python の役割を完全分離。AI は日報のセルを純粋抽出するだけ、判定（分割払い、障害者割引、からまわし等）は Python の独立関数群が行う。これで AI の幻覚や判定漏れが構造的に起こせない設計に
-- **v1.8.00** (2026-05-14): ユーザー訂正 UI を追加。AI が自信を持てなかった行をテーブル下に並べ、タップでダイアログを開いて種別 (通常/分割)・金額・人数・摘要を 30 秒で訂正できる。OCR を再実行せずに完成形にできる
-- **v1.7.05** (2026-05-14): AI プロンプトの判定順序を再構成。「分割払い」(現収・未収両方に数字) の判定を最優先に。メーター回し過ぎでドライバー自腹補填のケースも明示し、「から回し」(空乗車) との区別を明確化
-- **v1.7.04** (2026-05-14): アライメント精度向上。missing_nippou 判定を金額完全一致のみに厳格化して誤検出を抑制。日報に書いてあるのに「未記載扱い」されるケースを解消。split 判定も強化し、メーター回し過ぎでドライバー自腹補填のケース（現金+未収）も split として正しく分類
-- **v1.7.03** (2026-05-14): UI 微調整。ファイルアップロード欄の英語デフォルト文を隠してテキストを短くし、行折り返しを解消。mismatch 行では現収・未収両方じゃなく値が入っている側のセルだけピンクで強調
-- **v1.7.02** (2026-05-14): 日報に未記載の行も「現収」と自動で仮置きして合計が成立するように。kind 不明でも合計が狂わない。後で実際は未収だったら訂正可能。「計算したくない」を最優先
-- **v1.7.01** (2026-05-14): アラインメントを「時刻 + 金額」のダブルシグナル化。AI が日報の降車時刻も拾うようにし、片方が欠けてももう一方で揃えられる。日報に未記載の行は真っ赤背景 + 白文字で目立つ表示に
-- **v1.7.00** (2026-05-14): build_report をメーターマスター設計に再構築。日報の rides 数に依存せず必ずメーター行数と同じ件数を出力。日報に対応がない行は黄色で「日報に未記載」表示。問題パネルに「Row X に記載が無い」と具体的に提示
-- **v1.6.00** (2026-05-14): Stage1/2 出力を堅牢化。AI 出力に欠損や型不正があってもパイプラインが破綻せず、検出した問題を「⚠ 読み取り時に検出された問題」パネルに一覧表示
-- **v1.5.03** (2026-05-12): 分割払い（現金+チケット併用等）に対応。1乗車で現収・未収両方に金額が書かれている場合を case="split" として正しく集計。合計がメーター額と一致すれば OK、ズレれば mismatch ハイライト
-- **v1.5.02** (2026-05-12): 立ち上がり体感の改善。Streamlit テーマを濃紺＋ダーク基調に設定し、ロード画面の段階から最終形と同じ背景色になるようにした（白フラッシュ撲滅）。実時間は変わらないが「スパッと開いた」感じに
-- **v1.5.01** (2026-05-12): メーター明細 OCR の JSON 構造化を Opus 4.5 → Sonnet 4.6 に変更（実測で完全同等の出力、コスト 1/5）。Vision API が読み取った印字テキストを JSON 化するだけのタスクで精度は落ちない設計
-- **v1.5.00** (2026-05-12): A/B 検証用コードと Gemini 経路を撤去（本番構成確定済）。パイプラインを 3 並列化（鮮明度＋OCR＋日報を同時処理）+ ローダーを全段ポーリング型に統一して「途中で固まって見える」問題を解消
-- **v1.4.01** (2026-05-11): 精度検証の結果、日報は Claude Opus 4.5 維持で確定（Gemini/Sonnet/Opus 4.7 / Caching すべて出力ズレあり）。コスト削減は価格設計で吸収する方針へ
-- **v1.4.00** (2026-05-11): 日報分類もプロバイダ抽象化（`[nippou] provider` で claude/gemini 切替、`compare_mode` で A/B 比較）。identify/clarity を Gemini 優先化。1 枚 $0.30 → $0.002 想定（要 A/B 検証）
-- **v1.3.01** (2026-05-11): アップロード後の体感速度を改善（受信時に 3000px JPEG に正規化、5〜8MB → 0.5〜1MB 化）。API コスト・OCR 精度は不変。
-- **v1.3.00** (2026-05-11): OCR プロバイダ抽象化（Vision+Claude / Gemini / Claude を `[ocr] provider` で切替、失敗時は Claude 単独に自動フォールバック）
-- **v1.2.04** (2026-05-11): イントロスプラッシュ撤去（v1.2.00〜v1.2.03 を巻き戻し）
-- **v1.2.03** (2026-05-11): FOUC 対策（UI 一瞬見え解消）・AI / TAXI NIPPOU の視覚中心揃え
-- **v1.2.02** (2026-05-11): イントロ演出を 4 フェーズの滑らかな遷移に再設計（粒子先行 → AI登場 → 静止 → グラデーション溶解）
-- **v1.2.01** (2026-05-11): イントロ調整（背景完全カバー・AI 白グロー・文字拡大・粒子先行）
-- **v1.2.00** (2026-05-11): イントロスプラッシュ追加（AI / TAXI NIPPOU と粒子の演出、3秒で自動フェード）
-- **v1.1.04** (2026-05-11): バージョン表記を 2 桁ゼロパディングに統一（例: 1.1.4 → 1.1.04）
-- **v1.1.03** (2026-05-11): README.md 整備（プロジェクトの全記録ドキュメント）
-- **v1.1.02** (2026-05-11): 速度改善（画像エンコードのキャッシュ化）、dead code 削除
-- **v1.1.01** (2026-05-11): 表示の微調整（バージョン番号拡大・タイトル下余白削減・完成バー拡大）
-- **v1.1.00** (2026-05-11): 障害者割引（障割）対応の本格実装、整合性チェック修正、税抜運収の表示修正など
-- **v1.0.00** (2026-05-10): 初回リリース
+### 5. 更新履歴 (直近のみ)
+
+詳しい変更履歴は [CHANGELOG.md](https://github.com/shuchan-daze/taxi-ocr/blob/main/CHANGELOG.md) を参照。
+
+- **v1.17.02** (2026-05-14): 開発者デバッグ UI をデフォルトで完全に隠す形に変更。「🛠️ 開発者メニューを開く」トグルボタン押すまで Stage 1/2/3 expander は非表示
+- **v1.17.00** (2026-05-14): 完了導線の哲学転換。「直して再アップ」強制ループから脱却、ユーザーが「次へ進む」を選んだら結果を尊重する形に。mismatch 状態列の文言を「紙の数字」→「AI 読み」に明確化
+- **v1.16.00** (2026-05-14): アライメント大改善。Pass 2 を「順番割当」から「時刻最近接マッチ」に切替、紙の書き漏れケースで嘘の mismatch を作らないように
+- **v1.15.00** (2026-05-14): constraint-aware OCR を導入。日報 OCR に メーター情報を参考として渡し、AI が曖昧な手書き数字 (8 vs 5 等) でメーター値と整合する候補を選べるように
+- **v1.14.00** (2026-05-14): アラインメント大改修。日報には「No 列」が無いという前提を反映し、AI には行番号を読ませず、アラインメントは金額+時刻で実施
 
 作者＞怒りの山本
 ''')
