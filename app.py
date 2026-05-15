@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.23.00 (2026-05-15)
+# 現バージョン: v1.23.01 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -420,28 +420,28 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 /* === AI エンジン八咫烏バッジ ===
    タイトルバー的に存在感を出す、半透明金背景 + 金細線 + ホバー時に微発光。
    「このアプリについて・使い方」expander の下に配置して、アプリ全体の
-   ブランド署名として機能させる。 */
+   ブランド署名として機能させる。バッジ下の「詳しく見る」ボタンで dialog 起動。 */
 .yata-badge {
     margin-top: 32px;
-    margin-bottom: 16px;
+    margin-bottom: 4px;
     padding: 14px 18px;
     background: rgba(212, 175, 55, 0.08);
     border: 1px solid #d4af37;
-    border-radius: 12px;
+    border-radius: 12px 12px 0 0;  /* 下角だけ角丸無くしてボタンと一体化 */
+    border-bottom: none;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
     transition: box-shadow 0.4s ease, background 0.4s ease;
-    cursor: default;
 }
 .yata-badge:hover {
-    box-shadow: 0 0 16px rgba(212, 175, 55, 0.45);
     background: rgba(212, 175, 55, 0.12);
 }
-.yata-badge .yata-icon {
-    font-size: 32px;
-    line-height: 1;
-    filter: drop-shadow(0 0 4px rgba(212, 175, 55, 0.4));
+.yata-badge .yata-icon-svg {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 6px rgba(212, 175, 55, 0.5));
 }
 .yata-badge .yata-text {
     display: flex;
@@ -468,6 +468,26 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
     letter-spacing: 0.35em;
     margin-top: 3px;
     font-weight: 400;
+}
+/* バッジ直下の「詳しく見る」ボタン: バッジと視覚的に一体化 */
+.st-key-yata_dialog_btn .stButton > button,
+.st-key-yata_dialog_btn button {
+    background: rgba(212, 175, 55, 0.08) !important;
+    border: 1px solid #d4af37 !important;
+    border-top: 1px dashed rgba(212, 175, 55, 0.3) !important;
+    border-radius: 0 0 12px 12px !important;
+    color: rgba(212, 175, 55, 0.9) !important;
+    font-size: 11px !important;
+    letter-spacing: 0.2em !important;
+    padding: 8px 12px !important;
+    box-shadow: none !important;
+    transition: background 0.3s, box-shadow 0.3s !important;
+}
+.st-key-yata_dialog_btn .stButton > button:hover,
+.st-key-yata_dialog_btn button:hover {
+    background: rgba(212, 175, 55, 0.16) !important;
+    box-shadow: 0 0 16px rgba(212, 175, 55, 0.35) !important;
+    transform: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -2631,9 +2651,35 @@ with st.expander('？ このアプリについて・使い方'):
 ''')
 
 # AI エンジン八咫烏バッジ (アプリ全体のブランド署名)
+# SVG: 三本足の烏シルエット (八咫烏の象徴である 3 本足を明示)
+_YATAGARASU_SVG = '''<svg class="yata-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g fill="#d4af37">
+    <!-- 左翼 (羽を広げた形) -->
+    <path d="M 50 32 C 38 24, 18 24, 5 38 C 16 35, 30 36, 42 40 C 45 40, 48 36, 50 32 Z"/>
+    <!-- 右翼 -->
+    <path d="M 50 32 C 62 24, 82 24, 95 38 C 84 35, 70 36, 58 40 C 55 40, 52 36, 50 32 Z"/>
+    <!-- 翼先の羽 (鋭さ表現) -->
+    <path d="M 12 36 L 6 42 L 14 40 Z"/>
+    <path d="M 88 36 L 94 42 L 86 40 Z"/>
+    <!-- 胴体 -->
+    <ellipse cx="50" cy="56" rx="11" ry="16"/>
+    <!-- 頭 -->
+    <circle cx="50" cy="32" r="7.5"/>
+    <!-- 嘴 -->
+    <path d="M 50 38 L 45 44 L 55 44 Z"/>
+    <!-- 三本足 (八咫烏の象徴: 中央が前足、左右が後ろ足) -->
+    <rect x="37.5" y="68" width="3" height="16" rx="1"/>
+    <rect x="48.5" y="71" width="3" height="18" rx="1"/>
+    <rect x="59.5" y="68" width="3" height="16" rx="1"/>
+    <!-- 足先 (鉤爪表現) -->
+    <path d="M 35 84 L 43 84 L 39 87 Z"/>
+    <path d="M 46 89 L 54 89 L 50 92 Z"/>
+    <path d="M 57 84 L 65 84 L 61 87 Z"/>
+  </g>
+</svg>'''
+
 st.markdown(
-    '<div class="yata-badge">'
-    '<div class="yata-icon">🐦‍⬛</div>'
+    f'<div class="yata-badge">{_YATAGARASU_SVG}'
     '<div class="yata-text">'
     '<span class="label-small">POWERED BY</span>'
     '<span class="label-main">AI エンジン 八咫烏</span>'
@@ -2642,3 +2688,48 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
+
+
+@st.dialog('🐦‍⬛ AI エンジン八咫烏について')
+def _show_yatagarasu_dialog():
+    st.markdown('''
+### 八咫烏 (やたがらす) とは
+
+日本神話に登場する **三本足のカラス**。神武天皇を熊野から大和まで導いた
+**道案内の神**として、古事記・日本書紀に記録されている。
+現代では日本サッカー協会のエンブレムとしても知られる。
+
+### このアプリでの役割
+
+本アプリの心臓部には、その「道案内の神」の名を冠した AI エンジンが組み込まれている。
+
+- **手書き OCR**: 数字・摘要・人数・時刻を画像から読み取る
+- **digit OCR 補正**: メーター額と照合してあいまいな数字を最適候補に解決
+- **業務ルール判定**: 障害者割引・メーター超過・分割払い・からまわしを自動分類
+- **アライメント**: 紙の日報と印字メーター明細書を、金額と時刻で自動照合
+- **書き漏れ検出**: メーター行に対応する紙の記入が無い場合に警告
+- **AI 自信シグナル**: AI 自身が「自信が無い行」を明示
+- **集計**: 件数・人数・現収・未収・消費税・税抜運収を自動算出
+
+手書きの苦しみを「日報完成」というゴールまで、八咫烏が後ろから導く。
+
+### 技術スタック
+
+- **画像理解 AI**: Anthropic Claude Opus 4.5
+- **印字 OCR**: Google Cloud Vision API
+- **5 段パイプライン**: 識別 → 鮮明度 → メーター OCR → 日報 OCR → 統合
+- **哲学**: 「メーターは絶対、AI は判断、人間は最終確認」の三層モデル
+
+### このプロジェクトの起点
+
+> 「日報入力に毎日 10 分、ハマる日は 30 分も格闘して合わない手書き日報。
+> 年間 60〜100 時間以上の無駄とありえないストレス。仕事終わりの最後の
+> 締めがこんな苦行でいいのか、こんなアホなことやってられるか」
+
+— 作者の怒りから生まれたアプリ。
+''')
+
+
+if st.button('▼ AI エンジン八咫烏について詳しく',
+             key='yata_dialog_btn', use_container_width=True):
+    _show_yatagarasu_dialog()
