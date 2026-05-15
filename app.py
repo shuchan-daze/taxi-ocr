@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.23.02 (2026-05-15)
+# 現バージョン: v1.24.00 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -1480,19 +1480,50 @@ def _align_rides_to_meter(real_rides, meter_rows_list):
     #   時刻ベース + 閾値で当てれば、書き漏れ位置は missing_nippou で残り、
     #   紙にある行は時刻が一致するメーター行に正しく付く。AMEX のような memo も
     #   正しい行に乗る。
-    TIME_PROXIMITY_THRESHOLD = 20  # 分。これより離れてたら別の乗車として扱う
-    unassigned_ride_idx = [i for i in range(len(real_rides)) if i not in assigned_ride_idx]
+    # 紙の時刻 vs メーター時刻の許容差。
+    # 乗務員は乗車終了後に時計を見て手書きするため、忙しい時はメーター倒してすぐ
+    # 次の客に向かい、後でなんとなく書くので 20 分のズレも普通に出る。
+    # ただし乗務員は **記入順序** は実際の乗車順を保つので、それを利用して disambiguation する。
+    # ([[project_paper_time_drift]])
+    TIME_PROXIMITY_THRESHOLD = 20  # 分 (時刻の絶対値ずれ許容)
+
+    # 順序保存のため、Pass 1 で assign 済みの「paper ride → meter no」マッピングを構築
+    ride_idx_to_meter_no = {}
+    for meter_no_assigned, assigned_ride in rides_by_meter_no.items():
+        for i, r in enumerate(real_rides):
+            if r is assigned_ride and i not in ride_idx_to_meter_no:
+                ride_idx_to_meter_no[i] = meter_no_assigned
+                break
+
+    # 未 assign の paper ride を、paper 順 (= 配列 index 順) で処理
+    unassigned_ride_idx = sorted([i for i in range(len(real_rides)) if i not in assigned_ride_idx])
     for ride_idx in unassigned_ride_idx:
         ride = real_rides[ride_idx]
         r_time = _parse_hhmm(ride.get('time'))
         if r_time is None:
             continue  # 時刻無しは推定不能、orphan として捨てる
-        # 未割当メーター行の中で最も時刻が近いものを探す
+
+        # 順序制約: paper 順で前の ride が assign された meter no より「後」、
+        # paper 順で次の ride が assign された meter no より「前」の範囲内に絞る
+        prev_meter_no = -1  # 下限 (これより大きい meter no が候補)
+        for prev_idx in range(ride_idx - 1, -1, -1):
+            if prev_idx in ride_idx_to_meter_no:
+                prev_meter_no = ride_idx_to_meter_no[prev_idx]
+                break
+        next_meter_no = float('inf')  # 上限 (これより小さい meter no が候補)
+        for next_idx in range(ride_idx + 1, len(real_rides)):
+            if next_idx in ride_idx_to_meter_no:
+                next_meter_no = ride_idx_to_meter_no[next_idx]
+                break
+
+        # 順序範囲内の未 assign meter 行で時刻最近接を探す
         best_no = None
         best_diff = float('inf')
         for m in meter_rows_list:
             if m['no'] in rides_by_meter_no:
                 continue
+            if m['no'] <= prev_meter_no or m['no'] >= next_meter_no:
+                continue  # 順序違反
             m_time = _parse_hhmm(m.get('time'))
             if m_time is None:
                 continue
@@ -1500,8 +1531,10 @@ def _align_rides_to_meter(real_rides, meter_rows_list):
             if diff < best_diff:
                 best_diff = diff
                 best_no = m['no']
+
         if best_no is not None and best_diff <= TIME_PROXIMITY_THRESHOLD:
             rides_by_meter_no[best_no] = ride
+            ride_idx_to_meter_no[ride_idx] = best_no
             assigned_ride_idx.add(ride_idx)
 
     # メーター順で aligned を組み立て (残ったメーター行は ride=None → missing_nippou)
@@ -1572,6 +1605,7 @@ def build_report(meter_data, nippou_data):
                 'mi': client_amount if kind == '未収' else 0,
                 'memo': memo, 'state': client_state,
                 'meter_amount': client_amount,
+                'paper_time': ride.get('time') or '',  # 紙の時刻 (アラート用)
                 'needs_review': needs_review,
             })
             output.append({
@@ -1589,6 +1623,7 @@ def build_report(meter_data, nippou_data):
                 'memo': memo or '現金+チケット',
                 'state': split_state,
                 'meter_amount': meter_amount,
+                'paper_time': ride.get('time') or '',
                 'needs_review': needs_review,
             })
         else:  # normal or 不明
@@ -1603,6 +1638,7 @@ def build_report(meter_data, nippou_data):
                 'memo': memo, 'state': row_state,
                 'meter_amount': meter_amount,
                 'nippou_amount': nippou_amt,  # AI が紙から読んだ値（mismatch 時に表示）
+                'paper_time': ride.get('time') or '',  # 紙の時刻 (アラート用)
                 'needs_review': needs_review,
             })
 
@@ -1888,20 +1924,27 @@ def render_detail_table(rows):
         # 状態列: テーブルの数値はメーター (正解) を表示してる前提で、
         # mismatch 行は「紙の方が違う」を AI 読み取り値で具体的に示す。
         # 障割の数学検出ヒントがあれば併記 ('障割の可能性'，自動確定はしない)。
+        # 紙の時刻 (paper_time) があれば、ユーザーが紙の上で該当行を探すアンカーとして表示。
+        # ([[project_paper_time_drift]]: 紙時刻はメーター時刻と最大 20 分ズレるが、
+        # ユーザーは「自分が紙に書いた時刻」を起点に物理的な行を見つけられる)
         meter_amt = r.get('meter_amount')
         nippou_amt = r.get('nippou_amount')
+        paper_t = r.get('paper_time') or ''
+        paper_anchor = f'{paper_t} ' if paper_t else ''
+        meter_t = r.get('time') or ''
+        meter_anchor = f'{meter_t} ' if meter_t else ''
         if state == 'mismatch':
             if r.get('discount_hint'):
                 dh_meter = r.get('discount_hint_for_meter')
-                state_display = f'💡 No.{dh_meter} の障割の可能性 (紙 ¥{nippou_amt:,})'
+                state_display = f'💡 紙の {paper_anchor}¥{nippou_amt:,} の行は障割の可能性 (No.{dh_meter})'
             elif isinstance(nippou_amt, int) and isinstance(meter_amt, int):
-                state_display = f'🟠 AI 読み ¥{nippou_amt:,} / メーター ¥{meter_amt:,}'
+                state_display = f'🟠 紙の {paper_anchor}¥{nippou_amt:,} の行 → ¥{meter_amt:,} に直す'
             elif isinstance(meter_amt, int):
-                state_display = f'🟠 メーター ¥{meter_amt:,}（日報の数字を確認）'
+                state_display = f'🟠 紙の {paper_anchor}行を ¥{meter_amt:,} に直す'
             else:
                 state_display = '🟠 日報の数字を確認'
         elif state == 'missing_nippou' and isinstance(meter_amt, int):
-            state_display = f'🔴 未記載・¥{meter_amt:,} を書く'
+            state_display = f'🔴 {meter_anchor}¥{meter_amt:,} の乗車を新しい行で書き加える'
         elif r.get('needs_review') and state in ('ok', '', None):
             # AI が確信を持てなかった行 (mismatch じゃない時のみヒント表示、mismatch なら mismatch を優先)
             state_display = '⚠ AI 確信なし、紙を確認'
