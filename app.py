@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.21.01 (2026-05-15)
+# 現バージョン: v1.22.00 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -952,6 +952,18 @@ def _interpret_raw_row(raw_row):
             'overage_amount': _parse_overage_marker(gen_cell),
         }
 
+    # Step 1b: メーター超過 (memo="メーター" 規約、推奨書式)
+    # 取り消し線なし + 現収欄に数字 + 未収欄空 + memo に「メーター」キーワード
+    # → 直前ライドの自腹補填分。karamawashi と同じく直前 ride に overage_amount を足す。
+    if (not strikethrough and 'メーター' in memo
+            and mi_cell is None and gen_cell is not None):
+        gen_int = _cell_to_int(gen_cell)
+        if gen_int is not None and gen_int > 0:
+            return {
+                'type': 'meter_overage_standalone',
+                'overage_amount': gen_int,
+            }
+
     # Step 2: 障害者割引
     if _is_discount_memo(memo):
         amt = _cell_to_int(mi_cell)
@@ -1063,12 +1075,13 @@ def interpret_raw_rows(raw_rows):
         # (karamawashi は別、直前の ride に足すので flag だけ後で吸収)
         needs_review = bool(raw.get('needs_review'))
 
-        if t == 'karamawashi':
+        if t == 'karamawashi' or t == 'meter_overage_standalone':
             # 直前の通常行/分割行に overage_amount を足す
+            # (karamawashi: 取り消し線 + "+N" マーカー / meter_overage_standalone: memo="メーター")
             if rides and rides[-1].get('case') in ('normal', 'split'):
                 rides[-1]['case'] = 'overage'
                 rides[-1]['overage_amount'] = interp.get('overage_amount') or 0
-                # からまわし行の needs_review も親 ride に伝播
+                # この行の needs_review も親 ride に伝播
                 if needs_review:
                     rides[-1]['needs_review'] = True
             continue
@@ -2518,19 +2531,21 @@ with st.expander('？ このアプリについて・使い方'):
 ### 1. 日報の書き方ルール
 このアプリを正しく使うには、手書き日報の書き方にルールがあります。
 
-- **通常の乗車（現金）**：現収欄に金額を記入。未収欄は空欄のまま。
-- **通常の乗車（カード・電子マネー等）**：未収欄に金額を記入。現収欄は空欄。
-- **使用しない欄（現収・未収）**：空欄のまま、または横線（―）を引く。
-  どちらでも正しく読み取ります。
+- **通常の乗車（現金）**：現収欄に金額を記入。未収欄は空欄、または横線（―）を引く。
+- **通常の乗車（カード・電子マネー等）**：未収欄に金額を記入。現収欄は空欄、または横線（―）を引く。
 - **障害者割引（障割）**：
   - 1行目：割引後の乗客支払い額を現収または未収欄に記入（支払い方法による）
   - 2行目（別段）：割引額を未収欄に記入。摘要欄に「障割」と明記。
-- **メーター超過（消し忘れ）**：超過分を現収で別行追加（自己負担で会社納金）。
+- **メーター超過（消し忘れ等の自己負担）**：
+  - 1行目：乗客支払い額を現収または未収欄に記入（支払い方法による）
+  - 2行目（別段）：超過額を現収欄に記入。摘要欄に「メーター」と明記
+    （自己負担で会社に現金納金する分）。
 
 ### 2. 使い方
 1. 写真2枚をアップ（手書き日報＋営業明細書）
-2. 「日報を完成させる」を押す
-3. 待つ。完成。
+2. 「日報を完成させる」を押して待つ
+3. 完成したらアラートチェック。指示に従って手書き日報を修正
+4. もう一度確認したい場合は再度写真をアップして確認
 
 ### 3. このアプリについて
 - **なぜ生まれたか**：日報入力に毎日10分、年間60時間以上の単純作業

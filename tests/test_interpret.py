@@ -59,6 +59,23 @@ class TestInterpretRawRow:
         assert result['type'] == 'karamawashi'
         assert result['overage_amount'] == 200
 
+    def test_meter_overage_standalone_with_plus(self):
+        # 推奨書式: 現収 "+100" + memo "メーター" → 自腹補填行
+        result = app._interpret_raw_row(_raw(gen_cell='+100', memo='メーター'))
+        assert result['type'] == 'meter_overage_standalone'
+        assert result['overage_amount'] == 100
+
+    def test_meter_overage_standalone_without_plus(self):
+        # 推奨書式の「+」忘れケース: 現収 100 + memo "メーター" でも検出
+        result = app._interpret_raw_row(_raw(gen_cell=100, memo='メーター'))
+        assert result['type'] == 'meter_overage_standalone'
+        assert result['overage_amount'] == 100
+
+    def test_meter_overage_standalone_requires_memo(self):
+        # memo に「メーター」が無いと自腹補填行と認識しない (通常行扱い)
+        result = app._interpret_raw_row(_raw(gen_cell=100, memo=''))
+        assert result['type'] == 'normal'  # 通常の ¥100 現収行として扱う
+
     def test_discount_memo_mi(self):
         # memo に「障割」+ 未収に額 → discount
         result = app._interpret_raw_row(_raw(mi_cell=200, memo='障割'))
