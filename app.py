@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.22.01 (2026-05-15)
+# 現バージョン: v1.23.00 (2026-05-15)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -416,6 +416,59 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 }
 .detail-table tr.missing_nippou td:first-child {border-left: 4px solid #fff !important;}
 .detail-table tr.missing_nippou:nth-child(even) td {background: #b91c1c !important;}
+
+/* === AI エンジン八咫烏バッジ ===
+   タイトルバー的に存在感を出す、半透明金背景 + 金細線 + ホバー時に微発光。
+   「このアプリについて・使い方」expander の下に配置して、アプリ全体の
+   ブランド署名として機能させる。 */
+.yata-badge {
+    margin-top: 32px;
+    margin-bottom: 16px;
+    padding: 14px 18px;
+    background: rgba(212, 175, 55, 0.08);
+    border: 1px solid #d4af37;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: box-shadow 0.4s ease, background 0.4s ease;
+    cursor: default;
+}
+.yata-badge:hover {
+    box-shadow: 0 0 16px rgba(212, 175, 55, 0.45);
+    background: rgba(212, 175, 55, 0.12);
+}
+.yata-badge .yata-icon {
+    font-size: 32px;
+    line-height: 1;
+    filter: drop-shadow(0 0 4px rgba(212, 175, 55, 0.4));
+}
+.yata-badge .yata-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    line-height: 1.2;
+}
+.yata-badge .yata-text .label-small {
+    color: rgba(212, 175, 55, 0.7);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+.yata-badge .yata-text .label-main {
+    color: #d4af37;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+}
+.yata-badge .yata-text .label-en {
+    color: rgba(212, 175, 55, 0.6);
+    font-size: 9px;
+    letter-spacing: 0.35em;
+    margin-top: 3px;
+    font-weight: 400;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -2528,6 +2581,12 @@ elif st.session_state.kept_files and len(st.session_state.kept_files) != 2:
 
 with st.expander('？ このアプリについて・使い方'):
     st.markdown('''
+### 0. 🐦‍⬛ AI エンジン八咫烏
+
+このアプリの心臓部には、日本神話の道案内の神「**八咫烏（やたがらす）**」と名付けた AI エンジンが組み込まれている。
+
+手書きのミス・読み取り違い・書き漏れを判断し、ユーザーを「日報完成」というゴールまで導く役割を担う。神武天皇を熊野から大和へ導いた三本足の烏のごとく、現場の苦しみから完成への道を後ろから支える。
+
 ### 1. 日報の書き方ルール
 このアプリを正しく使うには、手書き日報の書き方にルールがあります。
 
@@ -2570,3 +2629,16 @@ with st.expander('？ このアプリについて・使い方'):
 
 作者＞怒りの山本
 ''')
+
+# AI エンジン八咫烏バッジ (アプリ全体のブランド署名)
+st.markdown(
+    '<div class="yata-badge">'
+    '<div class="yata-icon">🐦‍⬛</div>'
+    '<div class="yata-text">'
+    '<span class="label-small">POWERED BY</span>'
+    '<span class="label-main">AI エンジン 八咫烏</span>'
+    '<span class="label-en">YATAGARASU</span>'
+    '</div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
