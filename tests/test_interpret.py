@@ -175,6 +175,39 @@ class TestCharter:
         assert rides[1]['passengers'] == 4
 
 
+# ── プラグイン性の実証: 新ハンドラ追加だけで識別できる ──────────
+
+class TestPluginExtensibility:
+    """RowHandler を継承して ROW_HANDLERS に追加するだけで
+    新イレギュラーケースが認識されることを保証 (= Shuchan の 3 レイヤー設計図の
+    「いくらでも加えることができる状態」)."""
+
+    def test_register_custom_handler(self):
+        # ダミー: memo に「テスト印」が入った行を独自 case='test_marker' で識別
+        class TestMarkerHandler(app.RowHandler):
+            name = 'test_marker'
+
+            def detect(self, r):
+                return 'テスト印' in (r.get('memo') or '')
+
+            def interpret(self, r):
+                return {'type': 'test_marker', 'memo': r.get('memo')}
+
+        original = list(app.ROW_HANDLERS)
+        try:
+            # 既存ハンドラより先に評価されるよう先頭に挿入
+            app.ROW_HANDLERS.insert(0, TestMarkerHandler())
+            result = app._interpret_raw_row(_raw(gen_cell=1000, memo='テスト印'))
+            assert result['type'] == 'test_marker'
+            assert result['memo'] == 'テスト印'
+        finally:
+            # 副作用が他テストに漏れないよう必ず元に戻す
+            app.ROW_HANDLERS[:] = original
+
+
+# ── _split_rides: discount を分離 ───────────────────────────────
+
+
 # ── _split_rides: discount を分離 ───────────────────────────────
 
 class TestSplitRides:

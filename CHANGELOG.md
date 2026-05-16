@@ -10,6 +10,48 @@
 
 ---
 
+## [1.25.01] - 2026-05-16
+
+### Changed (Phase 1: RowHandler レジストリ — 3 レイヤー設計図の Layer 1 モジュール化)
+
+`_interpret_raw_row` の if-elif チェーン (6 段) を `RowHandler` ベースの
+レジストリに置き換え。Shuchan の「イレギュラーケースをモジュール化、
+いくらでも追加可能にする」設計図の Phase 1。
+
+**変更**
+
+- `RowHandler` 基底クラス追加 (`detect` / `interpret` の 2 メソッド)
+- 既存ケースを各ハンドラサブクラスに移植:
+  - `KaramawashiHandler`
+  - `MeterOverageStandaloneHandler`
+  - `CharterHandler`
+  - `DiscountHandler`
+  - `OverageHandler`
+  - `SplitHandler`
+  - `NormalHandler` (フォールバック)
+- `ROW_HANDLERS` リストでハンドラを順序付き登録 (上から評価)
+- `_interpret_raw_row` は for-loop に簡素化
+
+**意味**
+
+新しいイレギュラーケース (例: 別カテゴリの請求、新しい支払手段、特殊運賃)
+が現れたら、`RowHandler` を継承したクラスを 1 個書いて `ROW_HANDLERS` に
+追加するだけで認識される。中央の if-elif に毎回手を入れる必要無し。
+
+### Tests
+
+- 既存テスト 89 件全 pass (挙動 100% 維持)
+- 新規: `TestPluginExtensibility::test_register_custom_handler` — 動的に
+  新ハンドラを登録するだけで認識されることを実証
+
+### 設計図の進捗
+
+- Layer 1 (日報のワイヤーフレーム): **Phase 1 完了**
+- Layer 1→2 の橋渡し (`interpret_raw_rows` の type 分岐): Phase 2 で予定
+- Layer 2/3 (`build_report` のイレギュラー出力): Phase 3 で予定
+
+---
+
 ## [1.25.00] - 2026-05-16
 
 ### Added (貸切 = チャーター案件の対応)

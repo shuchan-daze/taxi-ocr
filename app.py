@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
-__version__ = '1.25.00'
+__version__ = '1.25.01'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -1006,147 +1006,223 @@ def _is_discount_memo(memo):
     return '障割' in memo or '障害者' in memo
 
 
-def _interpret_raw_row(raw_row):
-    """1 行の raw データを「中間表現」に変換。
+# ─────────────────────────────────────────────────────────────────
+# Layer 1: 行ハンドラのレジストリ
+# ─────────────────────────────────────────────────────────────────
+# 1 行の raw データを「中間表現 (interp dict)」に変換する責務。
+# 新しいイレギュラーケースを増やす時は RowHandler を継承して
+# ROW_HANDLERS リストに追加するだけ。中央の if-elif チェーンに
+# 手を入れる必要は無い (= モジュール化、Shuchan の 3 レイヤー設計図に沿う)。
 
-    返値: dict with 'type' key:
-      - 'karamawashi': 取り消し線あり + "+N" → 直前の通常行に overage を足す
-      - 'overage':     「+N」マーカー + 客の支払いあり → メーター超過の自腹補填
-      - 'discount':    memo に障割
-      - 'split':       両欄に **通常の数字** がある → 現金 + カード等の併用
-      - 'normal':      片方の欄のみ
-      - 'empty':       何も無い行（スキップ）
+class RowHandler:
+    """1 行の解釈を担当する基底クラス.
 
-    重要: gen_cell に "+N" 形式の文字列があれば overage マーカーとして扱う
-    （v1.5.03 までの挙動。split と overage は意味が違うので構造的に分ける）。
+    サブクラスは name (識別子) と 2 メソッドを実装する:
+      - detect(raw_row): このケースに該当する？ → bool
+      - interpret(raw_row): 中間表現 (interp dict) を返す
+
+    ROW_HANDLERS リストの上から順に detect が呼ばれ、最初に True を返した
+    ハンドラの interpret 結果が採用される。優先順位を変えたい時はリストの
+    並び順を変えるだけ。
     """
-    if not isinstance(raw_row, dict):
-        return {'type': 'invalid', 'raw': raw_row}
+    name = None
 
-    gen_cell = raw_row.get('gen_cell')
-    mi_cell = raw_row.get('mi_cell')
-    memo = (raw_row.get('memo') or '').strip()
-    strikethrough = bool(raw_row.get('strikethrough'))
-    gen_is_overage_marker = _is_overage_marker(gen_cell)
+    def detect(self, raw_row):
+        return False
 
-    # Step 1: からまわし（取り消し線 + 現収に "+N" のみ、未収は空）
-    if strikethrough and gen_is_overage_marker and mi_cell is None:
+    def interpret(self, raw_row):
+        raise NotImplementedError
+
+
+class KaramawashiHandler(RowHandler):
+    """からまわし: 取り消し線 + 現収に "+N" のみ、未収は空.
+    → 直前の通常行に overage_amount を足す (interpret_raw_rows で処理)."""
+    name = 'karamawashi'
+
+    def detect(self, r):
+        return (bool(r.get('strikethrough'))
+                and _is_overage_marker(r.get('gen_cell'))
+                and r.get('mi_cell') is None)
+
+    def interpret(self, r):
         return {
             'type': 'karamawashi',
-            'overage_amount': _parse_overage_marker(gen_cell),
+            'overage_amount': _parse_overage_marker(r.get('gen_cell')),
         }
 
-    # Step 1b: メーター超過 (memo="メーター" 規約、推奨書式)
-    # 取り消し線なし + 現収欄に数字 + 未収欄空 + memo に「メーター」キーワード
-    # → 直前ライドの自腹補填分。karamawashi と同じく直前 ride に overage_amount を足す。
-    if (not strikethrough and 'メーター' in memo
-            and mi_cell is None and gen_cell is not None):
-        gen_int = _cell_to_int(gen_cell)
-        if gen_int is not None and gen_int > 0:
-            return {
-                'type': 'meter_overage_standalone',
-                'overage_amount': gen_int,
-            }
 
-    # Step 1c: 貸切 (チャーター)
-    # メーター不使用の独立案件。摘要に「貸切」と書かれる。
-    # 金額は 現収/未収 どちらにも入りうる。メーター明細とアラインしないので
-    # build_report 段階で別ループ出力する。([[project-charter-rules]])
-    if '貸切' in memo:
-        gen_int = _cell_to_int(gen_cell)
-        mi_int = _cell_to_int(mi_cell)
+class MeterOverageStandaloneHandler(RowHandler):
+    """メーター超過 (新書式): memo に「メーター」キーワード、取り消し線なし、
+    現収欄に数字、未収欄空 → 直前ライドの自腹補填分."""
+    name = 'meter_overage_standalone'
+
+    def detect(self, r):
+        memo = (r.get('memo') or '').strip()
+        if r.get('strikethrough') or 'メーター' not in memo:
+            return False
+        if r.get('mi_cell') is not None or r.get('gen_cell') is None:
+            return False
+        gen_int = _cell_to_int(r.get('gen_cell'))
+        return gen_int is not None and gen_int > 0
+
+    def interpret(self, r):
+        return {
+            'type': 'meter_overage_standalone',
+            'overage_amount': _cell_to_int(r.get('gen_cell')),
+        }
+
+
+class CharterHandler(RowHandler):
+    """貸切: 摘要に「貸切」を含む独立案件 (メーター不使用).
+    現収/未収どちらに金額が入ってても拾う. ([[project-charter-rules]])"""
+    name = 'charter'
+
+    def detect(self, r):
+        memo = (r.get('memo') or '').strip()
+        return '貸切' in memo
+
+    def interpret(self, r):
+        memo = (r.get('memo') or '').strip()
+        gen_int = _cell_to_int(r.get('gen_cell'))
+        mi_int = _cell_to_int(r.get('mi_cell'))
         if gen_int is not None:
-            kind = '現収'
-            amount = gen_int
+            kind, amount = '現収', gen_int
         elif mi_int is not None:
-            kind = '未収'
-            amount = mi_int
+            kind, amount = '未収', mi_int
         else:
-            amount = None
-            kind = '現収'
+            kind, amount = '現収', None
         return {
             'type': 'charter',
-            'time': raw_row.get('time'),
-            'passengers': raw_row.get('passengers'),
+            'time': r.get('time'),
+            'passengers': r.get('passengers'),
             'kind': kind,
             'amount': amount,
             'memo': memo,
         }
 
-    # Step 2: 障害者割引
-    if _is_discount_memo(memo):
-        amt = _cell_to_int(mi_cell)
-        if amt is None:
-            amt = _cell_to_int(gen_cell)
-        return {
-            'type': 'discount',
-            'amount': amt,
-            'memo': memo,
-        }
 
-    # Step 3: メーター超過（"+N" マーカー + 客の支払い）
-    # 乗務員が回し過ぎたメーター額を自腹補填するケース。
-    # 現収欄に「+100」等のマーカー、未収欄に客の支払額（または現収欄に "+N" + 現収側に客の支払い）。
-    if gen_is_overage_marker:
-        overage_amt = _parse_overage_marker(gen_cell)
-        mi_int = _cell_to_int(mi_cell)
+class DiscountHandler(RowHandler):
+    """障害者割引: memo に「障割」or「障害者」.
+    1/9 リインバース行を独立行として扱う."""
+    name = 'discount'
+
+    def detect(self, r):
+        return _is_discount_memo((r.get('memo') or '').strip())
+
+    def interpret(self, r):
+        memo = (r.get('memo') or '').strip()
+        amt = _cell_to_int(r.get('mi_cell'))
+        if amt is None:
+            amt = _cell_to_int(r.get('gen_cell'))
+        return {'type': 'discount', 'amount': amt, 'memo': memo}
+
+
+class OverageHandler(RowHandler):
+    """メーター超過: 現収欄に "+N" マーカー + (任意で) 未収に客払い額."""
+    name = 'overage'
+
+    def detect(self, r):
+        return _is_overage_marker(r.get('gen_cell'))
+
+    def interpret(self, r):
+        memo = (r.get('memo') or '').strip()
+        overage_amt = _parse_overage_marker(r.get('gen_cell'))
+        mi_int = _cell_to_int(r.get('mi_cell'))
         if mi_int is not None:
-            # 客は未収側（カード等）で支払い
             return {
                 'type': 'overage',
-                    'time': raw_row.get('time'),
-                'passengers': raw_row.get('passengers'),
+                'time': r.get('time'),
+                'passengers': r.get('passengers'),
                 'kind': '未収',
                 'customer_amount': mi_int,
                 'overage_amount': overage_amt,
                 'memo': memo,
             }
-        # mi も空: 客の支払額不明だが超過マーカーだけある（稀）。後段でメーター額から推測。
+        # mi も空: 客の支払額不明、後段で推測
         return {
             'type': 'overage',
-            'time': raw_row.get('time'),
-            'passengers': raw_row.get('passengers'),
-            'kind': '現収',  # 仮置き
+            'time': r.get('time'),
+            'passengers': r.get('passengers'),
+            'kind': '現収',
             'customer_amount': None,
             'overage_amount': overage_amt,
             'memo': memo,
         }
 
-    # Step 4: 分割払い（両欄に **通常の数字** がある場合）
-    gen_int = _cell_to_int(gen_cell)
-    mi_int = _cell_to_int(mi_cell)
 
-    if gen_int is not None and mi_int is not None:
+class SplitHandler(RowHandler):
+    """分割払い: 現収・未収両欄に通常の数字 → 現金+カード等の併用."""
+    name = 'split'
+
+    def detect(self, r):
+        return (_cell_to_int(r.get('gen_cell')) is not None
+                and _cell_to_int(r.get('mi_cell')) is not None)
+
+    def interpret(self, r):
+        memo = (r.get('memo') or '').strip()
         return {
             'type': 'split',
-            'time': raw_row.get('time'),
-            'passengers': raw_row.get('passengers'),
-            'gen': gen_int,
-            'mi': mi_int,
+            'time': r.get('time'),
+            'passengers': r.get('passengers'),
+            'gen': _cell_to_int(r.get('gen_cell')),
+            'mi': _cell_to_int(r.get('mi_cell')),
             'memo': memo,
         }
 
-    # Step 5: 単一支払
-    if gen_int is not None:
+
+class NormalHandler(RowHandler):
+    """通常乗車 (フォールバック): 現収 or 未収の片方にだけ数字.
+    現収欄に書いてあれば現収、未収欄なら未収. 摘要が空でも判定可能."""
+    name = 'normal'
+
+    def detect(self, r):
+        return (_cell_to_int(r.get('gen_cell')) is not None
+                or _cell_to_int(r.get('mi_cell')) is not None)
+
+    def interpret(self, r):
+        memo = (r.get('memo') or '').strip()
+        gen_int = _cell_to_int(r.get('gen_cell'))
+        mi_int = _cell_to_int(r.get('mi_cell'))
+        if gen_int is not None:
+            kind, amount = '現収', gen_int
+        else:
+            kind, amount = '未収', mi_int
         return {
             'type': 'normal',
-            'time': raw_row.get('time'),
-            'passengers': raw_row.get('passengers'),
-            'kind': '現収',
-            'amount': gen_int,
-            'memo': memo,
-        }
-    if mi_int is not None:
-        return {
-            'type': 'normal',
-            'time': raw_row.get('time'),
-            'passengers': raw_row.get('passengers'),
-            'kind': '未収',
-            'amount': mi_int,
+            'time': r.get('time'),
+            'passengers': r.get('passengers'),
+            'kind': kind,
+            'amount': amount,
             'memo': memo,
         }
 
-    # Step 6: 空
+
+# レジストリ (順序付き、上から順に評価).
+# 新ケースはここに 1 行追加するだけ. NormalHandler は最後 (フォールバック).
+ROW_HANDLERS = [
+    KaramawashiHandler(),
+    MeterOverageStandaloneHandler(),
+    CharterHandler(),
+    DiscountHandler(),
+    OverageHandler(),
+    SplitHandler(),
+    NormalHandler(),
+]
+
+
+def _interpret_raw_row(raw_row):
+    """1 行の raw データを「中間表現」に変換 (ハンドラレジストリ経由).
+
+    返値: dict with 'type' key (各 RowHandler の interpret が返す形).
+    どのハンドラも detect しなければ 'empty' (何も書かれてない行).
+
+    新ケース追加は ROW_HANDLERS リストへの登録のみ. ここは触らない.
+    """
+    if not isinstance(raw_row, dict):
+        return {'type': 'invalid', 'raw': raw_row}
+    for handler in ROW_HANDLERS:
+        if handler.detect(raw_row):
+            return handler.interpret(raw_row)
     return {'type': 'empty'}
 
 
