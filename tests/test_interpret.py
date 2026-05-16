@@ -217,11 +217,11 @@ class TestSplitRides:
             {'case': 'discount', 'nippou_amount': 200},
             {'case': 'split', 'gen_amount': 500, 'mi_amount': 500},
         ]
-        real, adjustments, charters = app._split_rides(rides)
+        real, by_layer3 = app._split_rides(rides)
         assert len(real) == 2
-        assert len(adjustments) == 1
-        assert adjustments[0]['case'] == 'discount'
-        assert charters == []
+        assert len(by_layer3['discount']) == 1
+        assert by_layer3['discount'][0]['case'] == 'discount'
+        assert by_layer3.get('charter', []) == []
 
     def test_separates_charter(self):
         rides = [
@@ -229,8 +229,8 @@ class TestSplitRides:
             {'case': 'charter', 'nippou_amount': 16400, 'kind': '現収', 'memo': '貸切'},
             {'case': 'discount', 'nippou_amount': 200},
         ]
-        real, adjustments, charters = app._split_rides(rides)
+        real, by_layer3 = app._split_rides(rides)
         assert len(real) == 1
-        assert len(adjustments) == 1
-        assert len(charters) == 1
-        assert charters[0]['nippou_amount'] == 16400
+        assert len(by_layer3['discount']) == 1
+        assert len(by_layer3['charter']) == 1
+        assert by_layer3['charter'][0]['nippou_amount'] == 16400

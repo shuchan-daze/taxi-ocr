@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
-__version__ = '1.25.02'
+__version__ = '1.25.03'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -1513,15 +1513,93 @@ def classify_nippou(client, nippou_img, meter_data=None):
 # 通常行は meter_amount をそのまま gen/mi に振り分け。
 # overage 行は客分 (meter - overage) と超過分 (overage) の 2 行に分割。
 
-def _split_rides(rides):
-    """rides を「通常乗車（normal/overage/split）」「障割（discount）」「貸切（charter）」に分離。
-    split（分割払い）はメーター 1 行に対応するので real 側に含める。
-    charter はメーターを回さない独立案件なので real から外し、adjustments と並列に別出力する。
+# ─────────────────────────────────────────────────────────────────
+# Layer 2/3 出力レーン: ReportEmitter レジストリ
+# ─────────────────────────────────────────────────────────────────
+# Layer 2 (メーター行ループ) は build_report 本体に残し、Layer 3
+# (メーター外の独立案件) を ReportEmitter サブクラス + REPORT_EMITTERS 辞書で
+# モジュール化する。新 Layer 3 case 追加は emitter を登録するだけ。
+
+class ReportEmitter:
+    """Layer 3: メーター明細と独立に出力する責務 (障割・貸切・他).
+
+    サブクラスは case_name と emit メソッドを実装する.
+    emit は ride 1 つを output リストに append する.
     """
-    real = [r for r in rides if r.get('case') not in ('discount', 'charter')]
-    adjustments = [r for r in rides if r.get('case') == 'discount']
-    charters = [r for r in rides if r.get('case') == 'charter']
-    return real, adjustments, charters
+    case_name = None
+
+    def emit(self, ride, last_real_meter_no, output):
+        raise NotImplementedError
+
+
+class DiscountEmitter(ReportEmitter):
+    """障害者割引: 1/9 リインバース行を未収側に計上.
+    ラベルは最後に対応した通常メーター行の no + '+' (近接表示)."""
+    case_name = 'discount'
+
+    def emit(self, ride, last_real_meter_no, output):
+        n_amt = ride.get('nippou_amount')
+        if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
+            return
+        label = f'{last_real_meter_no}+' if last_real_meter_no is not None else '*'
+        output.append({
+            'no': label,
+            'passengers': 0, 'time': '',
+            'gen': 0, 'mi': int(n_amt),
+            'memo': ride.get('memo') or '障割',
+            'state': 'discount',
+            'needs_review': bool(ride.get('needs_review')),
+        })
+
+
+class CharterEmitter(ReportEmitter):
+    """貸切: メーター不使用の独立案件. 件数・人数は通常乗車として計上.
+    ([[project-charter-rules]])"""
+    case_name = 'charter'
+
+    def emit(self, ride, last_real_meter_no, output):
+        n_amt = ride.get('nippou_amount')
+        if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
+            return
+        kind = ride.get('kind') or '現収'
+        passengers = int(ride.get('passengers') or 1)
+        amount = int(n_amt)
+        output.append({
+            'no': '貸',
+            'passengers': passengers,
+            'time': ride.get('time') or '',
+            'gen': amount if kind == '現収' else 0,
+            'mi': amount if kind == '未収' else 0,
+            'memo': ride.get('memo') or '貸切',
+            'state': 'charter',
+            'paper_time': ride.get('time') or '',
+            'needs_review': bool(ride.get('needs_review')),
+        })
+
+
+# レジストリ: case → emitter.
+# 順序が出力順を決める (discount → charter の順で append される).
+REPORT_EMITTERS = {
+    'discount': DiscountEmitter(),
+    'charter': CharterEmitter(),
+}
+
+
+def _split_rides(rides):
+    """rides を Layer 2 (meter-aligned) と Layer 3 (independent cases) に分離.
+
+    Layer 3 の case は REPORT_EMITTERS のキーから動的に決まる. 新 Layer 3
+    case を増やす時は REPORT_EMITTERS に追加するだけで _split_rides も
+    自動的に追従する.
+
+    返値:
+        real: Layer 2 で meter にアラインする rides (normal/overage/split 等)
+        by_layer3: dict[case_name -> list of rides], REPORT_EMITTERS のキー単位
+    """
+    layer3_cases = set(REPORT_EMITTERS.keys())
+    real = [r for r in rides if r.get('case') not in layer3_cases]
+    by_layer3 = {c: [r for r in rides if r.get('case') == c] for c in layer3_cases}
+    return real, by_layer3
 
 
 def _parse_hhmm(s):
@@ -1733,7 +1811,7 @@ def build_report(meter_data, nippou_data):
     （金額はメーター値を採用、ハイライトのみ）。"""
     meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
     rides = nippou_data.get('rides', [])
-    real_rides, adjustments, charters = _split_rides(rides)
+    real_rides, by_layer3 = _split_rides(rides)
     aligned = _align_rides_to_meter(real_rides, meter_rows_list)
 
     output = []
@@ -1812,42 +1890,11 @@ def build_report(meter_data, nippou_data):
                 'needs_review': needs_review,
             })
 
-    # discount 行: meter 行とは独立、別途追加（最後に対応した通常行の no + '+' をラベルに）
-    for r in adjustments:
-        n_amt = r.get('nippou_amount')
-        if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
-            continue
-        label = f'{last_real_meter_no}+' if last_real_meter_no is not None else '*'
-        output.append({
-            'no': label,
-            'passengers': 0, 'time': '',
-            'gen': 0, 'mi': int(n_amt),
-            'memo': r.get('memo') or '障割',
-            'state': 'discount',
-            'needs_review': bool(r.get('needs_review')),
-        })
-
-    # charter 行: メーター明細に対応行が無い独立案件。adjustments と同じく別出力。
-    # 件数・人数は通常乗車として集計に含める (aggregate_totals 側で除外しない)。
-    # ([[project-charter-rules]])
-    for r in charters:
-        n_amt = r.get('nippou_amount')
-        if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
-            continue
-        kind = r.get('kind') or '現収'
-        passengers = int(r.get('passengers') or 1)
-        amount = int(n_amt)
-        output.append({
-            'no': '貸',
-            'passengers': passengers,
-            'time': r.get('time') or '',
-            'gen': amount if kind == '現収' else 0,
-            'mi': amount if kind == '未収' else 0,
-            'memo': r.get('memo') or '貸切',
-            'state': 'charter',
-            'paper_time': r.get('time') or '',
-            'needs_review': bool(r.get('needs_review')),
-        })
+    # Layer 3: メーター外案件を REPORT_EMITTERS 経由で出力.
+    # 新 case 追加は REPORT_EMITTERS への登録のみで完結 (この本体は触らない).
+    for case_name, emitter in REPORT_EMITTERS.items():
+        for ride in by_layer3.get(case_name, []):
+            emitter.emit(ride, last_real_meter_no, output)
 
     # 障割の数学検出 (ヒント表示のみ、自動確定はしない)
     _add_discount_hints(output, meter_rows_list)
@@ -1992,18 +2039,17 @@ def validate(report_rows, meter_data, nippou_data):
     output_total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in report_rows)
     meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
     rides = nippou_data.get('rides', [])
-    _, adjustments, charters = _split_rides(rides)
+    _, by_layer3 = _split_rides(rides)
 
     meter_total = sum(int(r['amount']) for r in meter_rows_list)
-    discount_total = sum(
-        int(d['nippou_amount']) for d in adjustments
-        if isinstance(d.get('nippou_amount'), (int, float)) and int(d['nippou_amount']) > 0
-    )
-    charter_total = sum(
-        int(c['nippou_amount']) for c in charters
-        if isinstance(c.get('nippou_amount'), (int, float)) and int(c['nippou_amount']) > 0
-    )
-    expected = meter_total + discount_total + charter_total
+    # Layer 3 case ごとの nippou_amount 合計を全部加算 (REPORT_EMITTERS のキーから動的に拾う)
+    layer3_total = 0
+    for case_name in REPORT_EMITTERS:
+        for ride in by_layer3.get(case_name, []):
+            n = ride.get('nippou_amount')
+            if isinstance(n, (int, float)) and int(n) > 0:
+                layer3_total += int(n)
+    expected = meter_total + layer3_total
     diff = output_total - expected
     return diff == 0, diff
 

@@ -10,6 +10,54 @@
 
 ---
 
+## [1.25.03] - 2026-05-16
+
+### Changed (Phase 3: ReportEmitter レジストリ — Layer 2/3 出力統一)
+
+`build_report` の charter/discount の別ループ (Layer 3 の独立出力) を
+`ReportEmitter` ベースのレジストリに置き換え。Phase 1/2/3 で 3 レイヤー
+設計図の本体モジュール化が完了。
+
+**変更**
+
+- `ReportEmitter` 基底 + `DiscountEmitter` / `CharterEmitter` サブクラス
+- `REPORT_EMITTERS` 辞書 (case_name → emitter)
+- `_split_rides` を Layer 3 case 動的検出に進化:
+  - 旧: `(real, adjustments, charters)` の固定 3 タプル
+  - 新: `(real, by_layer3: dict[case_name -> list])`
+  - REPORT_EMITTERS のキーから動的に Layer 3 case を決定
+- `build_report` の Layer 3 ループは emitter dispatch に簡素化
+- `validate` も by_layer3 辞書経由で全 Layer 3 case の合計を加算
+
+**意味 (設計図完成)**
+
+Layer 1 (行解釈) → Layer 2 (メーター整合) → Layer 3 (独立案件) の
+全てがレジストリでモジュール化された。新しい Layer 3 case (例:
+キャンセル料金、別建て請求等) を追加する手順:
+
+1. `RowHandler` サブクラス + `ROW_HANDLERS` 登録 (Layer 1 検出/解釈)
+2. `RideBuilder` サブクラス + `RIDE_BUILDERS` 登録 (rides 構築)
+3. `ReportEmitter` サブクラス + `REPORT_EMITTERS` 登録 (Layer 3 出力)
+
+中央ロジック (`_interpret_raw_row` / `interpret_raw_rows` / `build_report` /
+`_split_rides` / `validate`) には一切手を入れない。
+
+### Tests
+
+- 全 90 件 pass (挙動 100% 維持)
+- `_split_rides` の戻り値変更に伴い 2 件のテストを新シグネチャに更新
+
+### 設計図の進捗
+
+- Layer 1: 完了
+- Layer 1→2 橋渡し: 完了
+- Layer 2/3 出力: **完了**
+
+3 レイヤー設計図の Phase 1+2+3 達成. 以降、新ケースは「ハンドラ + ビルダー +
+エミッター」の 3 ピースを 1 個ずつ書くだけ.
+
+---
+
 ## [1.25.02] - 2026-05-16
 
 ### Changed (Phase 2: RideBuilder レジストリ — 3 レイヤー設計図の Layer 1→2 橋渡し)
