@@ -831,6 +831,7 @@ def parse_meter(client, meter_img):
 #
 # type は AI への型ガイダンスとプロンプト文言生成に使う。
 NIPPOU_COLUMNS = [
+    {'name': 'paper_row',     'label': '紙日報の行番号 (1 始まり、紙の罫線で区切られた区画を上から数えた番号)', 'type': 'int'},
     {'name': 'time',          'label': '時間 (降車時刻)',         'type': 'time'},
     {'name': 'passengers',    'label': '人数',                  'type': 'int'},
     {'name': 'gen_cell',      'label': '現収欄',                'type': 'amount_or_marker'},
@@ -873,7 +874,9 @@ def _build_nippou_prompt(columns):
     # 典型ケースの例: メーター超過自腹補填 (gen=+100, mi=客払い)
     overage_example = {}
     for c in columns:
-        if c['name'] == 'gen_cell':
+        if c['name'] == 'paper_row':
+            overage_example[c['name']] = '2'
+        elif c['name'] == 'gen_cell':
             overage_example[c['name']] = '"+100"'
         elif c['name'] == 'mi_cell':
             overage_example[c['name']] = '1500'
@@ -895,6 +898,25 @@ def _build_nippou_prompt(columns):
 判定は後段の Python プログラムが行います。AI は読み取りに集中。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【最重要: 日報は罫線で区切られた 2D グリッド (= データシート)】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+日報は **文字列の流れではなく、罫線で区切られた絶対座標のグリッド** です。
+以下の前提を絶対に崩さないでください:
+
+- **行数は紙の罫線の数で機械的に決まる**。あなたが「空白だから飛ばす」「数字が
+  小さいから無視」と判断する権限はありません
+- **罫線で区切られた区画は 1 つでも見逃さず、全て JSON の 1 オブジェクトとして
+  出力する**。全セルが空欄でも、その区画は存在するので空オブジェクトを残す
+- 数字が薄い・小さい・滲んでも、罫線内に何か書かれていればその行は値ありとして読む
+- 行の見落としは致命的な失敗。罫線をスキャンする時は、上から下まで全ての横線間を
+  漏らさず認識すること
+
+各オブジェクトには `paper_row` フィールドを付け、紙の罫線で区切られた区画の
+上からの番号 (1 始まり、空区画も含めて連番) を入れてください。
+これは紙の物理的座標で、後段の Python プログラムが行の漏れを検出するのに使います。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【日報の列構造 (固定)】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -907,8 +929,9 @@ def _build_nippou_prompt(columns):
 
 【行の順番】
 - 日報に書かれている順序 (上から下) でそのまま配列に並べる
-- 行番号は与えない (上からの順序が暗黙の番号)
+- `paper_row` フィールドは紙の罫線で区切られた区画番号 (1 始まり、連番)
 - 乗務員が間にブランク行を入れていても、その行は飛ばさず空オブジェクトとして記録する
+  (paper_row は連番のまま付与する)
 
 【amount_or_marker の書き方 - 最重要】
 - 「+100」「+200」のような追加表記は **そのまま文字列** で（例: "+100"）。「+」記号は
@@ -1357,6 +1380,10 @@ def interpret_raw_rows(raw_rows):
     新ケース追加は ROW_HANDLERS と RIDE_BUILDERS への登録のみで済む.
     この関数本体は触らない.
 
+    paper_row (紙の絶対座標) は ride にそのまま伝播される. これによって
+    後段の処理が「紙の N 行目に対応する ride」を番地で参照できる
+    ([[座標ベース設計 — Shuchan の哲学]]).
+
     'empty' / 'invalid' / 未登録 type は黙ってスキップ (= 空行や読み取り不能行).
     """
     rides = []
@@ -1369,8 +1396,51 @@ def interpret_raw_rows(raw_rows):
         if builder is None:
             continue  # empty / invalid / 未登録 type
         needs_review = bool(raw.get('needs_review'))
+        rides_before = len(rides)
         builder.build(interp, raw, rides, needs_review)
+        # paper_row を新規追加 ride に伝播 (karamawashi のような前 ride 更新型は除く)
+        if len(rides) > rides_before:
+            paper_row = raw.get('paper_row')
+            if paper_row is not None:
+                rides[-1]['paper_row'] = paper_row
     return rides
+
+
+def validate_paper_row_continuity(raw_rows):
+    """paper_row が連番か検証 (1 から始まる連続整数).
+
+    AI が紙の罫線で区切られた区画を見落とすと paper_row が不連続になる.
+    これを検出して issues として返す.
+
+    返値: list of issue dicts (空なら全て連番).
+    """
+    issues = []
+    if not raw_rows:
+        return issues
+    seen = []
+    for idx, raw in enumerate(raw_rows):
+        if not isinstance(raw, dict):
+            continue
+        pr = raw.get('paper_row')
+        if isinstance(pr, int):
+            seen.append(pr)
+    if not seen:
+        return issues
+    seen.sort()
+    expected = list(range(seen[0], seen[0] + len(seen)))
+    if seen != expected:
+        # 不連続: 欠番を特定
+        missing = []
+        for n in range(seen[0], seen[-1] + 1):
+            if n not in seen:
+                missing.append(n)
+        issues.append({
+            'stage': 'nippou',
+            'type': 'paper_row_gap',
+            'detail': f'紙日報の paper_row が不連続。欠番: {missing} (AI が行を見落とした可能性)',
+            'missing': missing,
+        })
+    return issues
 
 
 _VALID_CASES = {'normal', 'overage', 'discount', 'split', 'charter'}

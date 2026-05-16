@@ -175,6 +175,59 @@ class TestCharter:
         assert rides[1]['passengers'] == 4
 
 
+# ── paper_row (紙の絶対座標) の伝播・検証 ─────────────────────
+
+class TestPaperRowCoordinate:
+    """紙の物理的行番号 (paper_row) が ride に伝播し、不連続を検出できる
+    ことを保証. Shuchan の座標哲学の根幹."""
+
+    def _raw_with_row(self, paper_row, **kwargs):
+        r = _raw(**kwargs)
+        r['paper_row'] = paper_row
+        return r
+
+    def test_paper_row_propagated_to_ride(self):
+        # AI が paper_row を出力 → ride にも伝播
+        rows = [
+            self._raw_with_row(1, gen_cell=900),
+            self._raw_with_row(2, mi_cell=2000, memo='Visa'),
+        ]
+        rides = app.interpret_raw_rows(rows)
+        assert rides[0]['paper_row'] == 1
+        assert rides[1]['paper_row'] == 2
+
+    def test_continuity_ok(self):
+        # 1, 2, 3 と連番 → issues 空
+        rows = [
+            self._raw_with_row(1, gen_cell=900),
+            self._raw_with_row(2, gen_cell=1000),
+            self._raw_with_row(3, gen_cell=1500),
+        ]
+        issues = app.validate_paper_row_continuity(rows)
+        assert issues == []
+
+    def test_continuity_gap_detected(self):
+        # 1, 2, 4 と飛んでる → 欠番 3 を検出
+        rows = [
+            self._raw_with_row(1, gen_cell=900),
+            self._raw_with_row(2, gen_cell=1000),
+            self._raw_with_row(4, gen_cell=2000),
+        ]
+        issues = app.validate_paper_row_continuity(rows)
+        assert len(issues) == 1
+        assert issues[0]['type'] == 'paper_row_gap'
+        assert issues[0]['missing'] == [3]
+
+    def test_continuity_no_paper_row_no_issue(self):
+        # paper_row が無い古い形式 → 検証スキップ (互換性)
+        rows = [
+            _raw(gen_cell=900),
+            _raw(gen_cell=1000),
+        ]
+        issues = app.validate_paper_row_continuity(rows)
+        assert issues == []
+
+
 # ── プラグイン性の実証: 新ハンドラ追加だけで識別できる ──────────
 
 class TestPluginExtensibility:
