@@ -299,6 +299,30 @@ class TestOrphanCharterPromotion:
         labels = [r['no'] for r in output]
         assert labels == [1, 2, '貸1', 3]
 
+    def test_discount_label_is_numbered_unique(self):
+        # 障害者割引が複数件あっても no が一意 ('障1', '障2', ...).
+        # 旧: '20+' 形式は同金額複数件で no 衝突 → Streamlit widget key 重複で
+        # クラッシュした実例があるため変更.
+        meter, nippou = self._make(
+            [{'no': 1, 'time': '10:00', 'amount': 1000}],
+            [
+                {'time': '10:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 1000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'case': 'discount', 'nippou_amount': 270, 'memo': '障割',
+                 'time': '', 'passengers': 0, 'kind': None,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'case': 'discount', 'nippou_amount': 380, 'memo': '障割',
+                 'time': '', 'passengers': 0, 'kind': None,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            ],
+        )
+        output = app.build_report(meter, nippou)
+        discount_labels = [r['no'] for r in output if r.get('state') == 'discount']
+        assert discount_labels == ['障1', '障2']
+        # no がユニーク = ウィジェットキー衝突しない
+        assert len(set(discount_labels)) == len(discount_labels)
+
     def test_charter_label_is_numbered(self):
         # 貸切ラベルは「貸1」「貸2」「貸3」... の通し番号
         meter, nippou = self._make(

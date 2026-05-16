@@ -1535,16 +1535,16 @@ class ReportEmitter:
 
 class DiscountEmitter(ReportEmitter):
     """障害者割引: 1/9 リインバース行を未収側に計上.
-    ラベルは最後に対応した通常メーター行の no + '+' (近接表示)."""
+    ラベルは通し番号「障1」「障2」… (旧「20+」形式は同金額複数件で no 衝突 →
+    Streamlit の widget key が重複してクラッシュした実例があるため変更)."""
     case_name = 'discount'
 
     def emit(self, ride, last_real_meter_no, output, index=0):
         n_amt = ride.get('nippou_amount')
         if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
             return
-        label = f'{last_real_meter_no}+' if last_real_meter_no is not None else '*'
         output.append({
-            'no': label,
+            'no': f'障{index + 1}',
             'passengers': 0, 'time': '',
             'gen': 0, 'mi': int(n_amt),
             'memo': ride.get('memo') or '障割',
