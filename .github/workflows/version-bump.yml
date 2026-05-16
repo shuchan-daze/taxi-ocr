@@ -1,0 +1,67 @@
+name: Auto version bump
+
+# main への push をきっかけに、最新コミットメッセージから vX.Y.ZZ を抽出して
+# app.py の __version__ を上書きする. Actions による commit は [skip ci] を
+# 付けて無限ループを防ぐ.
+#
+# 設計意図 ([[feedback-long-term-thinking]]):
+#   - 手作業でのバージョン更新ミスを構造的に排除
+#   - コミットメッセージという既存の習慣 (例: "feat: v1.26.02 — ...") を活用
+#   - 将来 pip パッケージ化・自動リリースノート生成等の基盤としても使える
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # Actions 自身が作った commit は再 trigger しない (無限ループ防止)
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # commit back するため、デフォルトの shallow clone から full に
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from commit message
+        id: extract
+        run: |
+          MSG="${{ github.event.head_commit.message }}"
+          VER=$(echo "$MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]{2}' | head -1 | sed 's/^v//')
+          if [ -z "$VER" ]; then
+            echo "No version in commit message, skipping bump"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Found version: $VER"
+            echo "version=$VER" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update __version__ in app.py
+        if: steps.extract.outputs.skip == 'false'
+        run: |
+          VER="${{ steps.extract.outputs.version }}"
+          CURRENT=$(grep -oE "__version__ = '[0-9]+\.[0-9]+\.[0-9]{2}'" app.py | head -1)
+          NEW="__version__ = '$VER'"
+          if [ "$CURRENT" = "$NEW" ]; then
+            echo "Version already up-to-date ($VER), no change"
+            echo "changed=false" >> $GITHUB_ENV
+          else
+            sed -i "s/^__version__ = '[0-9]\+\.[0-9]\+\.[0-9]\{2\}'$/__version__ = '$VER'/" app.py
+            echo "changed=true" >> $GITHUB_ENV
+          fi
+
+      - name: Commit and push if changed
+        if: steps.extract.outputs.skip == 'false' && env.changed == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.py
+          git commit -m "chore: bump __version__ to ${{ steps.extract.outputs.version }} [skip ci]"
+          git push
