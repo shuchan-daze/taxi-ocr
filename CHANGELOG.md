@@ -10,6 +10,80 @@
 
 ---
 
+## [1.29.00] - 2026-05-17
+
+### Added (paper_grid.py — 座標ベース設計の土台モジュール)
+
+新規モジュール `paper_grid.py`. Shuchan の哲学を実装した最小ゴール:
+**「OCR順に依存せず、固定セルに XY 座標で値が入る構造」**
+
+**設計の核**
+
+- 日報の構造は OCR や AI に作らせない. Python 側で固定の空セルを先に作る
+- OCR の役割は「文字を読む + 物理座標を返す」だけ
+- AI に「これは何行目？」と判断させない. セル判定は Python が機械的に行う
+- 紙日報の固定グリッド (25 行 × 5 列 = 125 セル) が絶対基準
+
+**実装した 4 関数**
+
+| 関数 | 責務 |
+|---|---|
+| `build_empty_cell_map()` | 固定 125 セルを空状態で生成 (`source='blank'`) |
+| `find_cell_by_xy()` | トークン座標 → セル住所 (R{行}_{列}) を機械的に判定 |
+| `assign_ocr_tokens_to_cells()` | OCR トークンを cell_map に XY で配置、読めないセルは空のまま |
+| `build_paper_rows_from_cell_map()` | cell_map → paper_rows (25 行全保持、空行詰めない) |
+
+**データ構造**
+
+- `OCRToken`: text + (x, y, w, h) + confidence
+- `CellAddress`: cell_id + row + col
+- `Cell`: 固定セルの状態 (value, tokens, source)
+- `PaperRow`: 日報の 1 行 (paper_row, time, passengers, gen_raw, mi_raw, memo)
+
+**テンプレート (PAPER_TEMPLATE)**
+
+紙日報の固定フォーマットを相対座標 (0.0〜1.0) で定義. 写真サイズや
+歪みに依存しない. 罫線検出 + 補正は将来段階で実装.
+
+**禁止事項 (= Shuchan の指示):**
+
+- OCR の戻り順をそのまま日報行の順番として使わない
+- OCR 結果をいきなり paper_rows にしない
+- 紙日報のフォーマットを崩さない
+- 空欄を詰めない
+- 行を詰めない
+
+### Background
+
+Shuchan の哲学 (2026-05-17):
+> 日報の構造は OCR や AI に作らせません. Python 側で、最初に固定の空セルを
+> 全て作ります. OCR の役割は「文字を読むこと」「その文字の物理座標を返す
+> こと」だけ. AI に「これは 3 行目の現金ですか？」と判断させてはいけません.
+> セル判定は Python が機械的に行います.
+
+旧設計の問題:
+- 私の v1.26.00 で導入した「孤立 ride → 貸切 promote」が AI 誤読を貸切と
+  誤判定する事故
+- 障害者割引行が並び順で消える事故 (paper_row 不一致)
+- 「メーター順を主軸 → 紙日報情報を後付け」の発想が逆だった
+
+新設計は「紙日報のグリッドが主軸 → 各セルに値を流し込む」の正方向.
+
+### Tests
+
+- 全 131 件 pass (新規 18 件: build_empty_cell_map / find_cell_by_xy /
+  assign_ocr_tokens_to_cells / build_paper_rows_from_cell_map の単体 + 結合テスト)
+
+### 次のフェーズ (= 改善段階)
+
+- OpenCV による画像の傾き補正・台形補正
+- 罫線検出 + テンプレート自動キャリブレーション
+- メーター明細との突合 (`reconcile_paper_with_meter`)
+- 既存 OCR (Claude API) からの座標取得方法
+- 旧 build_report / interpret_raw_rows 等の段階的廃止
+
+---
+
 ## [1.28.00] - 2026-05-17
 
 ### Added (座標ベース設計 Phase 4-5: paper_row 警告 + 確認 UI 統一フロー)
