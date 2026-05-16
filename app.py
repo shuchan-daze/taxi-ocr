@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
-__version__ = '1.26.00'
+__version__ = '1.26.01'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -2247,34 +2247,42 @@ def render_detail_table(rows):
 
 
 def apply_user_choices(rows, choices=None):
-    """missing_nippou 行に対するユーザーの選択を反映する.
+    """ユーザーの選択 (session_state) を report rows に反映する.
 
     ([[feedback-ask-with-choices]]: 推測で進めず、選択肢で人間に選ばせる)
-    対象: state='missing_nippou' 行 (メーター明細にはあるが日報に書き漏れ).
-    現状は「現収と仮定」で集計に貢献させてるが、ユーザーが「未収だった」と
-    選び直したら gen/mi を入れ替える.
+
+    対象 1: state='missing_nippou' 行 (メーター明細にあるが日報書き漏れ)
+        キー: `missing_choice_{no}`, 値: '現収' (デフォルト) / '未収'
+        効果: gen/mi の振り分けを上書き
+
+    対象 2: state='discount' 行 (障害者割引リインバース)
+        キー: `discount_amount_{no}`, 値: int (円)
+        効果: mi を上書き. 手書き数字の誤読 (270 vs 380 等) をユーザーが
+        打ち直して確定できる. ([[feedback-accuracy-first]] 正確さ第一)
 
     Args:
         rows: report rows (build_report の出力).
         choices: 選択値の辞書 (テスト用). None なら st.session_state を参照.
-
-    選択肢のキー: `missing_choice_{meter_no}`.
-    値: '現収' (デフォルト) / '未収'.
     """
     if choices is None:
         choices = st.session_state
     for r in rows:
-        if r.get('state') != 'missing_nippou':
-            continue
-        choice_key = f'missing_choice_{r["no"]}'
-        choice = choices.get(choice_key, '現収')
-        meter_amt = int(r.get('meter_amount') or 0)
-        if choice == '未収':
-            r['gen'], r['mi'] = 0, meter_amt
-            r['kind'] = '未収'
-        else:  # '現収' (デフォルト)
-            r['gen'], r['mi'] = meter_amt, 0
-            r['kind'] = '現収'
+        state = r.get('state')
+        if state == 'missing_nippou':
+            choice_key = f'missing_choice_{r["no"]}'
+            choice = choices.get(choice_key, '現収')
+            meter_amt = int(r.get('meter_amount') or 0)
+            if choice == '未収':
+                r['gen'], r['mi'] = 0, meter_amt
+                r['kind'] = '未収'
+            else:  # '現収' (デフォルト)
+                r['gen'], r['mi'] = meter_amt, 0
+                r['kind'] = '現収'
+        elif state == 'discount':
+            amount_key = f'discount_amount_{r["no"]}'
+            override = choices.get(amount_key)
+            if isinstance(override, (int, float)) and int(override) >= 0:
+                r['mi'] = int(override)
     return rows
 
 
@@ -2300,6 +2308,33 @@ def render_missing_choices(rows):
             options=['現収', '未収'],
             key=f'missing_choice_{r["no"]}',
             horizontal=True,
+        )
+
+
+def render_discount_confirmations(rows):
+    """障害者割引 (discount) 行の額を確認・上書きできる入力 UI.
+
+    手書きの障割リインバース額 (例 270 vs 380) は AI 誤読しやすい.
+    実際の Shuchan の事例: AI が 300 と読んだが正解は 380.
+    ([[feedback-accuracy-first]]: 正確さ第一、ユーザーに打ち込ませる)
+    """
+    discount_rows = [r for r in rows if r.get('state') == 'discount']
+    if not discount_rows:
+        return
+    st.markdown('---')
+    st.markdown('### ♿ 障害者割引の金額確認')
+    st.caption('手書きの数字が滲んで読みづらいことがあります。'
+               'AI が読んだ額を確認して、違ったら正しい数字を入力してください。'
+               '変更すると合計が自動で再計算されます。')
+    for r in discount_rows:
+        ai_amt = int(r.get('mi') or 0)
+        memo = r.get('memo') or '障割'
+        st.number_input(
+            f'No.{r["no"]} {memo} (AI 読み ¥{ai_amt:,})',
+            value=ai_amt,
+            min_value=0,
+            step=10,
+            key=f'discount_amount_{r["no"]}',
         )
 
 
@@ -2622,6 +2657,7 @@ if st.session_state.get('result_rows'):
         render_summary(ken, nin, gen, mi, sou, tax, net)
         render_detail_table(rows)
         render_missing_choices(rows)
+        render_discount_confirmations(rows)
         # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
         st.markdown(f"""
     <div class="metric-grid-3" style="margin-top:12px;">

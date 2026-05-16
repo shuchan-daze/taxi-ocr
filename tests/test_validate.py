@@ -88,6 +88,22 @@ class TestValidate:
         assert result[0]['mi'] == 1800
         assert result[0]['kind'] == '未収'
 
+    def test_apply_user_choices_discount_override(self):
+        # 障割行の額をユーザーが上書きできる (例: AI が 300 と読んだが正解は 380)
+        rows = [
+            {'state': 'discount', 'no': '5+', 'gen': 0, 'mi': 300, 'memo': '障割'},
+        ]
+        result = app.apply_user_choices(rows, choices={'discount_amount_5+': 380})
+        assert result[0]['mi'] == 380
+
+    def test_apply_user_choices_discount_no_override(self):
+        # 上書き値が無ければ AI 読みのまま
+        rows = [
+            {'state': 'discount', 'no': '5+', 'gen': 0, 'mi': 300, 'memo': '障割'},
+        ]
+        result = app.apply_user_choices(rows, choices={})
+        assert result[0]['mi'] == 300
+
     def test_apply_user_choices_only_affects_missing(self):
         # missing_nippou 以外の行は触らない
         rows = [
