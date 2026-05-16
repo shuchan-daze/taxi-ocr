@@ -146,6 +146,35 @@ class TestInterpretRawRows:
         assert len(rides) == 1
 
 
+# ── 貸切 (charter) ───────────────────────────────────────────────
+
+class TestCharter:
+    def test_charter_gen(self):
+        # 現収欄に金額 + 摘要「貸切」→ case=charter, kind=現収
+        result = app._interpret_raw_row(_raw(time='13:30', passengers=4, gen_cell=16400, memo='貸切'))
+        assert result['type'] == 'charter'
+        assert result['kind'] == '現収'
+        assert result['amount'] == 16400
+
+    def test_charter_mi(self):
+        # 未収欄に金額 + 摘要「貸切」→ case=charter, kind=未収
+        result = app._interpret_raw_row(_raw(mi_cell=20000, memo='貸切'))
+        assert result['type'] == 'charter'
+        assert result['kind'] == '未収'
+        assert result['amount'] == 20000
+
+    def test_charter_in_rides(self):
+        rows = [
+            _raw(gen_cell=900, memo='現金'),
+            _raw(time='13:30', passengers=4, gen_cell=16400, memo='貸切'),
+        ]
+        rides = app.interpret_raw_rows(rows)
+        assert len(rides) == 2
+        assert rides[1]['case'] == 'charter'
+        assert rides[1]['nippou_amount'] == 16400
+        assert rides[1]['passengers'] == 4
+
+
 # ── _split_rides: discount を分離 ───────────────────────────────
 
 class TestSplitRides:
@@ -155,7 +184,20 @@ class TestSplitRides:
             {'case': 'discount', 'nippou_amount': 200},
             {'case': 'split', 'gen_amount': 500, 'mi_amount': 500},
         ]
-        real, adjustments = app._split_rides(rides)
+        real, adjustments, charters = app._split_rides(rides)
         assert len(real) == 2
         assert len(adjustments) == 1
         assert adjustments[0]['case'] == 'discount'
+        assert charters == []
+
+    def test_separates_charter(self):
+        rides = [
+            {'case': 'normal', 'nippou_amount': 1000},
+            {'case': 'charter', 'nippou_amount': 16400, 'kind': '現収', 'memo': '貸切'},
+            {'case': 'discount', 'nippou_amount': 200},
+        ]
+        real, adjustments, charters = app._split_rides(rides)
+        assert len(real) == 1
+        assert len(adjustments) == 1
+        assert len(charters) == 1
+        assert charters[0]['nippou_amount'] == 16400

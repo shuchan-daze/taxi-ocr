@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.24.00 (2026-05-15)
+# 現バージョン: v1.25.00 (2026-05-16)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -416,6 +416,10 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 }
 .detail-table tr.missing_nippou td:first-child {border-left: 4px solid #fff !important;}
 .detail-table tr.missing_nippou:nth-child(even) td {background: #b91c1c !important;}
+/* charter: 貸切行。メーター明細に対応行が無い独立案件。ブランド金で視認性確保 */
+.detail-table tr.charter td {background: rgba(212,175,55,0.18) !important; color: #f5e9c2 !important;}
+.detail-table tr.charter:nth-child(even) td {background: rgba(212,175,55,0.26) !important;}
+.detail-table tr.charter td:first-child {border-left: 4px solid #d4af37 !important;}
 
 /* === AI エンジン八咫烏バッジ ===
    タイトルバー的に存在感を出す、半透明金背景 + 金細線 + ホバー時に微発光。
@@ -916,7 +920,7 @@ def _build_nippou_prompt(columns):
 - デフォルト false。**本当に自信が無い行だけ true**。
 - true にする条件 (どれか):
   - digit が滲んで読めず推測で埋めた (例: 1090 か 1000 か明らかに分からない)
-  - 既知の支払い種別 (現金/カード/Uber/Visa/JCB/AMEX/Suica/PASMO 等) に該当しない見慣れない memo
+  - 既知の支払い種別・カテゴリ (現金/カード/Uber/Visa/JCB/AMEX/Suica/PASMO/PayPay/QP/障割/貸切 等) に該当しない見慣れない memo
   - セルに見慣れない文字 / 記号がある
   - 現収欄・未収欄の数字が部分的にしか読めない
 - false にする条件:
@@ -1039,6 +1043,31 @@ def _interpret_raw_row(raw_row):
                 'type': 'meter_overage_standalone',
                 'overage_amount': gen_int,
             }
+
+    # Step 1c: 貸切 (チャーター)
+    # メーター不使用の独立案件。摘要に「貸切」と書かれる。
+    # 金額は 現収/未収 どちらにも入りうる。メーター明細とアラインしないので
+    # build_report 段階で別ループ出力する。([[project-charter-rules]])
+    if '貸切' in memo:
+        gen_int = _cell_to_int(gen_cell)
+        mi_int = _cell_to_int(mi_cell)
+        if gen_int is not None:
+            kind = '現収'
+            amount = gen_int
+        elif mi_int is not None:
+            kind = '未収'
+            amount = mi_int
+        else:
+            amount = None
+            kind = '現収'
+        return {
+            'type': 'charter',
+            'time': raw_row.get('time'),
+            'passengers': raw_row.get('passengers'),
+            'kind': kind,
+            'amount': amount,
+            'memo': memo,
+        }
 
     # Step 2: 障害者割引
     if _is_discount_memo(memo):
@@ -1186,6 +1215,18 @@ def interpret_raw_rows(raw_rows):
             })
             continue
 
+        if t == 'charter':
+            rides.append({
+                'time': interp.get('time') or '',
+                'passengers': interp.get('passengers'),
+                'case': 'charter',
+                'kind': interp.get('kind') or '現収',
+                'nippou_amount': interp.get('amount'),
+                'memo': interp.get('memo') or '貸切',
+                'needs_review': needs_review,
+            })
+            continue
+
         if t == 'split':
             rides.append({
                 'time': interp.get('time') or '',
@@ -1211,7 +1252,7 @@ def interpret_raw_rows(raw_rows):
     return rides
 
 
-_VALID_CASES = {'normal', 'overage', 'discount', 'split'}
+_VALID_CASES = {'normal', 'overage', 'discount', 'split', 'charter'}
 
 
 def _finalize_rides(rides):
@@ -1238,7 +1279,7 @@ def _finalize_rides(rides):
         if passengers < 0:
             passengers = 1
         kind = r.get('kind') or '現収'
-        if case in ('normal', 'overage') and kind not in ('現収', '未収'):
+        if case in ('normal', 'overage', 'charter') and kind not in ('現収', '未収'):
             issues.append({'stage': 'nippou', 'type': 'invalid_kind', 'where': where,
                            'detail': f'kind 値が不正「{kind}」→ 現収 として扱う'})
             kind = '現収'
@@ -1263,6 +1304,11 @@ def _finalize_rides(rides):
                 issues.append({'stage': 'nippou', 'type': 'discount_missing_amount', 'where': where,
                                'detail': 'discount なのに nippou_amount が無効、行スキップ'})
                 continue  # 金額が無い障割は集計不能、データ破棄
+        elif case == 'charter':
+            if nippou_amount is None or nippou_amount <= 0:
+                issues.append({'stage': 'nippou', 'type': 'charter_missing_amount', 'where': where,
+                               'detail': 'charter なのに nippou_amount が無効、行スキップ'})
+                continue  # 金額が無い貸切は集計不能、データ破棄
 
         normalized.append({
             'time': time_str,
@@ -1347,11 +1393,14 @@ def classify_nippou(client, nippou_img, meter_data=None):
 # overage 行は客分 (meter - overage) と超過分 (overage) の 2 行に分割。
 
 def _split_rides(rides):
-    """rides を「通常乗車（normal/overage/split）」と「障割（discount）」に分離。
-    split（分割払い）はメーター 1 行に対応するので real 側に含める。"""
-    real = [r for r in rides if r.get('case') != 'discount']
+    """rides を「通常乗車（normal/overage/split）」「障割（discount）」「貸切（charter）」に分離。
+    split（分割払い）はメーター 1 行に対応するので real 側に含める。
+    charter はメーターを回さない独立案件なので real から外し、adjustments と並列に別出力する。
+    """
+    real = [r for r in rides if r.get('case') not in ('discount', 'charter')]
     adjustments = [r for r in rides if r.get('case') == 'discount']
-    return real, adjustments
+    charters = [r for r in rides if r.get('case') == 'charter']
+    return real, adjustments, charters
 
 
 def _parse_hhmm(s):
@@ -1563,7 +1612,7 @@ def build_report(meter_data, nippou_data):
     （金額はメーター値を採用、ハイライトのみ）。"""
     meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
     rides = nippou_data.get('rides', [])
-    real_rides, adjustments = _split_rides(rides)
+    real_rides, adjustments, charters = _split_rides(rides)
     aligned = _align_rides_to_meter(real_rides, meter_rows_list)
 
     output = []
@@ -1654,6 +1703,28 @@ def build_report(meter_data, nippou_data):
             'gen': 0, 'mi': int(n_amt),
             'memo': r.get('memo') or '障割',
             'state': 'discount',
+            'needs_review': bool(r.get('needs_review')),
+        })
+
+    # charter 行: メーター明細に対応行が無い独立案件。adjustments と同じく別出力。
+    # 件数・人数は通常乗車として集計に含める (aggregate_totals 側で除外しない)。
+    # ([[project-charter-rules]])
+    for r in charters:
+        n_amt = r.get('nippou_amount')
+        if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
+            continue
+        kind = r.get('kind') or '現収'
+        passengers = int(r.get('passengers') or 1)
+        amount = int(n_amt)
+        output.append({
+            'no': '貸',
+            'passengers': passengers,
+            'time': r.get('time') or '',
+            'gen': amount if kind == '現収' else 0,
+            'mi': amount if kind == '未収' else 0,
+            'memo': r.get('memo') or '貸切',
+            'state': 'charter',
+            'paper_time': r.get('time') or '',
             'needs_review': bool(r.get('needs_review')),
         })
 
@@ -1794,19 +1865,24 @@ def validate(report_rows, meter_data, nippou_data):
     期待値の算出:
       - メーター行合計 (全行)
       - + 障割の nippou_amount 合計
+      - + 貸切の nippou_amount 合計 (メーター不使用、独立案件)
       missing_nippou 行も「現収と仮定」で合計に貢献しているので、期待値から引かない。
     """
     output_total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in report_rows)
     meter_rows_list = sorted(meter_data.get('rows', []), key=lambda r: r['no'])
     rides = nippou_data.get('rides', [])
-    _, adjustments = _split_rides(rides)
+    _, adjustments, charters = _split_rides(rides)
 
     meter_total = sum(int(r['amount']) for r in meter_rows_list)
     discount_total = sum(
         int(d['nippou_amount']) for d in adjustments
         if isinstance(d.get('nippou_amount'), (int, float)) and int(d['nippou_amount']) > 0
     )
-    expected = meter_total + discount_total
+    charter_total = sum(
+        int(c['nippou_amount']) for c in charters
+        if isinstance(c.get('nippou_amount'), (int, float)) and int(c['nippou_amount']) > 0
+    )
+    expected = meter_total + discount_total + charter_total
     diff = output_total - expected
     return diff == 0, diff
 
@@ -1907,7 +1983,7 @@ def render_detail_table(rows):
     parts = ['<table class="detail-table"><thead><tr>']
     parts.extend(f'<th>{h}</th>' for h in headers)
     parts.append('</tr></thead><tbody>')
-    state_class_map = {'mismatch': 'mismatch', 'special': 'special', 'missing_nippou': 'missing_nippou'}
+    state_class_map = {'mismatch': 'mismatch', 'special': 'special', 'missing_nippou': 'missing_nippou', 'charter': 'charter'}
     for r in rows:
         state = r.get('state', '')
         cls = state_class_map.get(state, '')
@@ -1952,6 +2028,8 @@ def render_detail_table(rows):
             state_display = 'メーター超過'
         elif state == 'discount':
             state_display = '障割'
+        elif state == 'charter':
+            state_display = '貸切 (メーター外)'
         elif state == 'ok':
             state_display = ''
         else:
@@ -1978,6 +2056,7 @@ def aggregate_totals(rows):
       - 'discount'（障割）: 除外。割引額の独立行は会計調整であり「乗客」ではないため。
       - 'missing_nippou'（日報未記載・現収仮定）: 含める。1 件 1 人の乗車として計上
         （合計を成立させる仮置き。ユーザーが訂正したらそれに従う）。
+      - 'charter'（貸切）: 含める。メーター不使用だが実際の乗車案件。([[project-charter-rules]])
       - 'normal' / 'mismatch' / 'edited' 等: 含める。通常の乗車。
 
     金額(gen/mi/sou/tax/net)は state を問わず合算するため、

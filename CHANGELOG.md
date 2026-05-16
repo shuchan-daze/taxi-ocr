@@ -10,6 +10,60 @@
 
 ---
 
+## [1.25.00] - 2026-05-16
+
+### Added (貸切 = チャーター案件の対応)
+
+メーターを回さない貸切案件は、これまで日報に書いてもメーター明細とのアラインで
+弾かれて集計から消えていた。本リリースで独立ケースとして処理。
+
+**1. 新ケース `case='charter'`**
+
+- `_interpret_raw_row`: 摘要に「貸切」を含む行を `type='charter'` で返す。
+  現収/未収どちらに金額が入っているかで `kind` を判定 (両方ありうる)。
+- `interpret_raw_rows`: charter type → ride に `case='charter'` で追加。
+- `_VALID_CASES` に `'charter'` を追加。`_finalize_rides` で kind バリデーション対象に。
+- 金額が無い貸切は `charter_missing_amount` issue としてスキップ。
+
+**2. メーターアラインから分離**
+
+- `_split_rides` は 3 タプル `(real, adjustments, charters)` を返すように変更。
+  charter は障割と並列で「メーター行に対応しない独立行」として扱う。
+- `build_report` は real のみメーターにアラインし、charter は別ループで出力。
+  ラベルは `'貸'`、`state='charter'`。
+
+**3. 合計への加算**
+
+- `validate` の期待値計算に `+ charter の nippou_amount 合計` を追加。
+- `aggregate_totals` のコメントに charter は ken/nin に含める旨を明記
+  (excluded_states に入れないので既存ロジックでそのまま正解)。
+
+**4. 視覚マーカー (CSS)**
+
+- `.detail-table tr.charter`: ブランド金 `#d4af37` の半透明背景 + 左ボーダー。
+  通常乗車・障割・mismatch と一目で区別できる。
+- 状態列に「貸切 (メーター外)」を表示。
+
+**5. OCR プロンプト微調整**
+
+- 既知 memo リストに `貸切` を追加 (needs_review の誤検知を防ぐ)。
+
+### Background
+
+Shuchan の実日報 (2026-05-16) で貸切案件 ¥16,400 が日報に記録されたが、
+メーター明細には対応行が無く、従来コードでは集計から脱落していた。
+歩合率は売上連動しないため、貸切専用の歩合計算は不要。単に
+「メーター外案件として独立に合計に足す」設計で十分。
+
+### Tests
+
+- 新規: `TestCharter` (3 件) — _interpret_raw_row / interpret_raw_rows
+- 新規: `test_separates_charter` — _split_rides の 3 タプル分離
+- 新規: `test_with_charter` / `test_charter_with_discount_and_meter` — validate + build_report の合計成立
+- 既存テスト全件 pass (82 → 87)
+
+---
+
 ## [1.24.00] - 2026-05-15
 
 ### Added (時刻アンカー表示 + 順序保存アライメント)

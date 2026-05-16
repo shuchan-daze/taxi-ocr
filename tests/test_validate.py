@@ -52,6 +52,45 @@ class TestValidate:
         # missing_nippou 行も「現収」仮置きで gen に計上 → 合計成立
         assert ok is True
 
+    def test_with_charter(self):
+        # メーター ¥1,000 + 貸切 ¥16,400 = 期待値 ¥17,400
+        meter = _meter([{'no': 1, 'time': '10:00', 'amount': 1000}])
+        nippou = _nippou([
+            _normal_ride(1000),
+            {'case': 'charter', 'nippou_amount': 16400, 'memo': '貸切',
+             'time': '13:30', 'passengers': 4, 'kind': '現収',
+             'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+        ])
+        rows = app.build_report(meter, nippou)
+        ok, diff = app.validate(rows, meter, nippou)
+        assert ok is True
+        # 出力合計 (gen+mi) も 17,400
+        total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in rows)
+        assert total == 17400
+
+    def test_charter_with_discount_and_meter(self):
+        # 三役: メーター + 障割 + 貸切 が同居しても合計成立
+        meter = _meter([
+            {'no': 1, 'time': '10:00', 'amount': 2700},
+            {'no': 2, 'time': '11:00', 'amount': 1500},
+        ])
+        nippou = _nippou([
+            _normal_ride(2700, kind='未収'),
+            _normal_ride(1500),
+            {'case': 'discount', 'nippou_amount': 300, 'memo': '障割',
+             'time': '', 'passengers': 0, 'kind': None,
+             'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            {'case': 'charter', 'nippou_amount': 16400, 'memo': '貸切',
+             'time': '13:30', 'passengers': 4, 'kind': '現収',
+             'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+        ])
+        rows = app.build_report(meter, nippou)
+        ok, diff = app.validate(rows, meter, nippou)
+        assert ok is True, f'diff={diff}'
+        # 期待: 2700 + 1500 + 300 + 16400 = 20,900
+        total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in rows)
+        assert total == 20900
+
 
 # ── aggregate_totals: 集計 ──────────────────────────────────────
 
