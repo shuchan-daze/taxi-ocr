@@ -1524,11 +1524,12 @@ class ReportEmitter:
     """Layer 3: メーター明細と独立に出力する責務 (障割・貸切・他).
 
     サブクラスは case_name と emit メソッドを実装する.
-    emit は ride 1 つを output リストに append する.
+    emit は ride 1 つを output リストに反映する (append or insert).
+    index は同一 case_name 内の通し番号 (ラベル付けに使う).
     """
     case_name = None
 
-    def emit(self, ride, last_real_meter_no, output):
+    def emit(self, ride, last_real_meter_no, output, index=0):
         raise NotImplementedError
 
 
@@ -1537,7 +1538,7 @@ class DiscountEmitter(ReportEmitter):
     ラベルは最後に対応した通常メーター行の no + '+' (近接表示)."""
     case_name = 'discount'
 
-    def emit(self, ride, last_real_meter_no, output):
+    def emit(self, ride, last_real_meter_no, output, index=0):
         n_amt = ride.get('nippou_amount')
         if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
             return
@@ -1554,27 +1555,44 @@ class DiscountEmitter(ReportEmitter):
 
 class CharterEmitter(ReportEmitter):
     """貸切: メーター不使用の独立案件. 件数・人数は通常乗車として計上.
+    紙の時刻に基づいて output 内の適切な位置に insert する (末尾 append ではなく、
+    紙日報の順序を再現). ラベルは「貸1」「貸2」… の通し番号.
     ([[project-charter-rules]])"""
     case_name = 'charter'
 
-    def emit(self, ride, last_real_meter_no, output):
+    def emit(self, ride, last_real_meter_no, output, index=0):
         n_amt = ride.get('nippou_amount')
         if not isinstance(n_amt, (int, float)) or int(n_amt) <= 0:
             return
         kind = ride.get('kind') or '現収'
         passengers = int(ride.get('passengers') or 1)
         amount = int(n_amt)
-        output.append({
-            'no': '貸',
+        time_str = ride.get('time') or ''
+        row = {
+            'no': f'貸{index + 1}',
             'passengers': passengers,
-            'time': ride.get('time') or '',
+            'time': time_str,
             'gen': amount if kind == '現収' else 0,
             'mi': amount if kind == '未収' else 0,
             'memo': ride.get('memo') or '貸切',
             'state': 'charter',
-            'paper_time': ride.get('time') or '',
+            'paper_time': time_str,
             'needs_review': bool(ride.get('needs_review')),
-        })
+        }
+        # 紙日報の順序を再現: 紙時刻 (paper_time) より「後」の最初の
+        # メーター行の直前に挿入する. メーター行以外 (discount/charter) は
+        # 既に挿入済みの他案件なので位置判定からスキップ.
+        paper_t = _parse_hhmm(time_str)
+        insert_idx = len(output)
+        if paper_t is not None:
+            for i, existing in enumerate(output):
+                if existing.get('state') in ('charter', 'discount'):
+                    continue
+                ex_t = _parse_hhmm(existing.get('time'))
+                if ex_t is not None and ex_t > paper_t:
+                    insert_idx = i
+                    break
+        output.insert(insert_idx, row)
 
 
 # レジストリ: case → emitter.
@@ -1923,9 +1941,11 @@ def build_report(meter_data, nippou_data):
 
     # Layer 3: メーター外案件を REPORT_EMITTERS 経由で出力.
     # 新 case 追加は REPORT_EMITTERS への登録のみで完結 (この本体は触らない).
+    # discount を先 → charter を後で処理することで、charter は完成した output
+    # 内のメーター行の位置を見て insert 位置を決められる.
     for case_name, emitter in REPORT_EMITTERS.items():
-        for ride in by_layer3.get(case_name, []):
-            emitter.emit(ride, last_real_meter_no, output)
+        for idx, ride in enumerate(by_layer3.get(case_name, [])):
+            emitter.emit(ride, last_real_meter_no, output, index=idx)
 
     # 障割の数学検出 (ヒント表示のみ、自動確定はしない)
     _add_discount_hints(output, meter_rows_list)

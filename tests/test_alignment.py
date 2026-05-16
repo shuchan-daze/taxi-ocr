@@ -270,6 +270,55 @@ class TestOrphanCharterPromotion:
         charter_rows = [r for r in output if r.get('state') == 'charter']
         assert len(charter_rows) == 0
 
+    def test_charter_inserted_at_paper_time_position(self):
+        # 貸切は紙の時刻に基づいて output 内の正しい位置に挿入される
+        # メーター 10:00, 12:00, 15:00 の間に 13:30 の貸切が入るケース
+        meter, nippou = self._make(
+            [
+                {'no': 1, 'time': '10:00', 'amount': 1000},
+                {'no': 2, 'time': '12:00', 'amount': 2000},
+                {'no': 3, 'time': '15:00', 'amount': 3000},
+            ],
+            [
+                {'time': '10:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 1000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '12:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 2000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '13:30', 'passengers': 4, 'case': 'charter', 'kind': '現収',
+                 'memo': '貸切', 'nippou_amount': 16400,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '15:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 3000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            ],
+        )
+        output = app.build_report(meter, nippou)
+        # 期待される並び: No.1 (10:00) → No.2 (12:00) → 貸1 (13:30) → No.3 (15:00)
+        labels = [r['no'] for r in output]
+        assert labels == [1, 2, '貸1', 3]
+
+    def test_charter_label_is_numbered(self):
+        # 貸切ラベルは「貸1」「貸2」「貸3」... の通し番号
+        meter, nippou = self._make(
+            [{'no': 1, 'time': '10:00', 'amount': 1000}],
+            [
+                {'time': '10:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 1000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '13:30', 'passengers': 4, 'case': 'charter', 'kind': '現収',
+                 'memo': '貸切', 'nippou_amount': 16400,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '14:00', 'passengers': 2, 'case': 'charter', 'kind': '未収',
+                 'memo': '貸切', 'nippou_amount': 8000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            ],
+        )
+        output = app.build_report(meter, nippou)
+        charter_labels = [r['no'] for r in output if r.get('state') == 'charter']
+        assert charter_labels == ['貸1', '貸2']
+
     def test_explicit_charter_not_double_marked(self):
         # 明示的に memo='貸切' の charter ride は既に Layer 3、自動判定マーカーは付かない
         meter, nippou = self._make(

@@ -10,6 +10,34 @@
 
 ---
 
+## [1.26.04] - 2026-05-16
+
+### Changed (貸切の挿入位置を紙日報順に、ラベルを「貸1」「貸2」… に)
+
+旧: 貸切行は build_report の末尾に append されてた → 紙日報の順序が崩れる
+新: 紙の時刻に基づいて output 内の正しい位置に insert.
+    ラベルは末尾固定の「貸」じゃなく通し番号「貸1」「貸2」… に変更.
+
+- `CharterEmitter.emit` に `index` 引数追加 (通し番号)
+- 挿入位置: 紙時刻より「後」の最初のメーター行の直前
+- `ReportEmitter` 基底クラスのインターフェースも index 対応
+
+### Tests
+
+- 全 104 件 pass (新規 2 件: 挿入位置・通し番号ラベル)
+
+---
+
+## [1.26.03] - 2026-05-16
+
+### Infrastructure
+
+GitHub Actions による `__version__` 自動 bump 導入後の最初のリリース.
+Bot が commit メッセージから version 抽出して自動更新.
+詳細: `.github/workflows/version-bump.yml` 参照.
+
+---
+
 ## [1.26.02] - 2026-05-16
 
 ### Changed (障害者割引・貸切の確認 UI を Yes/No → テンキー入力フローに)
