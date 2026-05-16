@@ -10,6 +10,54 @@
 
 ---
 
+## [1.28.00] - 2026-05-17
+
+### Added (座標ベース設計 Phase 4-5: paper_row 警告 + 確認 UI 統一フロー)
+
+**1. paper_row 連番不一致の警告 (Phase 4)**
+
+`classify_nippou` で `validate_paper_row_continuity` を呼び、紙日報の
+paper_row が連番か検証. 欠番があれば issues に `paper_row_gap` を追加.
+UI 側で「AI が紙日報の行を見落とした可能性があります」と表示.
+
+**2. 確認 UI の統一フロー (Phase 5)**
+
+これまでばらばらだった行ごとの確認 UI を統一フローに:
+
+| 行の状態 | UI | 効果 |
+|---|---|---|
+| `missing_nippou` | 現収/未収/**無視** の 3 択 (← 「無視」追加) | 「無視」で集計除外 |
+| `mismatch` | 「合ってますか？」→ 違うならテンキー (← **新規追加**) | メーター値以外を採用可 |
+| `discount` | 「合ってますか？」→ 違うならテンキー | 既存 |
+| `charter` | 「合ってますか？」→ 違うならテンキー | 既存 |
+
+- `apply_user_choices` に mismatch 行の処理を追加
+  - キー: `mismatch_status_{no}` / `mismatch_amount_{no}`
+- missing_nippou に「無視」選択肢追加 (= `ignored_by_user` フラグ)
+- `aggregate_totals` で `ignored_by_user` 行を件数・人数から除外
+- `render_mismatch_confirmations` 新規関数
+
+### Background
+
+Shuchan の指摘 (2026-05-17):
+- 「主データ = メーター明細、予備データ = AI 読み」の哲学
+- 「メーター取れない時のみ AI 読みに切り替え、ユーザーに最終確認を取る」
+- 「変な逃げ道は作らない、自信を持ってアドレスから採用」
+- 「該当行を薄ピンク背景で示して、下に確認 UI」
+
+確認 UI が「合ってますか？ → 違うならテンキー」の統一パターンに揃ったので、
+ユーザーが画面のどこを見ても同じ操作で訂正できる.
+
+### Tests
+
+- 全 113 件 pass (新規 4 件: mismatch override / missing 無視 / ignored 除外)
+
+### 残
+
+- Phase 6: 実機検証, CSS 統一 (薄ピンク背景)
+
+---
+
 ## [1.27.00] - 2026-05-17
 
 ### Added (座標ベース設計 Phase 2-3: paper_row 導入)

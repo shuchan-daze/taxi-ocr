@@ -1576,6 +1576,10 @@ def classify_nippou(client, nippou_img, meter_data=None):
     rides = interpret_raw_rows(raw_rows)
     result = _finalize_rides(rides)
     result['raw_rows'] = raw_rows
+    # paper_row (紙の絶対座標) の連番検証. AI が紙の行を見落とした可能性を検出.
+    # ([[座標ベース設計]])
+    paper_row_issues = validate_paper_row_continuity(raw_rows)
+    result['issues'].extend(paper_row_issues)
     return result
 
 
@@ -2373,6 +2377,10 @@ def apply_user_choices(rows, choices=None):
             if choice == '未収':
                 r['gen'], r['mi'] = 0, meter_amt
                 r['kind'] = '未収'
+            elif choice == '無視':
+                # 集計から除外 (ユーザーがこの行を「無視していい」と判断)
+                r['gen'], r['mi'] = 0, 0
+                r['ignored_by_user'] = True
             else:  # '現収' (デフォルト)
                 r['gen'], r['mi'] = meter_amt, 0
                 r['kind'] = '現収'
@@ -2383,7 +2391,6 @@ def apply_user_choices(rows, choices=None):
                 override = choices.get(f'discount_amount_{r["no"]}')
                 if isinstance(override, (int, float)) and int(override) >= 0:
                     r['mi'] = int(override)
-            # '合ってる' なら AI 読み値そのまま (r['mi'] のまま)
         elif state == 'charter':
             status_key = f'charter_status_{r["no"]}'
             status = choices.get(status_key, '合ってる')
@@ -2396,14 +2403,29 @@ def apply_user_choices(rows, choices=None):
                         r['gen'], r['mi'] = 0, amt
                     else:
                         r['gen'], r['mi'] = amt, 0
-            # '合ってる' なら AI 読み値そのまま
+        elif state == 'mismatch':
+            # メーター読めて AI 読みと違うケース. デフォルトはメーター値で確定 (現状)、
+            # ユーザーが「違う」と判断したら紙の値 (or 任意の値) で上書き可能.
+            status_key = f'mismatch_status_{r["no"]}'
+            status = choices.get(status_key, '合ってる')
+            if status == '違う':
+                override = choices.get(f'mismatch_amount_{r["no"]}')
+                if isinstance(override, (int, float)) and int(override) >= 0:
+                    amt = int(override)
+                    kind = r.get('kind') or '現収'
+                    if kind == '未収':
+                        r['gen'], r['mi'] = 0, amt
+                    else:
+                        r['gen'], r['mi'] = amt, 0
     return rows
 
 
 def render_missing_choices(rows):
-    """missing_nippou 行 1 件ずつ 現収/未収 を選ばせるラジオ UI を描画.
+    """missing_nippou 行 1 件ずつ 現収/未収/無視 を選ばせるラジオ UI を描画.
 
     テーブルの下に出す. 行が無ければ何も出さない.
+    「無視」を選ぶとその行は集計から除外される (= ユーザーが「この行は無視していい」
+    と判断したケース、例えば誤読で実際は乗車してない場合).
     ([[feedback-ask-with-choices]] / [[project-correction-philosophy]])
     """
     missing_rows = [r for r in rows if r.get('state') == 'missing_nippou']
@@ -2413,16 +2435,58 @@ def render_missing_choices(rows):
     st.markdown('### 🔴 日報に未記載の乗車')
     st.caption('メーター明細にあるけど紙の日報に書かれてない乗車です。'
                '現収 (現金) か未収 (カード等) かを選んでください。'
+               '実際の乗車じゃなければ「無視」で集計から外せます。'
                '選び直すと合計が自動で再計算されます。')
     for r in missing_rows:
         meter_amt = int(r.get('meter_amount') or 0)
         meter_t = r.get('time') or ''
         st.radio(
             f'No.{r["no"]} ({meter_t}) ¥{meter_amt:,}',
-            options=['現収', '未収'],
+            options=['現収', '未収', '無視'],
             key=f'missing_choice_{r["no"]}',
             horizontal=True,
         )
+
+
+def render_mismatch_confirmations(rows):
+    """mismatch 行 (= メーター読めて AI 読みと違う) に確認 UI を表示.
+
+    デフォルトはメーター値で確定 (= 「合ってる」). ユーザーが「違う、紙が正しい」と
+    判断したら、テンキー入力で値を上書きできる.
+    ([[座標ベース設計]]: メーターが主、紙は予備、ユーザー最終判断)
+    """
+    mismatch_rows = [r for r in rows if r.get('state') == 'mismatch']
+    if not mismatch_rows:
+        return
+    st.markdown('---')
+    st.markdown('### 🟠 メーターと紙の金額が違う行')
+    st.caption('メーター値で集計してます。紙の方が正しいと思う場合は'
+               '「違う」を選んで正しい金額を入力してください。')
+    for r in mismatch_rows:
+        meter_amt = int(r.get('meter_amount') or 0)
+        nippou_amt = r.get('nippou_amount')
+        meter_t = r.get('time') or ''
+        if isinstance(nippou_amt, int):
+            label_text = f'No.{r["no"]} ({meter_t}) メーター ¥{meter_amt:,} / 紙 ¥{nippou_amt:,}'
+        else:
+            label_text = f'No.{r["no"]} ({meter_t}) メーター ¥{meter_amt:,}'
+        st.markdown(f'**{label_text}**')
+        status = st.radio(
+            'この金額で合ってますか？',
+            options=['合ってる', '違う'],
+            key=f'mismatch_status_{r["no"]}',
+            horizontal=True,
+            label_visibility='collapsed',
+        )
+        if status == '違う':
+            default = nippou_amt if isinstance(nippou_amt, int) else meter_amt
+            st.number_input(
+                '正しい金額を入力 (円)',
+                value=default,
+                min_value=0,
+                step=10,
+                key=f'mismatch_amount_{r["no"]}',
+            )
 
 
 def render_discount_confirmations(rows):
@@ -2512,8 +2576,15 @@ def aggregate_totals(rows):
     gen = sum((r.get('gen') or 0) for r in rows)
     mi = sum((r.get('mi') or 0) for r in rows)
     excluded_states = {'special', 'discount'}
-    ken = sum(1 for r in rows if r.get('state') not in excluded_states)
-    nin = sum((r.get('passengers') or 0) for r in rows if r.get('state') not in excluded_states)
+    # ユーザーが「無視」を選んだ行は件数・人数からも除外
+    def _is_counted(r):
+        if r.get('state') in excluded_states:
+            return False
+        if r.get('ignored_by_user'):
+            return False
+        return True
+    ken = sum(1 for r in rows if _is_counted(r))
+    nin = sum((r.get('passengers') or 0) for r in rows if _is_counted(r))
     sou = gen + mi
     tax = int(round(sou / 11, -1))
     net = sou - tax
@@ -2814,6 +2885,7 @@ if st.session_state.get('result_rows'):
         render_summary(ken, nin, gen, mi, sou, tax, net)
         render_detail_table(rows)
         render_missing_choices(rows)
+        render_mismatch_confirmations(rows)
         render_discount_confirmations(rows)
         render_charter_confirmations(rows)
         # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
@@ -2894,6 +2966,8 @@ if st.session_state.get('result_rows'):
                 'split_missing_amounts': '分割払いの金額が空',
                 'overage_missing_amount': '超過金額が空',
                 'discount_missing_amount': '障割金額が空',
+                'charter_missing_amount': '貸切金額が空',
+                'paper_row_gap': '紙日報の行が抜けている',
             }
             _USER_DETAILS = {
                 'invalid_row': '行データが壊れていたため、その行はスキップしました。',
@@ -2906,6 +2980,8 @@ if st.session_state.get('result_rows'):
                 'split_missing_amounts': '分割払いの内訳金額が両方とも空でした。',
                 'overage_missing_amount': '超過金額が空でした。',
                 'discount_missing_amount': '障割金額が空のため、この行を集計から除外しました。',
+                'charter_missing_amount': '貸切金額が空のため、この行を集計から除外しました。',
+                'paper_row_gap': 'AI が紙日報の行を見落とした可能性があります。紙の罫線で区切られた行を再確認してください。',
             }
             _STAGE_LABEL = {'meter': '🚕 メーター', 'nippou': '📝 日報'}
 

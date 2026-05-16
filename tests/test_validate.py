@@ -151,6 +151,50 @@ class TestValidate:
         assert result[0]['gen'] == 0
         assert result[0]['mi'] == 25000
 
+    def test_apply_user_choices_missing_ignore(self):
+        # missing_nippou で「無視」選択 → gen/mi 0、ignored_by_user フラグ立つ
+        rows = [
+            {'state': 'missing_nippou', 'no': 5, 'meter_amount': 1500, 'gen': 1500, 'mi': 0, 'kind': '現収'},
+        ]
+        result = app.apply_user_choices(rows, choices={'missing_choice_5': '無視'})
+        assert result[0]['gen'] == 0
+        assert result[0]['mi'] == 0
+        assert result[0]['ignored_by_user'] is True
+
+    def test_apply_user_choices_mismatch_disagreed(self):
+        # mismatch で「違う」+ amount → メーター値を上書き
+        rows = [
+            {'state': 'mismatch', 'no': 5, 'meter_amount': 1300, 'gen': 1300, 'mi': 0,
+             'kind': '現収', 'nippou_amount': 1000},
+        ]
+        choices = {
+            'mismatch_status_5': '違う',
+            'mismatch_amount_5': 1000,
+        }
+        result = app.apply_user_choices(rows, choices=choices)
+        assert result[0]['gen'] == 1000
+
+    def test_apply_user_choices_mismatch_default_agreed(self):
+        # mismatch のデフォルトは「合ってる」→ メーター値そのまま
+        rows = [
+            {'state': 'mismatch', 'no': 5, 'meter_amount': 1300, 'gen': 1300, 'mi': 0,
+             'kind': '現収', 'nippou_amount': 1000},
+        ]
+        result = app.apply_user_choices(rows, choices={})
+        assert result[0]['gen'] == 1300  # メーター値のまま
+
+    def test_aggregate_excludes_ignored_rows(self):
+        # ignored_by_user=True の行は件数・人数から除外
+        rows = [
+            {'state': 'ok', 'gen': 1000, 'mi': 0, 'passengers': 1},
+            {'state': 'missing_nippou', 'gen': 0, 'mi': 0, 'passengers': 1,
+             'ignored_by_user': True},
+        ]
+        ken, nin, gen, mi, sou, tax, net = app.aggregate_totals(rows)
+        assert ken == 1  # 無視行は数えない
+        assert nin == 1  # 同上
+        assert gen == 1000
+
     def test_apply_user_choices_only_affects_missing(self):
         # missing_nippou 以外の行は触らない
         rows = [
