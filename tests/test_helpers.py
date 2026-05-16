@@ -130,3 +130,20 @@ class TestCellToInt:
         # 数字文字列 (例 '1500') は AI 出力では float/int で来る前提。
         # 想定外の string が来たら None を返す (sanity check 用テスト)。
         assert app._cell_to_int('1500') is None
+
+
+# ── __version__ 定数: 一元管理ガード ─────────────────────────────
+
+class TestVersionConstant:
+    """版番号がモジュール定数 __version__ で一元管理されてることを保証。
+    過去 (〜v1.24) は UI バナーに別の値がハードコードされて差が出る事故が起きた。
+    """
+
+    def test_version_constant_exists(self):
+        assert hasattr(app, '__version__')
+        assert isinstance(app.__version__, str)
+
+    def test_version_format(self):
+        # SemVer: X.Y.ZZ (PATCH は 2 桁ゼロパディング)
+        import re
+        assert re.match(r'^\d+\.\d+\.\d{2}$', app.__version__)

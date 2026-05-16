@@ -62,6 +62,19 @@ Shuchan の実日報 (2026-05-16) で貸切案件 ¥16,400 が日報に記録さ
 - 新規: `test_with_charter` / `test_charter_with_discount_and_meter` — validate + build_report の合計成立
 - 既存テスト全件 pass (82 → 87)
 
+### Chore (版番号の一元管理化)
+
+UI バナー (`line 508`) に `v1.15.00` がハードコードされたまま v1.16〜v1.24
+の全リリースで更新漏れしていた事故を構造的に修正。
+
+- `app.__version__ = '1.25.00'` 定数を import 群直下に定義。
+- UI バナーは `f"v{__version__}"` で定数を参照、ハードコード排除。
+- ファイル先頭コメントから手作業の版番号を削除、「`__version__` を参照」に変更。
+- 新規テスト `TestVersionConstant`: 定数の存在と SemVer 形式を保証
+  (89 件 pass)。
+
+これ以降は `__version__` を 1 箇所更新するだけで UI 表示まで追従する。
+
 ---
 
 ## [1.24.00] - 2026-05-15

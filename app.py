@@ -1,5 +1,5 @@
 # AI タクシー日報 OCR
-# 現バージョン: v1.25.00 (2026-05-16)
+# バージョンは下の __version__ 定数で一元管理 (UI 表示・コメント・CHANGELOG リンクすべてこれを参照)
 # 変更履歴: CHANGELOG.md を参照
 # バージョニング: SemVer 2.0 (MAJOR.MINOR.PATCH、PATCH は 2 桁ゼロパディング)
 # テスト: tests/README.md を参照 (pytest で純ロジック 78 件、E2E は環境変数で有効化)
@@ -17,6 +17,9 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+# バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
+__version__ = '1.25.00'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -500,12 +503,13 @@ tbody tr:nth-child(even) td {background: #d8d8dc !important;}
 """, unsafe_allow_html=True)
 
 # タイトルブロック（ページ最上部、常時表示。結果の有無に関わらず常に最上段）
-st.markdown("""
+# 版番号は __version__ 定数を参照 (上の import 群直下で定義)
+st.markdown(f"""
 <div class="title-block">
   <h1>AIタクシー日報<span style="font-size: 13px; color: #d4af37; font-weight: 400; margin-left: 8px;">by 怒りの山本</span></h1>
   <p class="subtitle">DAILY REPORT · OCR ASSIST</p>
   <div class="divider"></div>
-  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v1.15.00</p>
+  <p style="color: rgba(255,255,255,0.7); font-size: 14px; letter-spacing: 0.08em; margin: 4px 0 0; text-align: right;">v{__version__}</p>
 </div>
 """, unsafe_allow_html=True)
 
