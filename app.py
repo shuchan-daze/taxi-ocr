@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
-__version__ = '1.25.01'
+__version__ = '1.25.02'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -1226,109 +1226,150 @@ def _interpret_raw_row(raw_row):
     return {'type': 'empty'}
 
 
+# ─────────────────────────────────────────────────────────────────
+# Layer 1→2 の橋渡し: interp dict を rides リストに反映する RideBuilder
+# ─────────────────────────────────────────────────────────────────
+# Phase 2: type 分岐 (旧 if-elif 7 段) を Builder レジストリに置き換え。
+# 新ケース追加は (1) RowHandler サブクラス + ROW_HANDLERS 登録 →
+# (2) RideBuilder サブクラス + RIDE_BUILDERS 登録、の 2 手で完結する。
+
+class RideBuilder:
+    """interp dict を rides リストに反映する責務.
+
+    サブクラスは type_name と build メソッドを実装する.
+    build は副作用ベース (rides を mutate); 通常は append、karamawashi 系は
+    直前の ride を更新する.
+    """
+    type_name = None
+
+    def build(self, interp, raw, rides, needs_review):
+        raise NotImplementedError
+
+
+class AttachOverageBuilder(RideBuilder):
+    """karamawashi / meter_overage_standalone: 独立行ではなく、
+    直前の通常行/分割行に overage_amount を足す."""
+    # type_name は使わず、登録時に複数 type にマッピング
+
+    def build(self, interp, raw, rides, needs_review):
+        if rides and rides[-1].get('case') in ('normal', 'split'):
+            rides[-1]['case'] = 'overage'
+            rides[-1]['overage_amount'] = interp.get('overage_amount') or 0
+            if needs_review:
+                rides[-1]['needs_review'] = True
+
+
+class OverageRideBuilder(RideBuilder):
+    """メーター超過: 客が支払った額を nippou_amount に、超過分を overage_amount に."""
+    type_name = 'overage'
+
+    def build(self, interp, raw, rides, needs_review):
+        rides.append({
+            'time': interp.get('time') or '',
+            'passengers': interp.get('passengers'),
+            'case': 'overage',
+            'kind': interp.get('kind') or '未収',
+            'nippou_amount': interp.get('customer_amount'),
+            'overage_amount': interp.get('overage_amount') or 0,
+            'memo': interp.get('memo') or '',
+            'needs_review': needs_review,
+        })
+
+
+class DiscountRideBuilder(RideBuilder):
+    """障害者割引: 独立行、未収側に計上."""
+    type_name = 'discount'
+
+    def build(self, interp, raw, rides, needs_review):
+        rides.append({
+            'case': 'discount',
+            'nippou_amount': interp.get('amount'),
+            'memo': interp.get('memo'),
+            'needs_review': needs_review,
+        })
+
+
+class CharterRideBuilder(RideBuilder):
+    """貸切: メーター外の独立案件."""
+    type_name = 'charter'
+
+    def build(self, interp, raw, rides, needs_review):
+        rides.append({
+            'time': interp.get('time') or '',
+            'passengers': interp.get('passengers'),
+            'case': 'charter',
+            'kind': interp.get('kind') or '現収',
+            'nippou_amount': interp.get('amount'),
+            'memo': interp.get('memo') or '貸切',
+            'needs_review': needs_review,
+        })
+
+
+class SplitRideBuilder(RideBuilder):
+    """分割払い: 現金+カード等の併用."""
+    type_name = 'split'
+
+    def build(self, interp, raw, rides, needs_review):
+        rides.append({
+            'time': interp.get('time') or '',
+            'passengers': interp.get('passengers'),
+            'case': 'split',
+            'gen_amount': interp.get('gen'),
+            'mi_amount': interp.get('mi'),
+            'memo': interp.get('memo') or '',
+            'needs_review': needs_review,
+        })
+
+
+class NormalRideBuilder(RideBuilder):
+    """通常乗車."""
+    type_name = 'normal'
+
+    def build(self, interp, raw, rides, needs_review):
+        rides.append({
+            'time': interp.get('time') or '',
+            'passengers': interp.get('passengers'),
+            'kind': interp.get('kind'),
+            'case': 'normal',
+            'nippou_amount': interp.get('amount'),
+            'memo': interp.get('memo') or '',
+            'needs_review': needs_review,
+        })
+
+
+# レジストリ: type_name → builder.
+# karamawashi と meter_overage_standalone は同じ AttachOverageBuilder で処理.
+_attach_overage = AttachOverageBuilder()
+RIDE_BUILDERS = {
+    'karamawashi': _attach_overage,
+    'meter_overage_standalone': _attach_overage,
+    'overage': OverageRideBuilder(),
+    'discount': DiscountRideBuilder(),
+    'charter': CharterRideBuilder(),
+    'split': SplitRideBuilder(),
+    'normal': NormalRideBuilder(),
+}
+
+
 def interpret_raw_rows(raw_rows):
-    """raw_rows → rides リストに変換。
+    """raw_rows → rides リストに変換 (RowHandler + RideBuilder の合成).
 
-    現プロンプト (NIPPOU_PROMPT) は新形式 (gen_cell/mi_cell/strikethrough) のみ
-    出力するので、それを _interpret_raw_row で特殊ケース判定して ride 化する。
+    新ケース追加は ROW_HANDLERS と RIDE_BUILDERS への登録のみで済む.
+    この関数本体は触らない.
 
-    interp 結果の種類:
-      - 'karamawashi': 直前の通常行に overage_amount を付ける
-      - 'discount':    障害者割引行を独立で追加
-      - 'split':       分割払い行を追加
-      - 'normal':      通常行を追加
-      - 'empty':       何も書かれていない (スキップ)
+    'empty' / 'invalid' / 未登録 type は黙ってスキップ (= 空行や読み取り不能行).
     """
     rides = []
-    raw_rows = raw_rows or []
-    for raw in raw_rows:
+    for raw in (raw_rows or []):
         if not isinstance(raw, dict):
             continue
-
         interp = _interpret_raw_row(raw)
         t = interp.get('type')
-
-        if t == 'invalid':
-            continue
-
-        # 'empty' は何も書かれていない行。AI は No 列を読まない設計のため
-        # placeholder ride を残す必要はない (alignment は時刻 + 金額で動く)。
-        if t == 'empty' or t == 'invalid':
-            continue
-
-        # AI の自信シグナル: raw_row.needs_review があれば ride に伝播
-        # (karamawashi は別、直前の ride に足すので flag だけ後で吸収)
+        builder = RIDE_BUILDERS.get(t)
+        if builder is None:
+            continue  # empty / invalid / 未登録 type
         needs_review = bool(raw.get('needs_review'))
-
-        if t == 'karamawashi' or t == 'meter_overage_standalone':
-            # 直前の通常行/分割行に overage_amount を足す
-            # (karamawashi: 取り消し線 + "+N" マーカー / meter_overage_standalone: memo="メーター")
-            if rides and rides[-1].get('case') in ('normal', 'split'):
-                rides[-1]['case'] = 'overage'
-                rides[-1]['overage_amount'] = interp.get('overage_amount') or 0
-                # この行の needs_review も親 ride に伝播
-                if needs_review:
-                    rides[-1]['needs_review'] = True
-            continue
-
-        if t == 'overage':
-            # メーター超過: 客が支払った額を nippou_amount に、自腹補填額を overage_amount に
-            # build_report が 2 行に分けて出力する（客分 + 超過分）
-            rides.append({
-                'time': interp.get('time') or '',
-                'passengers': interp.get('passengers'),
-                'case': 'overage',
-                'kind': interp.get('kind') or '未収',
-                'nippou_amount': interp.get('customer_amount'),
-                'overage_amount': interp.get('overage_amount') or 0,
-                'memo': interp.get('memo') or '',
-                'needs_review': needs_review,
-            })
-            continue
-
-        if t == 'discount':
-            rides.append({
-                'case': 'discount',
-                'nippou_amount': interp.get('amount'),
-                'memo': interp.get('memo'),
-                'needs_review': needs_review,
-            })
-            continue
-
-        if t == 'charter':
-            rides.append({
-                'time': interp.get('time') or '',
-                'passengers': interp.get('passengers'),
-                'case': 'charter',
-                'kind': interp.get('kind') or '現収',
-                'nippou_amount': interp.get('amount'),
-                'memo': interp.get('memo') or '貸切',
-                'needs_review': needs_review,
-            })
-            continue
-
-        if t == 'split':
-            rides.append({
-                'time': interp.get('time') or '',
-                'passengers': interp.get('passengers'),
-                'case': 'split',
-                'gen_amount': interp.get('gen'),
-                'mi_amount': interp.get('mi'),
-                'memo': interp.get('memo') or '',
-                'needs_review': needs_review,
-            })
-            continue
-
-        if t == 'normal':
-            rides.append({
-                'time': interp.get('time') or '',
-                'passengers': interp.get('passengers'),
-                'kind': interp.get('kind'),
-                'case': 'normal',
-                'nippou_amount': interp.get('amount'),
-                'memo': interp.get('memo') or '',
-                'needs_review': needs_review,
-            })
+        builder.build(interp, raw, rides, needs_review)
     return rides
 
 

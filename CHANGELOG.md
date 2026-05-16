@@ -10,6 +10,43 @@
 
 ---
 
+## [1.25.02] - 2026-05-16
+
+### Changed (Phase 2: RideBuilder レジストリ — 3 レイヤー設計図の Layer 1→2 橋渡し)
+
+`interpret_raw_rows` の type 分岐 (旧 if-elif 7 段) を `RideBuilder` ベースの
+レジストリに置き換え。Phase 1 の RowHandler と組み合わせて、新ケース追加は
+2 手 (ハンドラ登録 + ビルダー登録) で完結する。
+
+**変更**
+
+- `RideBuilder` 基底クラス追加 (`build(interp, raw, rides, needs_review)`)
+- 既存 type ごとにビルダーサブクラス:
+  - `AttachOverageBuilder` (karamawashi & meter_overage_standalone を共通処理、直前 ride に紐付け)
+  - `OverageRideBuilder` / `DiscountRideBuilder` / `CharterRideBuilder` / `SplitRideBuilder` / `NormalRideBuilder`
+- `RIDE_BUILDERS` 辞書で type_name → builder 登録
+- `interpret_raw_rows` は dispatch ループのみに簡素化
+
+**意味**
+
+新ケース追加の手順は:
+1. `RowHandler` サブクラスを書いて `ROW_HANDLERS` に追加 (検出 + 解釈)
+2. `RideBuilder` サブクラスを書いて `RIDE_BUILDERS` に登録 (rides への反映)
+
+これだけで動く。中央ロジックには一切手を入れない。
+
+### Tests
+
+- 全 90 件 pass (挙動 100% 維持)
+
+### 設計図の進捗
+
+- Layer 1 (日報のワイヤーフレーム): **完了**
+- Layer 1→2 の橋渡し: **Phase 2 完了**
+- Layer 2/3 (`build_report` のイレギュラー出力): Phase 3 で予定
+
+---
+
 ## [1.25.01] - 2026-05-16
 
 ### Changed (Phase 1: RowHandler レジストリ — 3 レイヤー設計図の Layer 1 モジュール化)
