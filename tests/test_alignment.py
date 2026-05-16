@@ -217,3 +217,73 @@ class TestAddDiscountHints:
         meter_rows = [{'no': 1, 'amount': 1000}]
         app._add_discount_hints(rows, meter_rows)
         assert rows[0].get('discount_hint') is True
+
+
+# ── 状況証拠ベースの貸切自動判定 (D) ─────────────────────────────
+
+class TestOrphanCharterPromotion:
+    """build_report で、メーター明細に紐付かない孤立 ride を貸切候補として
+    自動的に Layer 3 に昇格させる挙動を検証. ([[project-charter-rules]])"""
+
+    def _make(self, meter_rows, rides):
+        return (
+            {'rows': meter_rows, 'total': sum(r['amount'] for r in meter_rows)},
+            {'rides': rides},
+        )
+
+    def test_orphan_large_amount_promoted_to_charter(self):
+        # メーター明細に対応行が無い ¥16,400 → 自動的に charter として出力
+        meter, nippou = self._make(
+            [{'no': 1, 'time': '10:00', 'amount': 1000}],
+            [
+                {'time': '10:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '現金', 'nippou_amount': 1000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                # 孤立 ride: メーター明細に対応無し、memo に「貸切」も書いてない
+                {'time': '13:30', 'passengers': 4, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 16400,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            ],
+        )
+        output = app.build_report(meter, nippou)
+        # メーター 1 行 + 孤立 charter 1 行 = 2 行
+        charter_rows = [r for r in output if r.get('state') == 'charter']
+        assert len(charter_rows) == 1
+        assert charter_rows[0]['gen'] == 16400
+        assert charter_rows[0]['needs_review'] is True  # 確認フラグ立つ
+        assert '自動判定' in charter_rows[0]['memo']
+
+    def test_orphan_small_amount_ignored(self):
+        # ¥500 みたいな小額は OCR ゴミの可能性が高いので charter にしない
+        meter, nippou = self._make(
+            [{'no': 1, 'time': '10:00', 'amount': 1000}],
+            [
+                {'time': '10:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 1000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '13:30', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 500,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            ],
+        )
+        output = app.build_report(meter, nippou)
+        charter_rows = [r for r in output if r.get('state') == 'charter']
+        assert len(charter_rows) == 0
+
+    def test_explicit_charter_not_double_marked(self):
+        # 明示的に memo='貸切' の charter ride は既に Layer 3、自動判定マーカーは付かない
+        meter, nippou = self._make(
+            [{'no': 1, 'time': '10:00', 'amount': 1000}],
+            [
+                {'time': '10:00', 'passengers': 1, 'case': 'normal', 'kind': '現収',
+                 'memo': '', 'nippou_amount': 1000,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+                {'time': '13:30', 'passengers': 4, 'case': 'charter', 'kind': '現収',
+                 'memo': '貸切', 'nippou_amount': 16400,
+                 'gen_amount': None, 'mi_amount': None, 'overage_amount': None},
+            ],
+        )
+        output = app.build_report(meter, nippou)
+        charter_rows = [r for r in output if r.get('state') == 'charter']
+        assert len(charter_rows) == 1
+        assert charter_rows[0]['memo'] == '貸切'  # 自動判定マーカー無し

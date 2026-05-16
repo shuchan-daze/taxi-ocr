@@ -68,6 +68,39 @@ class TestValidate:
         total = sum((r.get('gen') or 0) + (r.get('mi') or 0) for r in rows)
         assert total == 17400
 
+    def test_apply_user_choices_default_to_gen(self):
+        # 選択無し (デフォルト) → 現収のまま
+        rows = [
+            {'state': 'missing_nippou', 'no': 1, 'meter_amount': 1500, 'gen': 1500, 'mi': 0, 'kind': '現収'},
+        ]
+        result = app.apply_user_choices(rows, choices={})
+        assert result[0]['gen'] == 1500
+        assert result[0]['mi'] == 0
+        assert result[0]['kind'] == '現収'
+
+    def test_apply_user_choices_switch_to_mi(self):
+        # ユーザーが「未収」選択 → gen/mi 入れ替え
+        rows = [
+            {'state': 'missing_nippou', 'no': 2, 'meter_amount': 1800, 'gen': 1800, 'mi': 0, 'kind': '現収'},
+        ]
+        result = app.apply_user_choices(rows, choices={'missing_choice_2': '未収'})
+        assert result[0]['gen'] == 0
+        assert result[0]['mi'] == 1800
+        assert result[0]['kind'] == '未収'
+
+    def test_apply_user_choices_only_affects_missing(self):
+        # missing_nippou 以外の行は触らない
+        rows = [
+            {'state': 'ok', 'no': 1, 'meter_amount': 1000, 'gen': 1000, 'mi': 0, 'kind': '現収'},
+            {'state': 'missing_nippou', 'no': 2, 'meter_amount': 1800, 'gen': 1800, 'mi': 0, 'kind': '現収'},
+        ]
+        result = app.apply_user_choices(rows, choices={'missing_choice_1': '未収', 'missing_choice_2': '未収'})
+        # No.1 は ok 行なので missing_choice_1 は無視される
+        assert result[0]['gen'] == 1000
+        assert result[0]['mi'] == 0
+        # No.2 は missing なので適用される
+        assert result[1]['mi'] == 1800
+
     def test_charter_with_discount_and_meter(self):
         # 三役: メーター + 障割 + 貸切 が同居しても合計成立
         meter = _meter([

@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
-__version__ = '1.25.03'
+__version__ = '1.26.00'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -1814,6 +1814,37 @@ def build_report(meter_data, nippou_data):
     real_rides, by_layer3 = _split_rides(rides)
     aligned = _align_rides_to_meter(real_rides, meter_rows_list)
 
+    # 状況証拠ベースの貸切検出:
+    # アラインメントに失敗した「孤立 ride」(メーター明細に対応行が無い)
+    # で、金額が妥当な範囲なら自動的に貸切候補として Layer 3 に昇格させる。
+    # ([[project-charter-rules]]: 貸切はメーター不使用 → 明細に出ない)
+    # ([[feedback-ask-with-choices]]: 自動判定にせよ needs_review で人間が確認できる)
+    aligned_ids = {id(r) for r, _ in aligned if r is not None}
+    for ride in real_rides:
+        if id(ride) in aligned_ids:
+            continue
+        # 孤立 ride: メーター明細にも紐付かなかった
+        amt = _ride_effective_amount(ride)
+        if amt is None or amt < 1000:
+            continue  # 金額不明 or OCR ゴミ判定で捨てる
+        # 通常乗車 (case='normal'/'split') から charter に変換、要確認フラグ立て
+        original_memo = ride.get('memo') or ''
+        # 既に '貸切' が memo にあれば '(自動判定: 貸切)' は付けない (二重マーカー回避)
+        if '貸切' in original_memo:
+            new_memo = original_memo
+        else:
+            new_memo = (original_memo + ' (自動判定: 貸切)').strip()
+        promoted = {
+            'time': ride.get('time') or '',
+            'passengers': ride.get('passengers') or 1,
+            'case': 'charter',
+            'kind': ride.get('kind') or '現収',
+            'nippou_amount': amt,
+            'memo': new_memo,
+            'needs_review': True,  # 人間に確認を促す
+        }
+        by_layer3.setdefault('charter', []).append(promoted)
+
     output = []
     last_real_meter_no = None
     for ride, m in aligned:
@@ -2215,6 +2246,63 @@ def render_detail_table(rows):
     st.markdown(''.join(parts), unsafe_allow_html=True)
 
 
+def apply_user_choices(rows, choices=None):
+    """missing_nippou 行に対するユーザーの選択を反映する.
+
+    ([[feedback-ask-with-choices]]: 推測で進めず、選択肢で人間に選ばせる)
+    対象: state='missing_nippou' 行 (メーター明細にはあるが日報に書き漏れ).
+    現状は「現収と仮定」で集計に貢献させてるが、ユーザーが「未収だった」と
+    選び直したら gen/mi を入れ替える.
+
+    Args:
+        rows: report rows (build_report の出力).
+        choices: 選択値の辞書 (テスト用). None なら st.session_state を参照.
+
+    選択肢のキー: `missing_choice_{meter_no}`.
+    値: '現収' (デフォルト) / '未収'.
+    """
+    if choices is None:
+        choices = st.session_state
+    for r in rows:
+        if r.get('state') != 'missing_nippou':
+            continue
+        choice_key = f'missing_choice_{r["no"]}'
+        choice = choices.get(choice_key, '現収')
+        meter_amt = int(r.get('meter_amount') or 0)
+        if choice == '未収':
+            r['gen'], r['mi'] = 0, meter_amt
+            r['kind'] = '未収'
+        else:  # '現収' (デフォルト)
+            r['gen'], r['mi'] = meter_amt, 0
+            r['kind'] = '現収'
+    return rows
+
+
+def render_missing_choices(rows):
+    """missing_nippou 行 1 件ずつ 現収/未収 を選ばせるラジオ UI を描画.
+
+    テーブルの下に出す. 行が無ければ何も出さない.
+    ([[feedback-ask-with-choices]] / [[project-correction-philosophy]])
+    """
+    missing_rows = [r for r in rows if r.get('state') == 'missing_nippou']
+    if not missing_rows:
+        return
+    st.markdown('---')
+    st.markdown('### 🔴 日報に未記載の乗車')
+    st.caption('メーター明細にあるけど紙の日報に書かれてない乗車です。'
+               '現収 (現金) か未収 (カード等) かを選んでください。'
+               '選び直すと合計が自動で再計算されます。')
+    for r in missing_rows:
+        meter_amt = int(r.get('meter_amount') or 0)
+        meter_t = r.get('time') or ''
+        st.radio(
+            f'No.{r["no"]} ({meter_t}) ¥{meter_amt:,}',
+            options=['現収', '未収'],
+            key=f'missing_choice_{r["no"]}',
+            horizontal=True,
+        )
+
+
 def aggregate_totals(rows):
     """件数・人数・現収・未収・総収・消費税・税抜運収を集計。
 
@@ -2524,12 +2612,16 @@ if st.session_state.get('result_rows'):
             )
 
         # 表示順序を厳守:
-        #   1. render_summary（件数・現収・未収・総収・消費税・税抜）
-        #   2. render_detail_table（日報の行一覧）
+        #   1. apply_user_choices で missing_nippou 行の現収/未収を確定
+        #   2. render_summary（件数・現収・未収・総収・消費税・税抜）
+        #   3. render_detail_table（日報の行一覧）
+        #   4. render_missing_choices（未記載行のラジオ UI）
         #   この後: 整合性チェック → デバッグ expander → リセットボタン
+        rows = apply_user_choices(rows)
         ken, nin, gen, mi, sou, tax, net = aggregate_totals(rows)
         render_summary(ken, nin, gen, mi, sou, tax, net)
         render_detail_table(rows)
+        render_missing_choices(rows)
         # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
         st.markdown(f"""
     <div class="metric-grid-3" style="margin-top:12px;">
