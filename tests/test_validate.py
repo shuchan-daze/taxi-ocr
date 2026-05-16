@@ -88,21 +88,68 @@ class TestValidate:
         assert result[0]['mi'] == 1800
         assert result[0]['kind'] == '未収'
 
-    def test_apply_user_choices_discount_override(self):
-        # 障割行の額をユーザーが上書きできる (例: AI が 300 と読んだが正解は 380)
-        rows = [
-            {'state': 'discount', 'no': '5+', 'gen': 0, 'mi': 300, 'memo': '障割'},
-        ]
-        result = app.apply_user_choices(rows, choices={'discount_amount_5+': 380})
-        assert result[0]['mi'] == 380
-
-    def test_apply_user_choices_discount_no_override(self):
-        # 上書き値が無ければ AI 読みのまま
+    def test_apply_user_choices_discount_default_agreed(self):
+        # status 未指定 → デフォルト「合ってる」→ AI 読みそのまま
         rows = [
             {'state': 'discount', 'no': '5+', 'gen': 0, 'mi': 300, 'memo': '障割'},
         ]
         result = app.apply_user_choices(rows, choices={})
         assert result[0]['mi'] == 300
+
+    def test_apply_user_choices_discount_disagreed_override(self):
+        # status「違う」+ amount 指定 → 上書きされる
+        rows = [
+            {'state': 'discount', 'no': '5+', 'gen': 0, 'mi': 300, 'memo': '障割'},
+        ]
+        choices = {
+            'discount_status_5+': '違う',
+            'discount_amount_5+': 380,
+        }
+        result = app.apply_user_choices(rows, choices=choices)
+        assert result[0]['mi'] == 380
+
+    def test_apply_user_choices_discount_disagreed_no_amount(self):
+        # status「違う」だが amount 未指定 → AI 読みのまま (安全側)
+        rows = [
+            {'state': 'discount', 'no': '5+', 'gen': 0, 'mi': 300, 'memo': '障割'},
+        ]
+        result = app.apply_user_choices(rows, choices={'discount_status_5+': '違う'})
+        assert result[0]['mi'] == 300
+
+    def test_apply_user_choices_charter_default_agreed(self):
+        # 貸切も同じパターン。デフォルト「合ってる」→ そのまま
+        rows = [
+            {'state': 'charter', 'no': '貸', 'gen': 16400, 'mi': 0, 'kind': '現収', 'memo': '貸切'},
+        ]
+        result = app.apply_user_choices(rows, choices={})
+        assert result[0]['gen'] == 16400
+        assert result[0]['mi'] == 0
+
+    def test_apply_user_choices_charter_disagreed_override(self):
+        # 貸切「違う」+ amount → kind に応じて gen に上書き
+        rows = [
+            {'state': 'charter', 'no': '貸', 'gen': 16400, 'mi': 0, 'kind': '現収', 'memo': '貸切'},
+        ]
+        choices = {
+            'charter_status_貸': '違う',
+            'charter_amount_貸': 17000,
+        }
+        result = app.apply_user_choices(rows, choices=choices)
+        assert result[0]['gen'] == 17000
+        assert result[0]['mi'] == 0
+
+    def test_apply_user_choices_charter_kind_mi(self):
+        # 貸切 kind='未収' で「違う」→ mi に上書き
+        rows = [
+            {'state': 'charter', 'no': '貸', 'gen': 0, 'mi': 20000, 'kind': '未収', 'memo': '貸切'},
+        ]
+        choices = {
+            'charter_status_貸': '違う',
+            'charter_amount_貸': 25000,
+        }
+        result = app.apply_user_choices(rows, choices=choices)
+        assert result[0]['gen'] == 0
+        assert result[0]['mi'] == 25000
 
     def test_apply_user_choices_only_affects_missing(self):
         # missing_nippou 以外の行は触らない

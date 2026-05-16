@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # バージョン定数 (一元管理、ここを更新するだけで UI バナー・コメント・CHANGELOG リンクが追従)
-__version__ = '1.26.01'
+__version__ = '1.26.02'
 
 register_heif_opener()
 st.set_page_config(page_title='タクシー日報', page_icon='🚖', layout='centered', initial_sidebar_state='collapsed')
@@ -2256,9 +2256,17 @@ def apply_user_choices(rows, choices=None):
         効果: gen/mi の振り分けを上書き
 
     対象 2: state='discount' 行 (障害者割引リインバース)
-        キー: `discount_amount_{no}`, 値: int (円)
-        効果: mi を上書き. 手書き数字の誤読 (270 vs 380 等) をユーザーが
-        打ち直して確定できる. ([[feedback-accuracy-first]] 正確さ第一)
+        キー: `discount_status_{no}` = '合ってる' (デフォルト) / '違う'
+              `discount_amount_{no}` = 数値 (status='違う' 時のみ参照)
+        効果: status='違う' なら amount_key の値で mi を上書き
+
+    対象 3: state='charter' 行 (貸切)
+        キー: `charter_status_{no}` = '合ってる' (デフォルト) / '違う'
+              `charter_amount_{no}` = 数値 (status='違う' 時のみ参照)
+        効果: status='違う' なら amount_key の値で kind に応じて gen/mi を上書き
+
+    手書き由来の数字 (障害者割引・貸切) は AI 誤読しやすいので
+    Yes/No で確認 → 違うならテンキー入力で確定. ([[feedback-accuracy-first]])
 
     Args:
         rows: report rows (build_report の出力).
@@ -2279,10 +2287,26 @@ def apply_user_choices(rows, choices=None):
                 r['gen'], r['mi'] = meter_amt, 0
                 r['kind'] = '現収'
         elif state == 'discount':
-            amount_key = f'discount_amount_{r["no"]}'
-            override = choices.get(amount_key)
-            if isinstance(override, (int, float)) and int(override) >= 0:
-                r['mi'] = int(override)
+            status_key = f'discount_status_{r["no"]}'
+            status = choices.get(status_key, '合ってる')
+            if status == '違う':
+                override = choices.get(f'discount_amount_{r["no"]}')
+                if isinstance(override, (int, float)) and int(override) >= 0:
+                    r['mi'] = int(override)
+            # '合ってる' なら AI 読み値そのまま (r['mi'] のまま)
+        elif state == 'charter':
+            status_key = f'charter_status_{r["no"]}'
+            status = choices.get(status_key, '合ってる')
+            if status == '違う':
+                override = choices.get(f'charter_amount_{r["no"]}')
+                if isinstance(override, (int, float)) and int(override) >= 0:
+                    amt = int(override)
+                    kind = r.get('kind') or '現収'
+                    if kind == '未収':
+                        r['gen'], r['mi'] = 0, amt
+                    else:
+                        r['gen'], r['mi'] = amt, 0
+            # '合ってる' なら AI 読み値そのまま
     return rows
 
 
@@ -2312,11 +2336,11 @@ def render_missing_choices(rows):
 
 
 def render_discount_confirmations(rows):
-    """障害者割引 (discount) 行の額を確認・上書きできる入力 UI.
+    """障害者割引 (discount) 行の額を確認する UI (Yes/No → 違うならテンキー入力).
 
     手書きの障割リインバース額 (例 270 vs 380) は AI 誤読しやすい.
     実際の Shuchan の事例: AI が 300 と読んだが正解は 380.
-    ([[feedback-accuracy-first]]: 正確さ第一、ユーザーに打ち込ませる)
+    ([[feedback-accuracy-first]]: 正確さ第一、ユーザーに確認させる)
     """
     discount_rows = [r for r in rows if r.get('state') == 'discount']
     if not discount_rows:
@@ -2324,18 +2348,61 @@ def render_discount_confirmations(rows):
     st.markdown('---')
     st.markdown('### ♿ 障害者割引の金額確認')
     st.caption('手書きの数字が滲んで読みづらいことがあります。'
-               'AI が読んだ額を確認して、違ったら正しい数字を入力してください。'
-               '変更すると合計が自動で再計算されます。')
+               'AI が読んだ額で合ってるかチェックして、違ったら正しい数字を入力してください。')
     for r in discount_rows:
         ai_amt = int(r.get('mi') or 0)
         memo = r.get('memo') or '障割'
-        st.number_input(
-            f'No.{r["no"]} {memo} (AI 読み ¥{ai_amt:,})',
-            value=ai_amt,
-            min_value=0,
-            step=10,
-            key=f'discount_amount_{r["no"]}',
+        st.markdown(f'**{memo}** ─ AI 読み: **¥{ai_amt:,}**')
+        status = st.radio(
+            'この金額で合ってますか？',
+            options=['合ってる', '違う'],
+            key=f'discount_status_{r["no"]}',
+            horizontal=True,
+            label_visibility='collapsed',
         )
+        if status == '違う':
+            st.number_input(
+                '正しい金額を入力 (円)',
+                value=ai_amt,
+                min_value=0,
+                step=10,
+                key=f'discount_amount_{r["no"]}',
+            )
+
+
+def render_charter_confirmations(rows):
+    """貸切 (charter) 行の金額を確認する UI (Yes/No → 違うならテンキー入力).
+
+    貸切はメーター不使用 = 紙の手書きが唯一の情報源。AI 誤読を疑って確認。
+    ([[project-charter-rules]] / [[feedback-accuracy-first]])
+    """
+    charter_rows = [r for r in rows if r.get('state') == 'charter']
+    if not charter_rows:
+        return
+    st.markdown('---')
+    st.markdown('### 🚖 貸切の金額確認')
+    st.caption('貸切はメーターを回さないため、紙の手書きが唯一の情報源です。'
+               'AI が読んだ額で合ってるかチェックして、違ったら正しい数字を入力してください。')
+    for r in charter_rows:
+        ai_amt = int((r.get('gen') or 0) + (r.get('mi') or 0))
+        memo = r.get('memo') or '貸切'
+        time_str = r.get('paper_time') or r.get('time') or ''
+        st.markdown(f'**{time_str} {memo}** ─ AI 読み: **¥{ai_amt:,}**')
+        status = st.radio(
+            'この金額で合ってますか？',
+            options=['合ってる', '違う'],
+            key=f'charter_status_{r["no"]}',
+            horizontal=True,
+            label_visibility='collapsed',
+        )
+        if status == '違う':
+            st.number_input(
+                '正しい金額を入力 (円)',
+                value=ai_amt,
+                min_value=0,
+                step=100,
+                key=f'charter_amount_{r["no"]}',
+            )
 
 
 def aggregate_totals(rows):
@@ -2658,6 +2725,7 @@ if st.session_state.get('result_rows'):
         render_detail_table(rows)
         render_missing_choices(rows)
         render_discount_confirmations(rows)
+        render_charter_confirmations(rows)
         # テーブルが長い場合に下スクロール後でも集計が見えるよう、テーブル直後にも再表示
         st.markdown(f"""
     <div class="metric-grid-3" style="margin-top:12px;">

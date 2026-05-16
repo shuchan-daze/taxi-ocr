@@ -10,6 +10,25 @@
 
 ---
 
+## [1.26.02] - 2026-05-16
+
+### Changed (障害者割引・貸切の確認 UI を Yes/No → テンキー入力フローに)
+
+前 v1.26.01 は number_input 直入力だったが、Shuchan の設計通り
+「合ってますか？」の Yes/No を先に聞いて、違う時だけテンキー入力する
+フローに変更。手書き由来の金額は全件確認させる方針。
+
+- `discount_status_{no}` / `charter_status_{no}` を session_state に追加
+- 「合ってる」(デフォルト) なら AI 読み値そのまま
+- 「違う」を選んだ時だけ `_amount_` の number_input が表示
+- 貸切も同じパターンで対応 (新 `render_charter_confirmations`)
+
+### Tests
+
+- 全 102 件 pass (新規 6 件: discount/charter の Yes/No + override テスト)
+
+---
+
 ## [1.26.01] - 2026-05-16
 
 ### Added (障害者割引行の金額確認・上書き UI)
