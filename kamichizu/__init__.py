@@ -20,6 +20,7 @@ from .reconcile import ReconciliationRule, reconcile_sources
 from .semantic import SemanticRow, build_semantic_rows
 from .totals import SalesTotals, compute_sales_totals
 from .view import build_claim_rows, build_human_report, build_human_rows, build_summary_rows
+from .pipeline import build_human_report_from_sources
 
 __all__ = [
     "AdoptedReport",
@@ -38,6 +39,7 @@ __all__ = [
     "build_human_rows",
     "build_claim_rows",
     "build_human_report",
+    "build_human_report_from_sources",
     "build_summary_rows",
     "build_semantic_rows",
     "compute_sales_totals",
