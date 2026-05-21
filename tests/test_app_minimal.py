@@ -43,6 +43,14 @@ class MinimalAppTest(unittest.TestCase):
         self.assertNotIn("AdoptedRow", demo_source)
         self.assertIn("build_human_report_from_case", demo_source)
 
+    def test_json_input_is_developer_menu_only(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn("開発者メニュー: 神地図ケースJSON", app_source)
+        self.assertIn("render_developer_json_input", app_source)
+        self.assertIn("写真から日報を作成", app_source)
+        self.assertIn("developer_report = render_developer_json_input()", app_source)
+
     def test_photo_ocr_progress_reports_main_steps_without_calling_api(self):
         class Uploaded:
             name = "image.jpg"

@@ -21,7 +21,7 @@ except ModuleNotFoundError:  # Keep py_compile usable without Streamlit.
     st = None
 
 APP_TITLE = "神地図エンジン"
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 
 
 def build_report_table_rows(human_report: HumanReport) -> list[dict[str, object]]:
@@ -83,6 +83,16 @@ def render_human_report(human_report: HumanReport) -> None:
             st.info(item)
 
 
+def render_photo_selection(uploaded_files) -> None:
+    if not uploaded_files:
+        st.info("紙日報とメーター明細の写真を2枚以上選択してください。順番は自動判別します。")
+        return
+
+    st.caption(f"{len(uploaded_files)}枚の写真を読み込みます")
+    for uploaded_file in uploaded_files:
+        st.caption(f"{uploaded_file.name} を読み込み対象にしました")
+
+
 def build_human_report_from_uploaded_json(uploaded_file) -> HumanReport | None:
     """Build HumanReport from the single formal JSON case input."""
 
@@ -90,6 +100,19 @@ def build_human_report_from_uploaded_json(uploaded_file) -> HumanReport | None:
         return None
     case_data = json.load(uploaded_file)
     return build_human_report_from_case(case_data)
+
+
+def render_developer_json_input() -> HumanReport | None:
+    with st.expander("開発者メニュー: 神地図ケースJSON", expanded=False):
+        st.caption("通常は使いません。OCRを通さず、正式ケースJSONだけを確認するための入口です。")
+        uploaded_file = st.file_uploader("神地図ケースJSON", type=["json"])
+        if uploaded_file is None:
+            return None
+        try:
+            return build_human_report_from_uploaded_json(uploaded_file)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            st.error(f"神地図ケースJSONを読めませんでした: {exc}")
+            return None
 
 
 def _secret(name: str) -> str | None:
@@ -149,11 +172,14 @@ def main() -> None:
     st.title(APP_TITLE)
     st.caption(f"v{APP_VERSION}")
 
+    st.subheader("写真から日報を作成")
     photo_files = st.file_uploader(
-        "写真を2枚以上まとめて選択（紙日報・メーター明細は自動判別）",
+        "紙日報とメーター明細の写真をまとめて選択",
         type=["png", "jpg", "jpeg", "webp"],
         accept_multiple_files=True,
     )
+    render_photo_selection(photo_files)
+
     run_col, state_col = st.columns([2, 1])
     with run_col:
         run_photo_ocr = st.button("写真から日報を作成", type="primary")
@@ -171,14 +197,11 @@ def main() -> None:
             progress_text.caption("作成できませんでした")
             st.error(str(exc))
 
-    uploaded_file = st.file_uploader("神地図ケースJSON", type=["json"])
     human_report = st.session_state.get("human_report")
-    if uploaded_file is not None:
-        try:
-            human_report = build_human_report_from_uploaded_json(uploaded_file)
-            st.session_state["human_report"] = human_report
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
-            st.error(f"神地図ケースJSONを読めませんでした: {exc}")
+    developer_report = render_developer_json_input()
+    if developer_report is not None:
+        human_report = developer_report
+        st.session_state["human_report"] = human_report
 
     if human_report is None:
         st.caption("確認用の最小デモを表示しています。")
