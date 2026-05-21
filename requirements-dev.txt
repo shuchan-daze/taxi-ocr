@@ -1,3 +1,0 @@
-# 開発専用依存 (本番 / Streamlit Cloud には不要)
-# pip install -r requirements-dev.txt で追加インストール
-pytest
