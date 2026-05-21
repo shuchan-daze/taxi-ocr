@@ -23,18 +23,58 @@ APP_TITLE = "神地図エンジン"
 APP_VERSION = "0.3.0"
 
 
+def build_report_table_rows(human_report: HumanReport) -> list[dict[str, object]]:
+    """Build the single human-facing report table from HumanReport only."""
+
+    rows = [dict(row) for row in human_report.ride_rows]
+    columns = list(rows[0].keys()) if rows else ["No", "人数", "時刻", "現収", "未収", "摘要", "状態"]
+
+    def normalize_no(value: object) -> str:
+        text = str(value or "").strip()
+        return str(int(text)) if text.isdigit() else text
+
+    def claim_row(claim: dict[str, object]) -> dict[str, object]:
+        target = normalize_no(claim.get("対象行"))
+        item = {column: "" for column in columns}
+        if "No" in item:
+            item["No"] = f"△{target}" if target else "△"
+        payment_label = claim.get("区分")
+        if payment_label in item:
+            item[payment_label] = claim.get("金額")
+        if "摘要" in item:
+            item["摘要"] = claim.get("種別", "")
+        if "状態" in item:
+            item["状態"] = ""
+        return item
+
+    claims_by_target: dict[str, list[dict[str, object]]] = {}
+    for claim in human_report.claim_rows:
+        claims_by_target.setdefault(normalize_no(claim.get("対象行")), []).append(claim_row(claim))
+
+    table_rows: list[dict[str, object]] = []
+    used_targets: set[str] = set()
+    for row in rows:
+        table_rows.append(row)
+        target = normalize_no(row.get("No"))
+        if target in claims_by_target:
+            table_rows.extend(claims_by_target[target])
+            used_targets.add(target)
+
+    for target, claim_rows in claims_by_target.items():
+        if target not in used_targets:
+            table_rows.extend(claim_rows)
+
+    return table_rows
+
+
 def render_human_report(human_report: HumanReport) -> None:
     """Render only HumanReport fields."""
 
     st.subheader("集計")
     st.dataframe(list(human_report.summary_rows), hide_index=True, use_container_width=True)
 
-    st.subheader("明細")
-    st.dataframe(list(human_report.ride_rows), hide_index=True, use_container_width=True)
-
-    if human_report.claim_rows:
-        st.subheader("特例")
-        st.dataframe(list(human_report.claim_rows), hide_index=True, use_container_width=True)
+    st.subheader("日報表")
+    st.dataframe(build_report_table_rows(human_report), hide_index=True, use_container_width=True)
 
     if human_report.diagnostics:
         st.subheader("確認メモ")

@@ -22,6 +22,19 @@ class MinimalAppTest(unittest.TestCase):
         labels = [row["項目"] for row in report.summary_rows]
         self.assertEqual(labels, ["現収", "未収", "総売上"])
 
+    def test_report_table_places_claims_in_payment_columns(self):
+        report = build_demo_human_report()
+
+        rows = app.build_report_table_rows(report)
+
+        self.assertEqual(rows[0]["未収"], 2430)
+        self.assertEqual(rows[1]["No"], "△1")
+        self.assertEqual(rows[1]["未収"], 270)
+        self.assertEqual(rows[1]["摘要"], "障割請求")
+        self.assertEqual(rows[3]["No"], "△2")
+        self.assertEqual(rows[3]["現収"], 16400)
+        self.assertEqual(rows[3]["摘要"], "貸切")
+
     def test_demo_does_not_hand_build_adopted_report(self):
         demo_source = Path("kamichizu/demo.py").read_text(encoding="utf-8")
 
