@@ -47,8 +47,17 @@ if st.button("神地図レポートを作成", type="primary", use_container_wid
 
 package = st.session_state.get("kamichizu_package")
 if package:
-    st.subheader("Summary")
-    st.json(package.get("summary") or {})
+    summary = package.get("summary") or {}
+    st.subheader("売上サマリー")
+    cols = st.columns(5)
+    cols[0].metric("総売上", f"¥{summary.get('sou', 0):,}")
+    cols[1].metric("現収", f"¥{summary.get('confirmed_gen', 0):,}")
+    cols[2].metric("未収", f"¥{summary.get('confirmed_mi', 0):,}")
+    cols[3].metric("確認待ち売上", f"¥{summary.get('pending_meter_sales', 0):,}")
+    cols[4].metric("障割請求", f"¥{summary.get('discount_claim_total', 0):,}")
+    if summary.get("formula"):
+        st.caption(summary["formula"])
+
     st.subheader("Diagnostics")
     st.markdown(package.get("diagnostics_markdown") or "")
     st.caption(".kamichizu_debug/reconciled_report_package.json / reconciled_report_diagnostics.md に出力しました")
