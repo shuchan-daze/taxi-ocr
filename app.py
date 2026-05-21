@@ -8,6 +8,9 @@ from kamichizu_engine.diagnostics import build_reconciled_report_package
 from kamichizu_engine.debug import write_reconciled_report_package
 
 
+CASE_ROOT = Path(".kamichizu_cases")
+
+
 def load_json_input(uploaded_file, text_value):
     text_value = (text_value or "").strip()
     if text_value:
@@ -15,6 +18,38 @@ def load_json_input(uploaded_file, text_value):
     if uploaded_file is None:
         return None
     return json.loads(uploaded_file.getvalue().decode("utf-8"))
+
+
+def load_json_file(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def find_local_case_names(case_root=CASE_ROOT):
+    case_root = Path(case_root)
+    if not case_root.exists():
+        return []
+    return [
+        path.name
+        for path in sorted(case_root.iterdir())
+        if path.is_dir()
+        and (path / "paper_map.json").is_file()
+        and (path / "meter_data.json").is_file()
+    ]
+
+
+def load_local_case_inputs(case_name, case_root=CASE_ROOT):
+    case_dir = Path(case_root) / case_name
+    return (
+        load_json_file(case_dir / "paper_map.json"),
+        load_json_file(case_dir / "meter_data.json"),
+    )
+
+
+def build_report_package_from_inputs(paper_map, meter_data):
+    report = build_reconciled_report_from_app_inputs(paper_map, meter_data)
+    package = build_reconciled_report_package(report)
+    write_reconciled_report_package(report, Path(".kamichizu_debug"))
+    return package
 
 
 def yen_text(amount):
@@ -230,6 +265,21 @@ def main():
     st.subheader("入力")
     st.caption("ファイルアップロードまたは貼り付けJSONのどちらでも使えます。貼り付けJSONがある場合はそちらを優先します。")
 
+    st.subheader("ローカルテストケース")
+    case_names = find_local_case_names()
+    if case_names:
+        selected_case = st.selectbox("ケース", case_names)
+        if st.button("このケースで神地図レポート作成", use_container_width=True):
+            try:
+                paper_map, meter_data = load_local_case_inputs(selected_case)
+                st.session_state["kamichizu_package"] = build_report_package_from_inputs(paper_map, meter_data)
+            except (AppInputError, json.JSONDecodeError, OSError) as e:
+                st.error(f"ローカルケース入力エラー: {type(e).__name__}: {e}")
+            except Exception as e:
+                st.error(f"神地図レポート生成エラー: {type(e).__name__}: {e}")
+    else:
+        st.info(".kamichizu_cases/ に case_name/paper_map.json と meter_data.json を置いてください。")
+
     paper_file = st.file_uploader("paper_map JSON ファイル", type=["json"], key="paper_map_json")
     paper_text = st.text_area("paper_map JSON を貼り付け", key="paper_map_text", height=220)
 
@@ -240,10 +290,7 @@ def main():
         try:
             paper_map = load_json_input(paper_file, paper_text)
             meter_data = load_json_input(meter_file, meter_text)
-            report = build_reconciled_report_from_app_inputs(paper_map, meter_data)
-            package = build_reconciled_report_package(report)
-            write_reconciled_report_package(report, Path(".kamichizu_debug"))
-            st.session_state["kamichizu_package"] = package
+            st.session_state["kamichizu_package"] = build_report_package_from_inputs(paper_map, meter_data)
         except (AppInputError, json.JSONDecodeError, UnicodeDecodeError) as e:
             st.error(f"入力エラー: {type(e).__name__}: {e}")
         except Exception as e:

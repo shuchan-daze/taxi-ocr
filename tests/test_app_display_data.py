@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 import app
 
 
@@ -127,3 +129,45 @@ def test_download_payloads_are_safe_when_markdown_is_missing():
     assert markdown_payload["data"] == ""
     assert markdown_payload["file_name"] == "reconciled_report_diagnostics.md"
     assert markdown_payload["mime"] == "text/markdown"
+
+
+def _write_json(path, data):
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def test_find_local_case_names_returns_only_complete_cases(tmp_path):
+    complete = tmp_path / "complete"
+    complete.mkdir()
+    _write_json(complete / "paper_map.json", {"cells": {}})
+    _write_json(complete / "meter_data.json", {"rows": []})
+
+    missing_meter = tmp_path / "missing_meter"
+    missing_meter.mkdir()
+    _write_json(missing_meter / "paper_map.json", {"cells": {}})
+
+    missing_paper = tmp_path / "missing_paper"
+    missing_paper.mkdir()
+    _write_json(missing_paper / "meter_data.json", {"rows": []})
+
+    assert app.find_local_case_names(tmp_path) == ["complete"]
+
+
+def test_load_local_case_inputs_reads_case_json_files(tmp_path):
+    case_dir = tmp_path / "case_a"
+    case_dir.mkdir()
+    paper_map = {"cells": {"R01_TIME": {"value": "09:00"}}}
+    meter_data = {"rows": [{"ride_id": "M01", "amount": 900}]}
+    _write_json(case_dir / "paper_map.json", paper_map)
+    _write_json(case_dir / "meter_data.json", meter_data)
+
+    assert app.load_local_case_inputs("case_a", tmp_path) == (paper_map, meter_data)
+
+
+def test_load_local_case_inputs_raises_json_error_for_broken_file(tmp_path):
+    case_dir = tmp_path / "broken"
+    case_dir.mkdir()
+    (case_dir / "paper_map.json").write_text("{", encoding="utf-8")
+    _write_json(case_dir / "meter_data.json", {"rows": []})
+
+    with pytest.raises(json.JSONDecodeError):
+        app.load_local_case_inputs("broken", tmp_path)
