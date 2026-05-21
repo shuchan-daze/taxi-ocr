@@ -59,5 +59,22 @@ if package:
         st.caption(summary["formula"])
 
     st.subheader("Diagnostics")
-    st.markdown(package.get("diagnostics_markdown") or "")
+    diagnostics_markdown = package.get("diagnostics_markdown") or ""
+    st.markdown(diagnostics_markdown)
+    package_json = json.dumps(package, ensure_ascii=False, indent=2)
+    download_cols = st.columns(2)
+    download_cols[0].download_button(
+        "package JSON をダウンロード",
+        data=package_json,
+        file_name="reconciled_report_package.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+    download_cols[1].download_button(
+        "diagnostics Markdown をダウンロード",
+        data=diagnostics_markdown,
+        file_name="reconciled_report_diagnostics.md",
+        mime="text/markdown",
+        use_container_width=True,
+    )
     st.caption(".kamichizu_debug/reconciled_report_package.json / reconciled_report_diagnostics.md に出力しました")
