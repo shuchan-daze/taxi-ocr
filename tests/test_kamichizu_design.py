@@ -89,6 +89,52 @@ class KamichizuDesignTest(unittest.TestCase):
         self.assertFalse(ok_report.rows[0].alerts)
         self.assertEqual(ng_report.rows[0].alerts["gen"], "no_evidence_match")
 
+    def test_layer2_adopts_meter_amount_when_paper_mi_amount_is_unreadable(self):
+        paper = SourceMap(
+            meta=SourceMeta(
+                source_id="P01",
+                source_role="primary",
+                source_type="daily_report",
+                label="daily_report",
+                format_id="daily_a",
+            ),
+            cells={
+                "03_AD": Cell(local_cell_id="03_AD", raw="10:44", value="10:44"),
+                "03_AF": Cell(local_cell_id="03_AF", raw="?", value=None),
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:46", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertEqual(row.values["mi"], 2430)
+        self.assertEqual(row.evidence[0].paper_cell, "P01:03_AF")
+        self.assertIn("paper amount unreadable adopted evidence amount 2430", report.diagnostics[0])
+
+    def test_layer2_uses_payment_memo_as_mi_hint_when_amount_cell_is_not_read(self):
+        paper = make_source(
+            "P01",
+            "daily_report",
+            "daily_a",
+            {
+                "03_AD": "10:44",
+                "03_AG": "Uber",
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AF": "mi", "AG": "memo"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:49", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertEqual(row.values["mi"], 2430)
+        self.assertEqual(row.values["memo"], "Uber")
+        self.assertEqual(row.evidence[0].paper_cell, "P01:03_AG")
+
     def test_human_view_columns_are_view_map_not_engine_fixed(self):
         paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AE": 1800})
         paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen"})

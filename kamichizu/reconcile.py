@@ -22,6 +22,8 @@ class ReconciliationRule:
     evidence_amount_field: str = "amount"
     destination_fields: tuple[str, ...] = ("gen", "mi")
     time_window_minutes: int = 9
+    mi_hint_field: str = "memo"
+    mi_hint_terms: tuple[str, ...] = ("カード", "CARD", "VISA", "UBER", "GO", "PAYPAY", "SUICA", "交通系", "チケット", "券")
 
 
 def _parse_minutes(value: Any) -> int | None:
@@ -51,11 +53,39 @@ def _has_value(value: Any) -> bool:
     return value not in (None, "")
 
 
+def _has_observation(row: SemanticRow, field_name: str) -> bool:
+    if field_name not in row.fields:
+        return False
+    return _has_value(row.value(field_name)) or bool(row.raw(field_name).strip())
+
+
+def _text_contains_any(value: Any, terms: Iterable[str]) -> bool:
+    text = str(value or "").upper()
+    return any(str(term).upper() in text for term in terms)
+
+
 def _find_destination(row: SemanticRow, destination_fields: Iterable[str]) -> str | None:
     for field_name in destination_fields:
-        if field_name in row.fields and _has_value(row.value(field_name)):
+        if _has_observation(row, field_name):
             return field_name
     return None
+
+
+def _find_payment_destination(row: SemanticRow, rule: ReconciliationRule) -> str | None:
+    destination = _find_destination(row, rule.destination_fields)
+    if destination is not None:
+        return destination
+    if _text_contains_any(row.raw(rule.mi_hint_field) or row.value(rule.mi_hint_field), rule.mi_hint_terms):
+        return "mi"
+    return None
+
+
+def _paper_link_cell(row: SemanticRow, destination: str, rule: ReconciliationRule) -> str:
+    if destination in row.fields:
+        return row.fields[destination].global_cell_id
+    if rule.mi_hint_field in row.fields:
+        return row.fields[rule.mi_hint_field].global_cell_id
+    raise ValueError(f"paper row {row.row_addr} has no cell to link destination {destination!r}")
 
 
 def _candidate_score(paper_row: SemanticRow, evidence_row: SemanticRow, rule: ReconciliationRule) -> tuple[int, int] | None:
@@ -92,7 +122,7 @@ def reconcile_sources(
         values: dict[str, Any] = {field: item.value for field, item in paper_row.fields.items()}
         alerts: dict[str, str] = {}
         links: list[EvidenceLink] = []
-        destination = _find_destination(paper_row, active_rule.destination_fields)
+        destination = _find_payment_destination(paper_row, active_rule)
 
         if destination is not None:
             candidates: list[tuple[int, int, SemanticRow]] = []
@@ -110,12 +140,14 @@ def reconcile_sources(
                 amount_value = evidence_row.value(active_rule.evidence_amount_field)
                 values[destination] = amount_value
                 used_evidence.add((evidence_row.source_id, evidence_row.row_addr))
-                paper_cell = paper_row.fields[destination].global_cell_id
+                paper_cell = _paper_link_cell(paper_row, destination, active_rule)
                 evidence_cell = evidence_row.fields[active_rule.evidence_amount_field].global_cell_id
                 links.append(EvidenceLink(paper_cell, evidence_cell, f"time_within_{diff}_minutes"))
                 original = paper_row.value(destination)
                 if _has_value(original) and original != amount_value:
                     diagnostics.append(f"{paper_cell}: paper amount {original} adopted evidence amount {amount_value}")
+                elif not _has_value(original) and paper_row.raw(destination):
+                    diagnostics.append(f"{paper_cell}: paper amount unreadable adopted evidence amount {amount_value}")
             elif len(candidates) > 1:
                 alerts[destination] = "candidate_conflict"
             else:

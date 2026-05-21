@@ -8,6 +8,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from .models import split_local_cell_id
+
 
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 DEFAULT_OPENAI_OCR_MODEL = "gpt-4o"
@@ -18,6 +20,10 @@ class OcrImage:
     name: str
     mime_type: str
     data: bytes
+
+
+class OcrContractError(ValueError):
+    """Raised when OCR output does not match the formal Kamichizu case contract."""
 
 
 def build_case_ocr_prompt() -> str:
@@ -33,6 +39,12 @@ def build_case_ocr_prompt() -> str:
 - GEN, MI, MEMO, TIME など意味入りセルIDは禁止
 - 別名キーは禁止
 - paper / paper_format / evidences / view を必ず返す
+- 写真のアップロード順に依存しない
+- 画像ごとに紙日報かメーター明細かを自動判別する
+- 紙日報は paper に、メーター明細は evidences に入れる
+- 紙日報の金額OCRは確定値ではない。確定金額はメーター明細で照合する
+- 紙日報では時刻、現収欄/未収欄の位置、摘要の支払い種別を優先して読む
+- 現収欄/未収欄に何か書かれているが金額が読めない場合も、そのセルを raw に残し value は null にする
 
 紙日報の標準列:
 AA=no, AB=passengers, AC=route, AD=time, AE=gen, AF=mi, AG=memo
@@ -118,7 +130,8 @@ AA=time, AB=amount
 - payment_kind は紙の欄位置に従い gen または mi
 - evidence は必須。paper_cell / evidence_cell / reason を持つ根拠を入れる
 
-判断できない値は作らず、読めたセルだけ cells に入れてください。"""
+判断できない金額を推測して作らないでください。
+ただし、現収欄/未収欄/摘要に書き込みが見える場合は、金額が読めなくてもセル住所を残してください。"""
 
 
 def _data_url(image: OcrImage) -> str:
@@ -136,6 +149,70 @@ def _extract_json_object(text: str) -> Mapping[str, Any]:
     if not isinstance(data, Mapping):
         raise ValueError("OCR response must be a JSON object")
     return data
+
+
+def _mapping(data: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(data, Mapping):
+        raise OcrContractError(f"{name} must be an object")
+    return data
+
+
+def _list(data: Any, name: str) -> list[Any]:
+    if not isinstance(data, list):
+        raise OcrContractError(f"{name} must be a list")
+    return data
+
+
+def _require(data: Mapping[str, Any], key: str, name: str) -> Any:
+    if key not in data:
+        raise OcrContractError(f"{name}.{key} is required")
+    return data[key]
+
+
+def _reject_keys(data: Mapping[str, Any], forbidden: tuple[str, ...], name: str) -> None:
+    for key in forbidden:
+        if key in data:
+            raise OcrContractError(f"{name}.{key} is not part of the Kamichizu case contract")
+
+
+def _validate_cells(data: Any, name: str) -> None:
+    cells = _mapping(data, name)
+    if not cells:
+        raise OcrContractError(f"{name} must not be empty")
+    for cell_id, cell_data in cells.items():
+        split_local_cell_id(str(cell_id))
+        _mapping(cell_data, f"{name}.{cell_id}")
+
+
+def validate_case_ocr_response(data: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Validate OCR output before it can enter the Kamichizu engine."""
+
+    case_data = _mapping(data, "ocr_response")
+    _reject_keys(case_data, ("paper_map", "paper_map_v1", "meter_data", "meter_rows", "rows"), "ocr_response")
+
+    paper = _mapping(_require(case_data, "paper", "ocr_response"), "paper")
+    _reject_keys(paper, ("rows",), "paper")
+    _validate_cells(_require(paper, "cells", "paper"), "paper.cells")
+    for key in ("source_id", "source_role", "source_type", "format_id"):
+        _require(paper, key, "paper")
+
+    paper_format = _mapping(_require(case_data, "paper_format", "ocr_response"), "paper_format")
+    _mapping(_require(paper_format, "columns", "paper_format"), "paper_format.columns")
+
+    evidences = _list(_require(case_data, "evidences", "ocr_response"), "ocr_response.evidences")
+    if not evidences:
+        raise OcrContractError("ocr_response.evidences must include at least one meter evidence source")
+    for index, evidence_data in enumerate(evidences):
+        evidence = _mapping(evidence_data, f"evidences[{index}]")
+        source = _mapping(_require(evidence, "source", f"evidences[{index}]"), f"evidences[{index}].source")
+        _reject_keys(source, ("rows",), f"evidences[{index}].source")
+        _validate_cells(_require(source, "cells", f"evidences[{index}].source"), f"evidences[{index}].source.cells")
+        format_map = _mapping(_require(evidence, "format", f"evidences[{index}]"), f"evidences[{index}].format")
+        _mapping(_require(format_map, "columns", f"evidences[{index}].format"), f"evidences[{index}].format.columns")
+
+    view = _mapping(_require(case_data, "view", "ocr_response"), "view")
+    _list(_require(view, "columns", "view"), "view.columns")
+    return case_data
 
 
 def build_case_from_images(
@@ -172,4 +249,4 @@ def build_case_from_images(
     with urllib.request.urlopen(request, timeout=timeout) as response:
         body = json.loads(response.read().decode("utf-8"))
     content_text = body["choices"][0]["message"]["content"]
-    return _extract_json_object(content_text)
+    return validate_case_ocr_response(_extract_json_object(content_text))
