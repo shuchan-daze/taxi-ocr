@@ -85,5 +85,31 @@ def make_public_discount_claim(
     )
 
 
+def make_charter_claim(
+    *,
+    target_row_addr: str,
+    amount: int,
+    payment_kind: str,
+    evidence: tuple[EvidenceLink, ...] = (),
+) -> Claim:
+    """Build a charter special sale claim.
+
+    Charter is not an ordinary meter ride.  It is a special sale component and
+    stays outside normal ride rows.
+    """
+
+    if amount <= 0:
+        raise ValueError("charter amount must be positive")
+    if payment_kind not in ("gen", "mi"):
+        raise ValueError("charter payment_kind must be gen or mi")
+    return Claim(
+        claim_type="charter_sale",
+        amount=amount,
+        target_row_addr=str(target_row_addr),
+        payment_kind=payment_kind,
+        evidence=evidence,
+    )
+
+
 def claim_total(claims: tuple[Claim, ...] | list[Claim], claim_type: str | None = None) -> int:
     return sum(claim.amount for claim in claims if claim_type is None or claim.claim_type == claim_type)

@@ -146,6 +146,7 @@ class Claim:
     claim_type: str
     amount: int
     target_row_addr: str
+    payment_kind: str | None = None
     evidence: tuple[EvidenceLink, ...] = ()
 
 

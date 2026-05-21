@@ -33,12 +33,18 @@ def build_claim_rows(report: AdoptedReport) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     labels = {
         "public_discount_claim": "障割請求",
+        "charter_sale": "貸切",
+    }
+    payment_labels = {
+        "gen": "現収",
+        "mi": "未収",
     }
     for claim in report.claims:
         rows.append(
             {
                 "種別": labels.get(claim.claim_type, claim.claim_type),
                 "対象行": claim.target_row_addr,
+                "区分": payment_labels.get(claim.payment_kind, ""),
                 "金額": claim.amount,
                 "根拠": " / ".join(f"{link.paper_cell} ← {link.evidence_cell}" for link in claim.evidence),
             }
