@@ -7,5 +7,8 @@ backgroundColor = "#010519"
 primaryColor = "#d4af37"
 
 [server]
+address = "0.0.0.0"
+port = 8501
+headless = true
 # uploaded ファイルの最大サイズ（タクシー画像は HEIC で 3-5MB なので余裕を持って 30MB）
 maxUploadSize = 30

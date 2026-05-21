@@ -34,7 +34,6 @@ def _install_mocks():
     mock_st.secrets = {}
     sys.modules.setdefault('streamlit', mock_st)
     sys.modules.setdefault('streamlit.components', MagicMock())
-    sys.modules.setdefault('streamlit.components.v1', MagicMock())
     # anthropic
     sys.modules.setdefault('anthropic', MagicMock())
     # google

@@ -54,3 +54,9 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+# 神地図 debug / local artifacts
+.kamichizu_debug/
+reconciled_report_package.json
+reconciled_report_diagnostics.md
+streamlit_qr*.png
+streamlit_qr_url.txt
