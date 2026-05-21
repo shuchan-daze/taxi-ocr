@@ -65,15 +65,83 @@ def test_pipeline_diagnoses_paper_amount_without_meter_match() -> None:
         two_row_template(),
     )
 
-    assert report.rides == ()
-    assert report.sales.pending_meter_sales == 2400
+    assert len(report.rides) == 1
+    ride = report.rides[0]
+    assert ride.paper_cell_ids == ("R02_MI",)
+    assert ride.meter_ride_ids == ("M01",)
+    assert ride.observed_mi == 2430
+    assert ride.adopted_mi is not None
+    assert ride.adopted_mi.amount == 2400
+    assert ride.diagnostic_reasons == ("paper_amount_corrected_by_meter_time",)
+    assert report.sales.confirmed_mi == 2400
+    assert report.sales.pending_meter_sales == 0
     assert report.sales.total_sales == 2400
     diagnostic = next(
-        item for item in report.diagnostics if item.code == "paper_row_total_has_no_meter_match"
+        item for item in report.diagnostics if item.code == "paper_row_amount_corrected_by_time"
     )
-    assert diagnostic.severity == DiagnosticSeverity.WARNING
-    assert diagnostic.references == ("R02_MI",)
-    assert diagnostic.details["row_total"] == 2430
+    assert diagnostic.severity == DiagnosticSeverity.INFO
+    assert diagnostic.references == ("R02_MI", "M01")
+    assert diagnostic.details["paper_amount"] == 2430
+    assert diagnostic.details["meter_amount"] == 2400
+
+
+def test_pipeline_adopts_meter_amount_to_paper_mi_side_by_time() -> None:
+    template = two_row_template()
+    paper_map = build_paper_map(
+        template=template,
+        image_id="paper",
+        observed_cells=(
+            cell_from_observation(2, "time", raw="10:44", observed_value="10:44"),
+            cell_from_observation(2, "mi", raw="2,400", observed_value=2400),
+        ),
+    )
+    report = reconcile_exact_amounts(
+        paper_map,
+        build_meter_receipt_from_mappings(
+            image_id="meter",
+            rows=({"ride_id": "M01", "amount": 2430, "time": "10:44"},),
+        ),
+        template,
+    )
+
+    assert len(report.rides) == 1
+    ride = report.rides[0]
+    assert ride.observed_mi == 2400
+    assert ride.adopted_mi is not None
+    assert ride.adopted_mi.amount == 2430
+    assert ride.adopted_gen is None
+    assert report.sales.confirmed_mi == 2430
+    assert report.sales.pending_meter_sales == 0
+    assert any(item.code == "paper_row_amount_corrected_by_time" for item in report.diagnostics)
+
+
+def test_pipeline_adopts_meter_amount_to_paper_gen_side_by_time() -> None:
+    template = two_row_template()
+    paper_map = build_paper_map(
+        template=template,
+        image_id="paper",
+        observed_cells=(
+            cell_from_observation(2, "time", raw="18:50", observed_value="18:50"),
+            cell_from_observation(2, "gen", raw="1,700", observed_value=1700),
+        ),
+    )
+    report = reconcile_exact_amounts(
+        paper_map,
+        build_meter_receipt_from_mappings(
+            image_id="meter",
+            rows=({"ride_id": "M01", "amount": 1800, "time": "18:50"},),
+        ),
+        template,
+    )
+
+    assert len(report.rides) == 1
+    ride = report.rides[0]
+    assert ride.observed_gen == 1700
+    assert ride.adopted_gen is not None
+    assert ride.adopted_gen.amount == 1800
+    assert ride.adopted_mi is None
+    assert report.sales.confirmed_gen == 1800
+    assert report.sales.pending_meter_sales == 0
 
 
 def test_pipeline_diagnoses_multiple_meter_matches() -> None:

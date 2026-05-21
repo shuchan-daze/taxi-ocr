@@ -143,7 +143,7 @@ def _adopted_from_cell_component(
     )
 
 
-def _adopted_from_meter_total(meter_match: MeterRide, amount_cells: list[PaperCell]) -> AdoptedAmount:
+def _adopted_from_meter_component(cell: PaperCell, meter_match: MeterRide) -> AdoptedAmount:
     return AdoptedAmount(
         amount=meter_match.amount,
         source=AmountSource.METER,
@@ -151,7 +151,32 @@ def _adopted_from_meter_total(meter_match: MeterRide, amount_cells: list[PaperCe
             Evidence(
                 source="meter_receipt",
                 reference=meter_match.ride_id,
-                detail="exact row total match",
+                detail="amount adopted from meter ride after time link",
+            ),
+            Evidence(
+                source="paper_map",
+                reference=cell.cell_id,
+                detail="paper cell position decides cash or receivable side",
+                confidence=cell.confidence,
+            ),
+        ),
+    )
+
+
+def _adopted_from_meter_total(
+    meter_match: MeterRide,
+    amount_cells: list[PaperCell],
+    *,
+    detail: str = "exact row total match",
+) -> AdoptedAmount:
+    return AdoptedAmount(
+        amount=meter_match.amount,
+        source=AmountSource.METER,
+        evidences=(
+            Evidence(
+                source="meter_receipt",
+                reference=meter_match.ride_id,
+                detail=detail,
             ),
             *(
                 Evidence(
@@ -163,6 +188,36 @@ def _adopted_from_meter_total(meter_match: MeterRide, amount_cells: list[PaperCe
                 for cell in amount_cells
             ),
         ),
+    )
+
+
+def _observed_cell_for_row(paper_map: PaperMap, paper_row: int, field_name: FieldName) -> PaperCell | None:
+    cell_id = f"R{paper_row:02d}_{field_name.value.upper()}"
+    cell = paper_map.cells.get(cell_id)
+    if cell and cell.has_observed_value:
+        return cell
+    return None
+
+
+def _paper_time_for_row(paper_map: PaperMap, paper_row: int) -> str | None:
+    cell = _observed_cell_for_row(paper_map, paper_row, FieldName.TIME)
+    if cell is None:
+        return None
+    value = str(cell.observed_value or "").strip()
+    return value or None
+
+
+def _unused_meter_matches_by_time(
+    time_value: str | None,
+    meter_rides: tuple[MeterRide, ...],
+    used_meter_ids: set[str],
+) -> tuple[MeterRide, ...]:
+    if not time_value:
+        return ()
+    return tuple(
+        ride
+        for ride in meter_rides
+        if ride.ride_id not in used_meter_ids and ride.time == time_value
     )
 
 
@@ -204,25 +259,50 @@ def reconcile_exact_amounts(
         amount_cells = sorted(amount_cells, key=lambda cell: AMOUNT_FIELDS.index(cell.field))
         paper_cell_ids = tuple(cell.cell_id for cell in amount_cells)
         row_total = _amount_cells_total(amount_cells)
-        meter_matches = _meter_matches_by_amount(row_total, meter_receipt.rides)
+        meter_matches = tuple(
+            ride
+            for ride in _meter_matches_by_amount(row_total, meter_receipt.rides)
+            if ride.ride_id not in used_meter_ids
+        )
+        meter_match: MeterRide | None = None
+        match_method = "amount"
         if not meter_matches:
-            diagnostics.append(
-                Diagnostic(
-                    code="paper_row_total_has_no_meter_match",
-                    message="paper row total did not match any meter ride",
-                    severity=DiagnosticSeverity.WARNING,
-                    references=paper_cell_ids,
-                    details={
-                        "row_total": row_total,
-                        "components": {
-                            cell.field.value: int(cell.observed_value)
-                            for cell in amount_cells
+            time_value = _paper_time_for_row(paper_map, paper_row)
+            time_matches = _unused_meter_matches_by_time(time_value, meter_receipt.rides, used_meter_ids)
+            if len(time_matches) == 1 and len(amount_cells) == 1:
+                meter_match = time_matches[0]
+                match_method = "time"
+                diagnostics.append(
+                    Diagnostic(
+                        code="paper_row_amount_corrected_by_time",
+                        message="meter amount was adopted because paper time linked to one meter ride",
+                        severity=DiagnosticSeverity.INFO,
+                        references=paper_cell_ids + (meter_match.ride_id,),
+                        details={
+                            "paper_amount": row_total,
+                            "meter_amount": meter_match.amount,
+                            "time": time_value,
                         },
-                    },
+                    )
                 )
-            )
-            continue
-        if len(meter_matches) > 1:
+            else:
+                diagnostics.append(
+                    Diagnostic(
+                        code="paper_row_total_has_no_meter_match",
+                        message="paper row total did not match any meter ride",
+                        severity=DiagnosticSeverity.WARNING,
+                        references=paper_cell_ids,
+                        details={
+                            "row_total": row_total,
+                            "components": {
+                                cell.field.value: int(cell.observed_value)
+                                for cell in amount_cells
+                            },
+                        },
+                    )
+                )
+                continue
+        elif len(meter_matches) > 1:
             diagnostics.append(
                 Diagnostic(
                     code="paper_row_total_has_multiple_meter_matches",
@@ -236,25 +316,32 @@ def reconcile_exact_amounts(
                 )
             )
             continue
-
-        meter_match = meter_matches[0]
-        if meter_match.ride_id in used_meter_ids:
-            diagnostics.append(
-                Diagnostic(
-                    code="meter_ride_already_linked",
-                    message="meter ride was already linked to another paper cell",
-                    severity=DiagnosticSeverity.WARNING,
-                    references=paper_cell_ids + (meter_match.ride_id,),
-                    details={"row_total": row_total},
-                )
-            )
-            continue
+        else:
+            meter_match = meter_matches[0]
 
         used_meter_ids.add(meter_match.ride_id)
         gen_cell = _amount_component(amount_cells, FieldName.GEN)
         mi_cell = _amount_component(amount_cells, FieldName.MI)
-        adopted_total = _adopted_from_meter_total(meter_match, amount_cells)
+        adopted_total = _adopted_from_meter_total(
+            meter_match,
+            amount_cells,
+            detail="time linked meter amount" if match_method == "time" else "exact row total match",
+        )
         component_source = AmountSource.METER if len(amount_cells) == 1 else AmountSource.PAPER
+        adopted_gen = (
+            _adopted_from_meter_component(gen_cell, meter_match)
+            if gen_cell and match_method == "time"
+            else _adopted_from_cell_component(gen_cell, meter_match, source=component_source)
+            if gen_cell
+            else None
+        )
+        adopted_mi = (
+            _adopted_from_meter_component(mi_cell, meter_match)
+            if mi_cell and match_method == "time"
+            else _adopted_from_cell_component(mi_cell, meter_match, source=component_source)
+            if mi_cell
+            else None
+        )
 
         ride_kwargs = {
             "ride_key": f"R{paper_row:02d}",
@@ -264,12 +351,13 @@ def reconcile_exact_amounts(
             "observed_gen": int(gen_cell.observed_value) if gen_cell else None,
             "observed_mi": int(mi_cell.observed_value) if mi_cell else None,
             "adopted_total": adopted_total,
-            "adopted_gen": _adopted_from_cell_component(gen_cell, meter_match, source=component_source) if gen_cell else None,
-            "adopted_mi": _adopted_from_cell_component(mi_cell, meter_match, source=component_source) if mi_cell else None,
+            "adopted_gen": adopted_gen,
+            "adopted_mi": adopted_mi,
+            "diagnostic_reasons": ("paper_amount_corrected_by_meter_time",) if match_method == "time" else (),
         }
         rides.append(ReconciledRide(**ride_kwargs))
-        confirmed_gen += int(gen_cell.observed_value) if gen_cell else 0
-        confirmed_mi += int(mi_cell.observed_value) if mi_cell else 0
+        confirmed_gen += adopted_gen.amount if adopted_gen else 0
+        confirmed_mi += adopted_mi.amount if adopted_mi else 0
 
     unused_meter_ids = tuple(
         ride.ride_id

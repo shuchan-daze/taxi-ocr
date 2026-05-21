@@ -19,6 +19,12 @@ def _package():
             "rides": [
                 {
                     "ride_key": "R01",
+                    "display": {
+                        "no": "1",
+                        "passengers": 2,
+                        "time": "09:46",
+                        "memo": "現金",
+                    },
                     "paper_cell_ids": ["R01_GEN"],
                     "meter_ride_ids": ["M01"],
                     "link_status": "linked",
@@ -80,9 +86,9 @@ def _package():
 def test_summary_metric_rows_are_safe_when_package_is_empty():
     rows = app.build_summary_metric_rows({})
 
-    assert [row["label"] for row in rows] == ["総売上", "現収", "未収", "確認待ち売上", "障割請求"]
-    assert [row["value"] for row in rows] == [0, 0, 0, 0, 0]
-    assert [row["display"] for row in rows] == ["¥0", "¥0", "¥0", "¥0", "¥0"]
+    assert [row["label"] for row in rows] == ["総売上", "現収", "未収"]
+    assert [row["value"] for row in rows] == [0, 0, 0]
+    assert [row["display"] for row in rows] == ["¥0", "¥0", "¥0"]
 
 
 def test_summary_metric_rows_use_package_summary_values():
@@ -90,28 +96,20 @@ def test_summary_metric_rows_use_package_summary_values():
 
     assert rows[0] == {"label": "総売上", "key": "sou", "value": 4620, "display": "¥4,620"}
     assert rows[1] == {"label": "現収", "key": "confirmed_gen", "value": 900, "display": "¥900"}
-    assert rows[2] == {"label": "未収", "key": "confirmed_mi", "value": 2300, "display": "¥2,300"}
-    assert rows[3] == {"label": "確認待ち売上", "key": "pending_meter_sales", "value": 1300, "display": "¥1,300"}
-    assert rows[4] == {"label": "障割請求", "key": "discount_claim_total", "value": 120, "display": "¥120"}
+    assert rows[2] == {"label": "未収", "key": "displayed_mi", "value": 2420, "display": "¥2,420"}
 
 
 def test_detail_table_sections_use_only_package_explanation():
     sections = app.build_detail_table_sections(_package())
     rows = sections["明細"]
 
-    assert [row["区分"] for row in rows] == ["採用金額", "確認待ち売上", "障割・特例請求", "未リンク・未採用", "診断"]
-    assert rows[0]["ID"] == "R01"
-    assert rows[0]["現収"] == "¥900"
-    assert rows[0]["紙セル"] == "R01_GEN"
-    assert rows[0]["メーター"] == "M01"
-    assert "meter_receipt:M01" in rows[0]["根拠"]
-    assert rows[1]["ID"] == "M03"
-    assert rows[1]["総額"] == "¥1,300"
-    assert rows[1]["未収"] == ""
-    assert rows[2]["総額"] == "¥120"
-    assert rows[2]["対象"] == "R01"
-    assert rows[3]["状態"] == "売上未採用"
-    assert rows[4]["ID"] == "needs_attention"
+    assert list(rows[0]) == ["No", "人数", "時刻", "現収", "未収", "摘要", "状態"]
+    assert rows == [
+        {"No": "1", "人数": 2, "時刻": "09:46", "現収": "900", "未収": "", "摘要": "現金", "状態": ""},
+        {"No": "", "人数": "", "時刻": "14:06", "現収": "", "未収": "", "摘要": "明細 1,300", "状態": "確認"},
+        {"No": "△1", "人数": "", "時刻": "", "現収": "", "未収": "120", "摘要": "障割", "状態": "請求"},
+        {"No": "△", "人数": "", "時刻": "", "現収": "", "未収": "", "摘要": "障割", "状態": "紐づけ確認"},
+    ]
 
 
 def test_detail_table_sections_are_empty_without_explanation():

@@ -115,7 +115,7 @@ def explain_reconciled_report(report: ReconciledReport) -> dict[str, Any]:
     return {
         "schema": "kamichizu_report_explanation",
         "sales": _explain_sales(report),
-        "rides": [_explain_ride(ride) for ride in report.rides],
+        "rides": [_explain_ride(ride, report.paper_map) for ride in report.rides],
         "pending_meter_rides": pending_meter_rides,
         "adjustments": {
             "linked_sales_adjustments": linked_adjustments,
@@ -145,12 +145,21 @@ def _explain_sales(report: ReconciledReport) -> dict[str, Any]:
     }
 
 
-def _explain_ride(ride: ReconciledRide) -> dict[str, Any]:
+def _explain_ride(ride: ReconciledRide, paper_map: PaperMap) -> dict[str, Any]:
+    row_values = _paper_row_values(ride, paper_map)
     return {
         "ride_key": ride.ride_key,
+        "paper_row": row_values["paper_row"],
         "paper_cell_ids": list(ride.paper_cell_ids),
         "meter_ride_ids": list(ride.meter_ride_ids),
         "link_status": ride.link_status.value,
+        "display": {
+            "no": row_values["no"],
+            "passengers": row_values["passengers"],
+            "time": row_values["time"],
+            "route": row_values["route"],
+            "memo": row_values["memo"],
+        },
         "observed": {
             "gen": ride.observed_gen,
             "mi": ride.observed_mi,
@@ -161,6 +170,29 @@ def _explain_ride(ride: ReconciledRide) -> dict[str, Any]:
             "mi": _explain_adopted_amount(ride.adopted_mi),
         },
         "diagnostic_reasons": list(ride.diagnostic_reasons),
+    }
+
+
+def _paper_row_values(ride: ReconciledRide, paper_map: PaperMap) -> dict[str, Any]:
+    paper_rows = [
+        paper_map.cells[cell_id].paper_row
+        for cell_id in ride.paper_cell_ids
+        if cell_id in paper_map.cells
+    ]
+    paper_row = min(paper_rows) if paper_rows else None
+    cells = [
+        cell
+        for cell in paper_map.cells.values()
+        if paper_row is not None and cell.paper_row == paper_row and cell.has_observed_value
+    ]
+    values = {cell.field.value: cell.observed_value for cell in cells}
+    return {
+        "paper_row": paper_row,
+        "no": str(paper_row) if paper_row is not None else "",
+        "passengers": values.get("passengers", ""),
+        "time": values.get("time", ""),
+        "route": values.get("route", ""),
+        "memo": values.get("memo", ""),
     }
 
 
@@ -338,4 +370,3 @@ def _yen(amount: int | None) -> str:
     if amount is None:
         return "-"
     return f"¥{amount:,}"
-

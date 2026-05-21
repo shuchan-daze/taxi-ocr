@@ -61,6 +61,15 @@ def yen_text(amount):
         return str(amount)
 
 
+def amount_text(amount):
+    if amount is None:
+        return ""
+    try:
+        return f"{int(amount):,}"
+    except (TypeError, ValueError):
+        return str(amount)
+
+
 def evidence_text(evidences):
     parts = []
     for evidence in evidences or []:
@@ -78,6 +87,31 @@ def adopted_amount_text(adopted):
     return yen_text(adopted.get("amount")), evidence_text(adopted.get("evidences"))
 
 
+def amount_from_adopted(adopted):
+    if not adopted:
+        return None
+    return adopted.get("amount")
+
+
+def ride_display_value(ride, key):
+    display = ride.get("display") or {}
+    value = display.get(key)
+    return "" if value is None else value
+
+
+def row_no_from_ride_key(ride_key):
+    text = str(ride_key or "")
+    if text.startswith("R") and text[1:].isdigit():
+        return str(int(text[1:]))
+    return text
+
+
+def row_no_from_adjustment(adjustment):
+    target = adjustment.get("target_ride_key") or ""
+    no = row_no_from_ride_key(target)
+    return f"△{no}" if no else "△"
+
+
 def build_detail_rows(package):
     package = package or {}
     explanation = package.get("explanation") or {}
@@ -85,37 +119,36 @@ def build_detail_rows(package):
 
     for ride in explanation.get("rides") or []:
         adopted = ride.get("adopted") or {}
-        total, total_evidence = adopted_amount_text(adopted.get("total"))
-        gen, gen_evidence = adopted_amount_text(adopted.get("gen"))
-        mi, mi_evidence = adopted_amount_text(adopted.get("mi"))
+        observed = ride.get("observed") or {}
+        gen_amount = amount_from_adopted(adopted.get("gen"))
+        mi_amount = amount_from_adopted(adopted.get("mi"))
+        if gen_amount is None:
+            gen_amount = observed.get("gen")
+        if mi_amount is None:
+            mi_amount = observed.get("mi")
+        state = "明細反映" if ride.get("diagnostic_reasons") else ""
         rows.append(
             {
-                "区分": "採用金額",
-                "ID": ride.get("ride_key") or "",
-                "総額": total,
-                "現収": gen,
-                "未収": mi,
-                "対象": "",
-                "紙セル": ", ".join(ride.get("paper_cell_ids") or []),
-                "メーター": ", ".join(ride.get("meter_ride_ids") or []),
-                "根拠": "; ".join(part for part in (total_evidence, gen_evidence, mi_evidence) if part),
-                "状態": ride.get("link_status") or "",
+                "No": ride_display_value(ride, "no") or row_no_from_ride_key(ride.get("ride_key")),
+                "人数": ride_display_value(ride, "passengers"),
+                "時刻": ride_display_value(ride, "time"),
+                "現収": amount_text(gen_amount),
+                "未収": amount_text(mi_amount),
+                "摘要": ride_display_value(ride, "memo"),
+                "状態": state,
             }
         )
 
     for ride in explanation.get("pending_meter_rides") or []:
         rows.append(
             {
-                "区分": "確認待ち売上",
-                "ID": ride.get("ride_id") or "",
-                "総額": yen_text(ride.get("amount")),
+                "No": "",
+                "人数": "",
+                "時刻": ride.get("time") or "",
                 "現収": "",
                 "未収": "",
-                "対象": "",
-                "紙セル": "",
-                "メーター": ride.get("ride_id") or "",
-                "根拠": "meter_receipt",
-                "状態": ride.get("time") or "",
+                "摘要": f"明細 {amount_text(ride.get('amount'))}",
+                "状態": "確認",
             }
         )
 
@@ -123,48 +156,26 @@ def build_detail_rows(package):
     for adjustment in adjustments.get("linked_sales_adjustments") or []:
         rows.append(
             {
-                "区分": "障割・特例請求",
-                "ID": adjustment.get("adjustment_id") or "",
-                "総額": yen_text(adjustment.get("amount")),
+                "No": row_no_from_adjustment(adjustment),
+                "人数": "",
+                "時刻": "",
                 "現収": "",
-                "未収": "",
-                "対象": adjustment.get("target_ride_key") or "",
-                "紙セル": ", ".join(adjustment.get("source_cell_ids") or []),
-                "メーター": "",
-                "根拠": evidence_text(adjustment.get("evidences")),
-                "状態": "売上採用",
+                "未収": amount_text(adjustment.get("amount")),
+                "摘要": "障割",
+                "状態": "請求",
             }
         )
 
     for adjustment in adjustments.get("unlinked_or_excluded_adjustments") or []:
         rows.append(
             {
-                "区分": "未リンク・未採用",
-                "ID": adjustment.get("adjustment_id") or "",
-                "総額": yen_text(adjustment.get("amount")),
+                "No": "△",
+                "人数": "",
+                "時刻": "",
                 "現収": "",
                 "未収": "",
-                "対象": adjustment.get("target_ride_key") or "",
-                "紙セル": ", ".join(adjustment.get("source_cell_ids") or []),
-                "メーター": "",
-                "根拠": evidence_text(adjustment.get("evidences")),
-                "状態": "売上未採用",
-            }
-        )
-
-    for diagnostic in explanation.get("diagnostics") or []:
-        rows.append(
-            {
-                "区分": "診断",
-                "ID": diagnostic.get("code") or "",
-                "総額": "",
-                "現収": "",
-                "未収": "",
-                "対象": "",
-                "紙セル": ", ".join(diagnostic.get("references") or []),
-                "メーター": "",
-                "根拠": diagnostic.get("message") or "",
-                "状態": diagnostic.get("severity") or "",
+                "摘要": "障割",
+                "状態": "紐づけ確認",
             }
         )
 
@@ -173,6 +184,10 @@ def build_detail_rows(package):
 
 def build_summary_metric_rows(package):
     summary = (package or {}).get("summary") or {}
+    displayed_mi = (
+        (summary.get("confirmed_mi") or 0)
+        + (summary.get("discount_claim_total") or 0)
+    )
     return [
         {"label": "総売上", "key": "sou", "value": summary.get("sou", 0), "display": yen_text(summary.get("sou", 0))},
         {
@@ -183,21 +198,9 @@ def build_summary_metric_rows(package):
         },
         {
             "label": "未収",
-            "key": "confirmed_mi",
-            "value": summary.get("confirmed_mi", 0),
-            "display": yen_text(summary.get("confirmed_mi", 0)),
-        },
-        {
-            "label": "確認待ち売上",
-            "key": "pending_meter_sales",
-            "value": summary.get("pending_meter_sales", 0),
-            "display": yen_text(summary.get("pending_meter_sales", 0)),
-        },
-        {
-            "label": "障割請求",
-            "key": "discount_claim_total",
-            "value": summary.get("discount_claim_total", 0),
-            "display": yen_text(summary.get("discount_claim_total", 0)),
+            "key": "displayed_mi",
+            "value": displayed_mi,
+            "display": yen_text(displayed_mi),
         },
     ]
 
@@ -228,7 +231,7 @@ def build_download_payloads(package):
 def render_package(package):
     summary = package.get("summary") or {}
     st.subheader("売上サマリー")
-    cols = st.columns(5)
+    cols = st.columns(3)
     for col, metric in zip(cols, build_summary_metric_rows(package)):
         col.metric(metric["label"], metric["display"])
     if summary.get("formula"):
@@ -241,19 +244,19 @@ def render_package(package):
     else:
         st.info("明細なし")
 
-    st.subheader("Diagnostics")
     diagnostics_markdown = package.get("diagnostics_markdown") or ""
-    st.markdown(diagnostics_markdown)
-    payloads = build_download_payloads(package)
-    download_cols = st.columns(2)
-    for col, payload in zip(download_cols, payloads.values()):
-        col.download_button(
-            payload["label"],
-            data=payload["data"],
-            file_name=payload["file_name"],
-            mime=payload["mime"],
-            use_container_width=True,
-        )
+    with st.expander("診断メモ"):
+        st.markdown(diagnostics_markdown)
+        payloads = build_download_payloads(package)
+        download_cols = st.columns(2)
+        for col, payload in zip(download_cols, payloads.values()):
+            col.download_button(
+                payload["label"],
+                data=payload["data"],
+                file_name=payload["file_name"],
+                mime=payload["mime"],
+                use_container_width=True,
+            )
     st.caption(".kamichizu_debug/reconciled_report_package.json / reconciled_report_diagnostics.md に出力しました")
 
 
