@@ -163,3 +163,11 @@ class AdoptedReport:
     rows: tuple[AdoptedRow, ...]
     claims: tuple[Claim, ...] = ()
     diagnostics: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class HumanReport:
+    summary_rows: tuple[Mapping[str, Any], ...]
+    ride_rows: tuple[Mapping[str, Any], ...]
+    claim_rows: tuple[Mapping[str, Any], ...]
+    diagnostics: tuple[str, ...] = ()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import AdoptedReport, ViewMap
+from .models import AdoptedReport, HumanReport, ViewMap
 from .totals import SalesTotals, compute_sales_totals
 
 
@@ -67,3 +67,14 @@ def build_summary_rows(report: AdoptedReport, totals: SalesTotals | None = None)
         {"項目": "特例請求", "金額": active_totals.claim_other, "内訳": "障割請求など"},
         {"項目": "総売上", "金額": active_totals.sou, "内訳": "現収 + 未収 + 特例請求"},
     ]
+
+
+def build_human_report(report: AdoptedReport, view_map: ViewMap) -> HumanReport:
+    """Build the complete human-facing report package for UI layers."""
+
+    return HumanReport(
+        summary_rows=tuple(build_summary_rows(report)),
+        ride_rows=tuple(build_human_rows(report, view_map)),
+        claim_rows=tuple(build_claim_rows(report)),
+        diagnostics=report.diagnostics,
+    )
