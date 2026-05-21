@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .models import AdoptedReport, ViewMap
+from .totals import SalesTotals, compute_sales_totals
 
 
 def build_human_rows(report: AdoptedReport, view_map: ViewMap) -> list[dict[str, Any]]:
@@ -50,3 +51,19 @@ def build_claim_rows(report: AdoptedReport) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def build_summary_rows(report: AdoptedReport, totals: SalesTotals | None = None) -> list[dict[str, Any]]:
+    """Build human-facing summary rows.
+
+    This is display data, not engine calculation.  It keeps ride body sales and
+    special claims visible so UI code does not have to know internal structures.
+    """
+
+    active_totals = totals or compute_sales_totals(report)
+    return [
+        {"項目": "現収", "金額": active_totals.gen, "内訳": f"通常 {active_totals.ride_gen} + 特例 {active_totals.claim_gen}"},
+        {"項目": "未収", "金額": active_totals.mi, "内訳": f"通常 {active_totals.ride_mi} + 特例 {active_totals.claim_mi}"},
+        {"項目": "特例請求", "金額": active_totals.claim_other, "内訳": "障割請求など"},
+        {"項目": "総売上", "金額": active_totals.sou, "内訳": "現収 + 未収 + 特例請求"},
+    ]
