@@ -1,0 +1,105 @@
+import unittest
+
+from kamichizu import (
+    Cell,
+    FormatMap,
+    SourceMap,
+    SourceMeta,
+    ViewMap,
+    build_human_rows,
+    build_semantic_rows,
+    reconcile_sources,
+)
+
+
+def make_source(source_id, source_type, format_id, cells):
+    return SourceMap(
+        meta=SourceMeta(
+            source_id=source_id,
+            source_role="primary" if source_id.startswith("P") else "evidence",
+            source_type=source_type,
+            label=source_type,
+            format_id=format_id,
+        ),
+        cells={cell_id: Cell(local_cell_id=cell_id, raw=str(value), value=value) for cell_id, value in cells.items()},
+    )
+
+
+class KamichizuDesignTest(unittest.TestCase):
+    def test_physical_cell_id_rejects_semantic_names(self):
+        with self.assertRaises(ValueError):
+            Cell(local_cell_id="03_GEN")
+
+        with self.assertRaises(ValueError):
+            Cell(local_cell_id="03_MI")
+
+    def test_format_map_assigns_meaning_to_physical_cells(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AE": 1800, "03_AF": 2400})
+        format_map = FormatMap(format_id="daily_a", columns={"AE": "gen", "AF": "mi"})
+
+        rows = build_semantic_rows(paper, format_map)
+
+        self.assertEqual(rows[0].value("gen"), 1800)
+        self.assertEqual(rows[0].value("mi"), 2400)
+        self.assertEqual(rows[0].fields["mi"].global_cell_id, "P01:03_AF")
+
+    def test_same_physical_cell_changes_meaning_with_format_map(self):
+        source = make_source("P01", "daily_report", "daily_a", {"03_AE": 1800})
+        as_gen = FormatMap(format_id="daily_a", columns={"AE": "gen"})
+        as_mi = FormatMap(format_id="daily_b", columns={"AE": "mi"})
+
+        self.assertEqual(build_semantic_rows(source, as_gen)[0].value("gen"), 1800)
+        self.assertEqual(build_semantic_rows(source, as_mi)[0].value("mi"), 1800)
+
+    def test_layer2_uses_format_map_to_adopt_meter_amount_into_mi(self):
+        paper = make_source(
+            "P01",
+            "daily_report",
+            "daily_a",
+            {
+                "03_AB": 2,
+                "03_AD": "10:44",
+                "03_AF": 2400,
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AB": "passengers", "AD": "time", "AE": "gen", "AF": "mi"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:44", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertEqual(row.values["mi"], 2430)
+        self.assertIsNone(row.values.get("gen"))
+        self.assertEqual(row.evidence[0].paper_cell, "P01:03_AF")
+        self.assertEqual(row.evidence[0].evidence_cell, "E01:05_AC")
+        self.assertIn("paper amount 2400 adopted evidence amount 2430", report.diagnostics[0])
+
+    def test_time_window_allows_nine_minutes_but_not_ten(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AE": 1000})
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen"})
+        meter_ok = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:53", "05_AC": 1000})
+        meter_ng = make_source("E02", "meter_receipt", "meter_a", {"05_AB": "10:54", "05_AC": 1000})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        ok_report = reconcile_sources(paper, paper_format, [(meter_ok, meter_format)])
+        ng_report = reconcile_sources(paper, paper_format, [(meter_ng, meter_format)])
+
+        self.assertEqual(ok_report.rows[0].values["gen"], 1000)
+        self.assertFalse(ok_report.rows[0].alerts)
+        self.assertEqual(ng_report.rows[0].alerts["gen"], "no_evidence_match")
+
+    def test_human_view_columns_are_view_map_not_engine_fixed(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AE": 1800})
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:44", "05_AC": 1800})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        view = ViewMap(view_id="taxi", columns=(("time", "時刻"), ("gen", "現収"), ("status", "状態")))
+
+        self.assertEqual(build_human_rows(report, view), [{"時刻": "10:44", "現収": 1800, "状態": ""}])
+
+
+if __name__ == "__main__":
+    unittest.main()
