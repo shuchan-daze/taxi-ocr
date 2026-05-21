@@ -27,7 +27,7 @@ class MinimalAppTest(unittest.TestCase):
 
         self.assertNotIn("AdoptedReport", demo_source)
         self.assertNotIn("AdoptedRow", demo_source)
-        self.assertIn("build_human_report_from_sources", demo_source)
+        self.assertIn("build_human_report_from_case", demo_source)
 
 
 if __name__ == "__main__":
