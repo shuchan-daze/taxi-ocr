@@ -14,19 +14,28 @@ st.title("神地図エンジン")
 st.caption("紙面固定セル住所とメーター明細から、採用根拠つきの診断レポートを作ります。")
 
 
-def load_json(uploaded_file):
+def load_json_input(uploaded_file, text_value):
+    text_value = (text_value or "").strip()
+    if text_value:
+        return json.loads(text_value)
     if uploaded_file is None:
         return None
     return json.loads(uploaded_file.getvalue().decode("utf-8"))
 
 
-paper_file = st.file_uploader("paper_map JSON", type=["json"], key="paper_map_json")
-meter_file = st.file_uploader("meter_data JSON", type=["json"], key="meter_data_json")
+st.subheader("入力")
+st.caption("ファイルアップロードまたは貼り付けJSONのどちらでも使えます。貼り付けJSONがある場合はそちらを優先します。")
+
+paper_file = st.file_uploader("paper_map JSON ファイル", type=["json"], key="paper_map_json")
+paper_text = st.text_area("paper_map JSON を貼り付け", key="paper_map_text", height=220)
+
+meter_file = st.file_uploader("meter_data JSON ファイル", type=["json"], key="meter_data_json")
+meter_text = st.text_area("meter_data JSON を貼り付け", key="meter_data_text", height=220)
 
 if st.button("神地図レポートを作成", type="primary", use_container_width=True):
     try:
-        paper_map = load_json(paper_file)
-        meter_data = load_json(meter_file)
+        paper_map = load_json_input(paper_file, paper_text)
+        meter_data = load_json_input(meter_file, meter_text)
         report = build_reconciled_report_from_app_inputs(paper_map, meter_data)
         package = build_reconciled_report_package(report)
         write_reconciled_report_package(report, Path(".kamichizu_debug"))
