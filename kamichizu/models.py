@@ -140,6 +140,16 @@ class EvidenceLink:
 
 
 @dataclass(frozen=True)
+class Claim:
+    """A non-ride claim linked to a target ride, such as disability discount."""
+
+    claim_type: str
+    amount: int
+    target_row_addr: str
+    evidence: tuple[EvidenceLink, ...] = ()
+
+
+@dataclass(frozen=True)
 class AdoptedRow:
     row_addr: str
     values: Mapping[str, Any]
@@ -150,4 +160,5 @@ class AdoptedRow:
 @dataclass(frozen=True)
 class AdoptedReport:
     rows: tuple[AdoptedRow, ...]
+    claims: tuple[Claim, ...] = ()
     diagnostics: tuple[str, ...] = ()
