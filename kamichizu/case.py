@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .models import Cell, Claim, FormatMap, HumanReport, SourceMap, SourceMeta, ViewMap
+from .models import Cell, Claim, EvidenceLink, FormatMap, HumanReport, SourceMap, SourceMeta, ViewMap
 from .pipeline import build_human_report_from_sources
 from .specials import make_charter_claim, make_public_discount_claim
 
@@ -69,28 +69,54 @@ def _view_map(data: Mapping[str, Any]) -> ViewMap:
     return ViewMap(view_id=str(_required(data, "view_id", "view")), columns=tuple(columns))
 
 
+def _evidence_links(items: list[Any], name: str) -> tuple[EvidenceLink, ...]:
+    links: list[EvidenceLink] = []
+    for index, item in enumerate(items):
+        link_data = _require_mapping(item, f"{name}.evidence[{index}]")
+        links.append(
+            EvidenceLink(
+                paper_cell=str(_required(link_data, "paper_cell", f"{name}.evidence[{index}]")),
+                evidence_cell=str(_required(link_data, "evidence_cell", f"{name}.evidence[{index}]")),
+                reason=str(_required(link_data, "reason", f"{name}.evidence[{index}]")),
+            )
+        )
+    return tuple(links)
+
+
 def _claims(items: list[Any]) -> tuple[Claim, ...]:
     claims: list[Claim] = []
     for index, item in enumerate(items):
         claim_data = _require_mapping(item, f"claims[{index}]")
         claim_type = str(_required(claim_data, "type", f"claims[{index}]"))
         if claim_type == "public_discount_claim":
+            evidence = _evidence_links(
+                _require_list(_required(claim_data, "evidence", f"claims[{index}]"), f"claims[{index}].evidence"),
+                f"claims[{index}]",
+            )
             claim = make_public_discount_claim(
                 target_row_addr=str(_required(claim_data, "target_row_addr", f"claims[{index}]")),
+                target_global_cell_id=str(_required(claim_data, "target_global_cell_id", f"claims[{index}]")),
                 meter_amount=int(_required(claim_data, "meter_amount", f"claims[{index}]")),
                 expected_claim_amount=(
                     int(claim_data["expected_claim_amount"]) if "expected_claim_amount" in claim_data else None
                 ),
+                evidence=evidence,
             )
             if claim is None:
                 raise ValueError(f"claims[{index}] public discount is ambiguous or invalid")
             claims.append(claim)
         elif claim_type == "charter_sale":
+            evidence = _evidence_links(
+                _require_list(_required(claim_data, "evidence", f"claims[{index}]"), f"claims[{index}].evidence"),
+                f"claims[{index}]",
+            )
             claims.append(
                 make_charter_claim(
                     target_row_addr=str(_required(claim_data, "target_row_addr", f"claims[{index}]")),
-                    amount=int(_required(claim_data, "amount", f"claims[{index}]")),
+                    target_global_cell_id=str(_required(claim_data, "target_global_cell_id", f"claims[{index}]")),
+                    claim_amount=int(_required(claim_data, "claim_amount", f"claims[{index}]")),
                     payment_kind=str(_required(claim_data, "payment_kind", f"claims[{index}]")),
+                    evidence=evidence,
                 )
             )
         else:

@@ -67,6 +67,15 @@ def make_global_cell_id(source_id: str, local_cell_id: str) -> str:
     return f"{source}:{local_cell_id.upper()}"
 
 
+def split_global_cell_id(global_cell_id: str) -> tuple[str, str]:
+    text = str(global_cell_id).strip().upper()
+    parts = text.split(":", 1)
+    if len(parts) != 2 or not parts[0]:
+        raise ValueError(f"global_cell_id must be source:row_col address: {global_cell_id!r}")
+    split_local_cell_id(parts[1])
+    return parts[0], parts[1]
+
+
 @dataclass(frozen=True)
 class SourceMeta:
     source_id: str
@@ -138,20 +147,33 @@ class EvidenceLink:
     evidence_cell: str
     reason: str
 
+    def __post_init__(self) -> None:
+        split_global_cell_id(self.paper_cell)
+        split_global_cell_id(self.evidence_cell)
+        if not str(self.reason).strip():
+            raise ValueError("evidence reason is required")
+
 
 @dataclass(frozen=True)
 class Claim:
     """A non-ride claim linked to a target ride, such as disability discount."""
 
     claim_type: str
-    amount: int
+    claim_amount: int
     target_row_addr: str
+    target_global_cell_id: str
     payment_kind: str
-    evidence: tuple[EvidenceLink, ...] = ()
+    evidence: tuple[EvidenceLink, ...]
 
     def __post_init__(self) -> None:
+        if self.claim_amount <= 0:
+            raise ValueError("claim_amount must be positive")
+        normalize_row_addr(self.target_row_addr)
+        split_global_cell_id(self.target_global_cell_id)
         if self.payment_kind not in ("gen", "mi"):
             raise ValueError("claim payment_kind must be gen or mi")
+        if not self.evidence:
+            raise ValueError("claim evidence is required")
 
 
 @dataclass(frozen=True)

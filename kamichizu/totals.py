@@ -44,9 +44,9 @@ def _as_int(value: object) -> int:
 
 def _claim_component(claim: Claim) -> tuple[int, int]:
     if claim.payment_kind == "gen":
-        return claim.amount, 0
+        return claim.claim_amount, 0
     if claim.payment_kind == "mi":
-        return 0, claim.amount
+        return 0, claim.claim_amount
     raise ValueError(f"unknown payment_kind: {claim.payment_kind!r}")
 
 

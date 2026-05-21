@@ -1,6 +1,6 @@
 import unittest
 
-from kamichizu.models import AdoptedReport, AdoptedRow
+from kamichizu.models import AdoptedReport, AdoptedRow, EvidenceLink
 from kamichizu.specials import make_charter_claim, make_public_discount_claim
 from kamichizu.totals import compute_sales_totals
 
@@ -12,8 +12,20 @@ class KamichizuTotalsTest(unittest.TestCase):
             AdoptedRow(row_addr="02", values={"gen": None, "mi": 2430}),
         )
         claims = (
-            make_charter_claim(target_row_addr="05", amount=16400, payment_kind="gen"),
-            make_charter_claim(target_row_addr="06", amount=10000, payment_kind="mi"),
+            make_charter_claim(
+                target_row_addr="05",
+                target_global_cell_id="P01:05_AG",
+                claim_amount=16400,
+                payment_kind="gen",
+                evidence=(EvidenceLink("P01:05_AG", "P01:05_AG", "charter_from_paper_memo"),),
+            ),
+            make_charter_claim(
+                target_row_addr="06",
+                target_global_cell_id="P01:06_AG",
+                claim_amount=10000,
+                payment_kind="mi",
+                evidence=(EvidenceLink("P01:06_AG", "P01:06_AG", "charter_from_paper_memo"),),
+            ),
         )
         report = AdoptedReport(rows=rows, claims=claims)
 
@@ -30,7 +42,13 @@ class KamichizuTotalsTest(unittest.TestCase):
 
     def test_public_discount_claim_is_summed_as_mi_without_mutating_ride_row(self):
         row = AdoptedRow(row_addr="14", values={"mi": 3620})
-        discount = make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=380)
+        discount = make_public_discount_claim(
+            target_row_addr="14",
+            target_global_cell_id="P01:14_AF",
+            meter_amount=3620,
+            expected_claim_amount=380,
+            evidence=(EvidenceLink("P01:14_AF", "E01:10_AB", "discount_from_target_meter_amount"),),
+        )
         report = AdoptedReport(rows=(row,), claims=(discount,))
 
         totals = compute_sales_totals(report)

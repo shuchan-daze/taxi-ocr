@@ -29,6 +29,13 @@ class KamichizuCaseTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_human_report_from_case(case_data)
 
+    def test_case_rejects_charter_amount_alias(self):
+        case_data = build_demo_case()
+        case_data["claims"][1]["amount"] = case_data["claims"][1].pop("claim_amount")
+
+        with self.assertRaises(ValueError):
+            build_human_report_from_case(case_data)
+
 
 if __name__ == "__main__":
     unittest.main()

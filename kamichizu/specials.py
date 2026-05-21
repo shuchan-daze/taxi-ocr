@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .models import Claim, EvidenceLink
+from .models import Claim, EvidenceLink, normalize_row_addr
 
 
 @dataclass(frozen=True)
@@ -65,9 +65,10 @@ def public_discount_candidates(meter_amount: int, config: PublicDiscountConfig |
 def make_public_discount_claim(
     *,
     target_row_addr: str,
+    target_global_cell_id: str,
     meter_amount: int,
     expected_claim_amount: int | None = None,
-    evidence: tuple[EvidenceLink, ...] = (),
+    evidence: tuple[EvidenceLink, ...],
     config: PublicDiscountConfig | None = None,
 ) -> Claim | None:
     """Build a disability/public discount claim when the amount is unambiguous."""
@@ -79,8 +80,9 @@ def make_public_discount_claim(
         return None
     return Claim(
         claim_type="public_discount_claim",
-        amount=candidates[0].claim_amount,
-        target_row_addr=str(target_row_addr),
+        claim_amount=candidates[0].claim_amount,
+        target_row_addr=normalize_row_addr(target_row_addr),
+        target_global_cell_id=target_global_cell_id,
         payment_kind="mi",
         evidence=evidence,
     )
@@ -89,9 +91,10 @@ def make_public_discount_claim(
 def make_charter_claim(
     *,
     target_row_addr: str,
-    amount: int,
+    target_global_cell_id: str,
+    claim_amount: int,
     payment_kind: str,
-    evidence: tuple[EvidenceLink, ...] = (),
+    evidence: tuple[EvidenceLink, ...],
 ) -> Claim:
     """Build a charter special sale claim.
 
@@ -99,18 +102,19 @@ def make_charter_claim(
     stays outside normal ride rows.
     """
 
-    if amount <= 0:
-        raise ValueError("charter amount must be positive")
+    if claim_amount <= 0:
+        raise ValueError("charter claim_amount must be positive")
     if payment_kind not in ("gen", "mi"):
         raise ValueError("charter payment_kind must be gen or mi")
     return Claim(
         claim_type="charter_sale",
-        amount=amount,
-        target_row_addr=str(target_row_addr),
+        claim_amount=claim_amount,
+        target_row_addr=normalize_row_addr(target_row_addr),
+        target_global_cell_id=target_global_cell_id,
         payment_kind=payment_kind,
         evidence=evidence,
     )
 
 
 def claim_total(claims: tuple[Claim, ...] | list[Claim], claim_type: str | None = None) -> int:
-    return sum(claim.amount for claim in claims if claim_type is None or claim.claim_type == claim_type)
+    return sum(claim.claim_amount for claim in claims if claim_type is None or claim.claim_type == claim_type)

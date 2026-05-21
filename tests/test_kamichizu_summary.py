@@ -1,8 +1,12 @@
 import unittest
 
-from kamichizu.models import AdoptedReport, AdoptedRow
+from kamichizu.models import AdoptedReport, AdoptedRow, EvidenceLink
 from kamichizu.specials import make_charter_claim, make_public_discount_claim
 from kamichizu.view import build_summary_rows
+
+
+def evidence(row_addr: str, field: str = "AG") -> tuple[EvidenceLink, ...]:
+    return (EvidenceLink(f"P01:{row_addr}_{field}", f"P01:{row_addr}_{field}", "claim_from_paper"),)
 
 
 class KamichizuSummaryTest(unittest.TestCase):
@@ -13,9 +17,27 @@ class KamichizuSummaryTest(unittest.TestCase):
                 AdoptedRow(row_addr="02", values={"mi": 2430}),
             ),
             claims=(
-                make_charter_claim(target_row_addr="05", amount=16400, payment_kind="gen"),
-                make_charter_claim(target_row_addr="06", amount=10000, payment_kind="mi"),
-                make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=380),
+                make_charter_claim(
+                    target_row_addr="05",
+                    target_global_cell_id="P01:05_AG",
+                    claim_amount=16400,
+                    payment_kind="gen",
+                    evidence=evidence("05"),
+                ),
+                make_charter_claim(
+                    target_row_addr="06",
+                    target_global_cell_id="P01:06_AG",
+                    claim_amount=10000,
+                    payment_kind="mi",
+                    evidence=evidence("06"),
+                ),
+                make_public_discount_claim(
+                    target_row_addr="14",
+                    target_global_cell_id="P01:14_AF",
+                    meter_amount=3620,
+                    expected_claim_amount=380,
+                    evidence=evidence("14", "AF"),
+                ),
             ),
         )
 

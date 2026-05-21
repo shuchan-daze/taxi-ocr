@@ -106,12 +106,17 @@ AA=time, AB=amount
 障割が紙日報にある場合:
 - claims に type=public_discount_claim を追加
 - target_row_addr は対象乗車の紙行
+- target_global_cell_id は対象乗車の金額セルのグローバル住所。例: P01:03_AF
 - meter_amount は対象乗車のメーター明細金額
 - expected_claim_amount は紙日報の障割額
+- evidence は必須。paper_cell / evidence_cell / reason を持つ根拠を入れる
 
 貸切が紙日報にある場合:
 - claims に type=charter_sale を追加
+- claim_amount は貸切金額
+- target_global_cell_id は貸切を示す紙セルのグローバル住所。例: P01:06_AG
 - payment_kind は紙の欄位置に従い gen または mi
+- evidence は必須。paper_cell / evidence_cell / reason を持つ根拠を入れる
 
 判断できない値は作らず、読めたセルだけ cells に入れてください。"""
 

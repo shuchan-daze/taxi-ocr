@@ -64,14 +64,30 @@ def build_demo_case() -> dict[str, object]:
             {
                 "type": "public_discount_claim",
                 "target_row_addr": "01",
+                "target_global_cell_id": "P01:01_AF",
                 "meter_amount": 2430,
                 "expected_claim_amount": 270,
+                "evidence": [
+                    {
+                        "paper_cell": "P01:01_AF",
+                        "evidence_cell": "E01:01_AB",
+                        "reason": "discount_from_target_meter_amount",
+                    }
+                ],
             },
             {
                 "type": "charter_sale",
                 "target_row_addr": "02",
-                "amount": 16400,
+                "target_global_cell_id": "P01:02_AG",
+                "claim_amount": 16400,
                 "payment_kind": "gen",
+                "evidence": [
+                    {
+                        "paper_cell": "P01:02_AG",
+                        "evidence_cell": "P01:02_AG",
+                        "reason": "charter_from_paper_memo",
+                    }
+                ],
             },
         ],
         "view": {

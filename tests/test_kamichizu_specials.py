@@ -6,6 +6,14 @@ from kamichizu.view import build_claim_rows, build_human_rows
 from kamichizu.models import EvidenceLink, ViewMap
 
 
+def discount_evidence(row_addr: str = "14") -> tuple[EvidenceLink, ...]:
+    return (EvidenceLink(f"P01:{row_addr}_AF", "E01:10_AB", "discount_from_target_meter_amount"),)
+
+
+def charter_evidence(row_addr: str = "05") -> tuple[EvidenceLink, ...]:
+    return (EvidenceLink(f"P01:{row_addr}_AG", f"P01:{row_addr}_AG", "charter_from_paper_memo"),)
+
+
 class KamichizuSpecialsTest(unittest.TestCase):
     def test_public_discount_without_pickup_fee(self):
         candidates = public_discount_candidates(2430)
@@ -24,16 +32,50 @@ class KamichizuSpecialsTest(unittest.TestCase):
 
     def test_public_discount_claim_is_not_mixed_into_mi(self):
         row = AdoptedRow(row_addr="14", values={"mi": 3620})
-        claim = make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=380)
+        claim = make_public_discount_claim(
+            target_row_addr="14",
+            target_global_cell_id="P01:14_AF",
+            meter_amount=3620,
+            expected_claim_amount=380,
+            evidence=discount_evidence(),
+        )
         self.assertIsNotNone(claim)
         report = AdoptedReport(rows=(row,), claims=(claim,))
 
         self.assertEqual(report.rows[0].values["mi"], 3620)
         self.assertEqual(claim_total(report.claims), 380)
+        self.assertEqual(claim.claim_amount, 380)
+        self.assertEqual(claim.target_global_cell_id, "P01:14_AF")
+
+    def test_claim_rejects_missing_evidence(self):
+        with self.assertRaises(ValueError):
+            make_charter_claim(
+                target_row_addr="05",
+                target_global_cell_id="P01:05_AG",
+                claim_amount=16400,
+                payment_kind="gen",
+                evidence=(),
+            )
+
+    def test_claim_rejects_non_global_target_address(self):
+        with self.assertRaises(ValueError):
+            make_charter_claim(
+                target_row_addr="05",
+                target_global_cell_id="05_AG",
+                claim_amount=16400,
+                payment_kind="gen",
+                evidence=charter_evidence(),
+            )
 
     def test_human_rows_show_body_sales_without_claims(self):
         row = AdoptedRow(row_addr="14", values={"time": "15:37", "mi": 3620})
-        claim = make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=380)
+        claim = make_public_discount_claim(
+            target_row_addr="14",
+            target_global_cell_id="P01:14_AF",
+            meter_amount=3620,
+            expected_claim_amount=380,
+            evidence=discount_evidence(),
+        )
         report = AdoptedReport(rows=(row,), claims=(claim,))
         view = ViewMap(view_id="taxi", columns=(("time", "時刻"), ("mi", "未収"), ("status", "状態")))
 
@@ -44,6 +86,7 @@ class KamichizuSpecialsTest(unittest.TestCase):
         evidence = (EvidenceLink("P01:14_AF", "E01:10_AC", "discount_from_meter_amount"),)
         claim = make_public_discount_claim(
             target_row_addr="14",
+            target_global_cell_id="P01:14_AF",
             meter_amount=3620,
             expected_claim_amount=380,
             evidence=evidence,
@@ -65,7 +108,13 @@ class KamichizuSpecialsTest(unittest.TestCase):
 
     def test_charter_claim_is_special_sale_not_ride_row(self):
         row = AdoptedRow(row_addr="05", values={"time": "13:40", "gen": None, "mi": None})
-        charter = make_charter_claim(target_row_addr="05", amount=16400, payment_kind="gen")
+        charter = make_charter_claim(
+            target_row_addr="05",
+            target_global_cell_id="P01:05_AG",
+            claim_amount=16400,
+            payment_kind="gen",
+            evidence=charter_evidence(),
+        )
         report = AdoptedReport(rows=(row,), claims=(charter,))
 
         self.assertIsNone(report.rows[0].values["gen"])
@@ -73,15 +122,39 @@ class KamichizuSpecialsTest(unittest.TestCase):
         self.assertEqual(claim_total(report.claims, "charter_sale"), 16400)
 
     def test_charter_payment_kind_distinguishes_gen_and_mi(self):
-        gen_charter = make_charter_claim(target_row_addr="05", amount=16400, payment_kind="gen")
-        mi_charter = make_charter_claim(target_row_addr="06", amount=10000, payment_kind="mi")
+        gen_charter = make_charter_claim(
+            target_row_addr="05",
+            target_global_cell_id="P01:05_AG",
+            claim_amount=16400,
+            payment_kind="gen",
+            evidence=charter_evidence("05"),
+        )
+        mi_charter = make_charter_claim(
+            target_row_addr="06",
+            target_global_cell_id="P01:06_AG",
+            claim_amount=10000,
+            payment_kind="mi",
+            evidence=charter_evidence("06"),
+        )
 
         self.assertEqual(gen_charter.payment_kind, "gen")
         self.assertEqual(mi_charter.payment_kind, "mi")
 
     def test_build_claim_rows_shows_charter_separately_from_discount(self):
-        discount = make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=380)
-        charter = make_charter_claim(target_row_addr="05", amount=16400, payment_kind="gen")
+        discount = make_public_discount_claim(
+            target_row_addr="14",
+            target_global_cell_id="P01:14_AF",
+            meter_amount=3620,
+            expected_claim_amount=380,
+            evidence=discount_evidence(),
+        )
+        charter = make_charter_claim(
+            target_row_addr="05",
+            target_global_cell_id="P01:05_AG",
+            claim_amount=16400,
+            payment_kind="gen",
+            evidence=charter_evidence(),
+        )
         report = AdoptedReport(rows=(), claims=(discount, charter))
 
         rows = build_claim_rows(report)
@@ -96,7 +169,15 @@ class KamichizuSpecialsTest(unittest.TestCase):
         self.assertNotIn("rule_id", str(rows))
 
     def test_ambiguous_or_unmatched_discount_claim_is_not_created(self):
-        self.assertIsNone(make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=300))
+        self.assertIsNone(
+            make_public_discount_claim(
+                target_row_addr="14",
+                target_global_cell_id="P01:14_AF",
+                meter_amount=3620,
+                expected_claim_amount=300,
+                evidence=discount_evidence(),
+            )
+        )
 
 
 if __name__ == "__main__":

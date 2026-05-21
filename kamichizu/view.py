@@ -46,7 +46,7 @@ def build_claim_rows(report: AdoptedReport) -> list[dict[str, Any]]:
                 "種別": labels.get(claim.claim_type, claim.claim_type),
                 "対象行": claim.target_row_addr,
                 "区分": payment_labels.get(claim.payment_kind, ""),
-                "金額": claim.amount,
+                "金額": claim.claim_amount,
                 "根拠": " / ".join(f"{link.paper_cell} ← {link.evidence_cell}" for link in claim.evidence),
             }
         )

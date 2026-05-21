@@ -1,6 +1,6 @@
 import unittest
 
-from kamichizu.models import AdoptedReport, AdoptedRow, ViewMap
+from kamichizu.models import AdoptedReport, AdoptedRow, EvidenceLink, ViewMap
 from kamichizu.specials import make_charter_claim, make_public_discount_claim
 from kamichizu.view import build_human_report
 
@@ -10,8 +10,20 @@ class KamichizuHumanReportTest(unittest.TestCase):
         report = AdoptedReport(
             rows=(AdoptedRow(row_addr="01", values={"time": "10:44", "mi": 2430}),),
             claims=(
-                make_public_discount_claim(target_row_addr="01", meter_amount=2430, expected_claim_amount=270),
-                make_charter_claim(target_row_addr="05", amount=16400, payment_kind="gen"),
+                make_public_discount_claim(
+                    target_row_addr="01",
+                    target_global_cell_id="P01:01_AF",
+                    meter_amount=2430,
+                    expected_claim_amount=270,
+                    evidence=(EvidenceLink("P01:01_AF", "E01:01_AB", "discount_from_target_meter_amount"),),
+                ),
+                make_charter_claim(
+                    target_row_addr="05",
+                    target_global_cell_id="P01:05_AG",
+                    claim_amount=16400,
+                    payment_kind="gen",
+                    evidence=(EvidenceLink("P01:05_AG", "P01:05_AG", "charter_from_paper_memo"),),
+                ),
             ),
             diagnostics=("P01:01_AF: paper amount differs",),
         )
