@@ -64,8 +64,7 @@ def build_summary_rows(report: AdoptedReport, totals: SalesTotals | None = None)
     return [
         {"項目": "現収", "金額": active_totals.gen, "内訳": f"通常 {active_totals.ride_gen} + 特例 {active_totals.claim_gen}"},
         {"項目": "未収", "金額": active_totals.mi, "内訳": f"通常 {active_totals.ride_mi} + 特例 {active_totals.claim_mi}"},
-        {"項目": "特例請求", "金額": active_totals.claim_other, "内訳": "障割請求など"},
-        {"項目": "総売上", "金額": active_totals.sou, "内訳": "現収 + 未収 + 特例請求"},
+        {"項目": "総売上", "金額": active_totals.sou, "内訳": "現収 + 未収"},
     ]
 
 

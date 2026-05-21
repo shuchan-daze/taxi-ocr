@@ -28,7 +28,7 @@ class KamichizuTotalsTest(unittest.TestCase):
         self.assertEqual(totals.sou, 29730)
         self.assertIsNone(report.rows[0].values["mi"])
 
-    def test_public_discount_claim_is_summed_as_other_not_confirmed_mi(self):
+    def test_public_discount_claim_is_summed_as_mi_without_mutating_ride_row(self):
         row = AdoptedRow(row_addr="14", values={"mi": 3620})
         discount = make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=380)
         report = AdoptedReport(rows=(row,), claims=(discount,))
@@ -36,10 +36,10 @@ class KamichizuTotalsTest(unittest.TestCase):
         totals = compute_sales_totals(report)
 
         self.assertEqual(totals.ride_mi, 3620)
-        self.assertEqual(totals.claim_mi, 0)
-        self.assertEqual(totals.claim_other, 380)
-        self.assertEqual(totals.mi, 3620)
+        self.assertEqual(totals.claim_mi, 380)
+        self.assertEqual(totals.mi, 4000)
         self.assertEqual(totals.sou, 4000)
+        self.assertEqual(report.rows[0].values["mi"], 3620)
 
     def test_empty_report_totals_are_zero(self):
         totals = compute_sales_totals(AdoptedReport(rows=()))
@@ -48,7 +48,6 @@ class KamichizuTotalsTest(unittest.TestCase):
         self.assertEqual(totals.ride_mi, 0)
         self.assertEqual(totals.claim_gen, 0)
         self.assertEqual(totals.claim_mi, 0)
-        self.assertEqual(totals.claim_other, 0)
         self.assertEqual(totals.sou, 0)
 
 

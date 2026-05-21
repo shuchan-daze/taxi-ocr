@@ -10,7 +10,7 @@ class KamichizuCaseTest(unittest.TestCase):
         report = build_human_report_from_case(build_demo_case())
 
         self.assertIsInstance(report, HumanReport)
-        self.assertEqual([row["項目"] for row in report.summary_rows], ["現収", "未収", "特例請求", "総売上"])
+        self.assertEqual([row["項目"] for row in report.summary_rows], ["現収", "未収", "総売上"])
         self.assertEqual(report.ride_rows[0]["未収"], 2430)
         self.assertEqual(report.claim_rows[0]["種別"], "障割請求")
         self.assertEqual(report.claim_rows[1]["種別"], "貸切")

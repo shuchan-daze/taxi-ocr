@@ -81,6 +81,7 @@ def make_public_discount_claim(
         claim_type="public_discount_claim",
         amount=candidates[0].claim_amount,
         target_row_addr=str(target_row_addr),
+        payment_kind="mi",
         evidence=evidence,
     )
 

@@ -146,8 +146,12 @@ class Claim:
     claim_type: str
     amount: int
     target_row_addr: str
-    payment_kind: str | None = None
+    payment_kind: str
     evidence: tuple[EvidenceLink, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.payment_kind not in ("gen", "mi"):
+            raise ValueError("claim payment_kind must be gen or mi")
 
 
 @dataclass(frozen=True)

@@ -22,7 +22,6 @@ class SalesTotals:
     ride_mi: int
     claim_gen: int
     claim_mi: int
-    claim_other: int
 
     @property
     def gen(self) -> int:
@@ -34,7 +33,7 @@ class SalesTotals:
 
     @property
     def sou(self) -> int:
-        return self.gen + self.mi + self.claim_other
+        return self.gen + self.mi
 
 
 def _as_int(value: object) -> int:
@@ -43,12 +42,12 @@ def _as_int(value: object) -> int:
     return int(value)
 
 
-def _claim_component(claim: Claim) -> tuple[int, int, int]:
+def _claim_component(claim: Claim) -> tuple[int, int]:
     if claim.payment_kind == "gen":
-        return claim.amount, 0, 0
+        return claim.amount, 0
     if claim.payment_kind == "mi":
-        return 0, claim.amount, 0
-    return 0, 0, claim.amount
+        return 0, claim.amount
+    raise ValueError(f"unknown payment_kind: {claim.payment_kind!r}")
 
 
 def compute_sales_totals(report: AdoptedReport) -> SalesTotals:
@@ -58,16 +57,13 @@ def compute_sales_totals(report: AdoptedReport) -> SalesTotals:
     ride_mi = sum(_as_int(row.values.get("mi")) for row in report.rows)
     claim_gen = 0
     claim_mi = 0
-    claim_other = 0
     for claim in report.claims:
-        gen, mi, other = _claim_component(claim)
+        gen, mi = _claim_component(claim)
         claim_gen += gen
         claim_mi += mi
-        claim_other += other
     return SalesTotals(
         ride_gen=ride_gen,
         ride_mi=ride_mi,
         claim_gen=claim_gen,
         claim_mi=claim_mi,
-        claim_other=claim_other,
     )

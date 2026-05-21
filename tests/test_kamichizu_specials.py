@@ -56,7 +56,7 @@ class KamichizuSpecialsTest(unittest.TestCase):
                 {
                     "種別": "障割請求",
                     "対象行": "14",
-                    "区分": "",
+                    "区分": "未収",
                     "金額": 380,
                     "根拠": "P01:14_AF ← E01:10_AC",
                 }
@@ -87,6 +87,7 @@ class KamichizuSpecialsTest(unittest.TestCase):
         rows = build_claim_rows(report)
 
         self.assertEqual(rows[0]["種別"], "障割請求")
+        self.assertEqual(rows[0]["区分"], "未収")
         self.assertEqual(rows[1]["種別"], "貸切")
         self.assertEqual(rows[1]["区分"], "現収")
         self.assertEqual(rows[1]["金額"], 16400)

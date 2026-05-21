@@ -20,7 +20,7 @@ class MinimalAppTest(unittest.TestCase):
         report = build_demo_human_report()
 
         labels = [row["項目"] for row in report.summary_rows]
-        self.assertEqual(labels, ["現収", "未収", "特例請求", "総売上"])
+        self.assertEqual(labels, ["現収", "未収", "総売上"])
 
     def test_demo_does_not_hand_build_adopted_report(self):
         demo_source = Path("kamichizu/demo.py").read_text(encoding="utf-8")
