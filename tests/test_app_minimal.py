@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import app
 from kamichizu.models import HumanReport
@@ -41,6 +42,35 @@ class MinimalAppTest(unittest.TestCase):
         self.assertNotIn("AdoptedReport", demo_source)
         self.assertNotIn("AdoptedRow", demo_source)
         self.assertIn("build_human_report_from_case", demo_source)
+
+    def test_photo_ocr_progress_reports_main_steps_without_calling_api(self):
+        class Uploaded:
+            name = "image.jpg"
+            type = "image/jpeg"
+
+            def getvalue(self):
+                return b"image"
+
+        expected = build_demo_human_report()
+        progress = []
+
+        with (
+            patch.object(app, "_secret", side_effect=lambda name: "test-key" if name == "OPENAI_API_KEY" else None),
+            patch.object(app, "build_case_from_images", return_value={"case": "data"}) as build_case,
+            patch.object(app, "build_human_report_from_case", return_value=expected),
+        ):
+            report = app.build_human_report_from_uploaded_images(
+                [Uploaded(), Uploaded()],
+                progress=lambda percent, message: progress.append((percent, message)),
+            )
+
+        self.assertIs(report, expected)
+        self.assertEqual([item[0] for item in progress], [10, 35, 80, 100])
+        self.assertEqual(build_case.call_args.kwargs["api_key"], "test-key")
+
+    def test_photo_ocr_requires_two_images_before_api(self):
+        with self.assertRaisesRegex(RuntimeError, "2枚以上"):
+            app.build_human_report_from_uploaded_images([])
 
 
 if __name__ == "__main__":

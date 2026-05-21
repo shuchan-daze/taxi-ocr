@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 
 from kamichizu.models import HumanReport
 from kamichizu.demo import build_demo_human_report
@@ -20,7 +21,7 @@ except ModuleNotFoundError:  # Keep py_compile usable without Streamlit.
     st = None
 
 APP_TITLE = "神地図エンジン"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 
 
 def build_report_table_rows(human_report: HumanReport) -> list[dict[str, object]]:
@@ -115,13 +116,29 @@ def _ocr_images_from_uploads(uploaded_files) -> list[OcrImage]:
     return images
 
 
-def build_human_report_from_uploaded_images(uploaded_files) -> HumanReport:
+def build_human_report_from_uploaded_images(
+    uploaded_files,
+    progress: Callable[[int, str], None] | None = None,
+) -> HumanReport:
+    def update(percent: int, message: str) -> None:
+        if progress is not None:
+            progress(percent, message)
+
+    update(10, "写真を確認しています")
+    images = _ocr_images_from_uploads(uploaded_files)
+    if len(images) < 2:
+        raise RuntimeError("紙日報とメーター明細の写真を2枚以上選択してください。順番は自動判別します。")
+
     api_key = _secret("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY が未設定です。Streamlit Secrets または環境変数に設定してください。")
     model = _secret("OPENAI_OCR_MODEL") or DEFAULT_OPENAI_OCR_MODEL
-    case_data = build_case_from_images(_ocr_images_from_uploads(uploaded_files), api_key=api_key, model=model)
-    return build_human_report_from_case(case_data)
+    update(35, "OCRに送信しています")
+    case_data = build_case_from_images(images, api_key=api_key, model=model)
+    update(80, "神地図入力を検査しています")
+    human_report = build_human_report_from_case(case_data)
+    update(100, "日報を作成しました")
+    return human_report
 
 
 def main() -> None:
@@ -133,17 +150,26 @@ def main() -> None:
     st.caption(f"v{APP_VERSION}")
 
     photo_files = st.file_uploader(
-        "日報とメーター明細の写真を選択",
+        "写真を2枚以上まとめて選択（紙日報・メーター明細は自動判別）",
         type=["png", "jpg", "jpeg", "webp"],
         accept_multiple_files=True,
     )
-    if st.button("写真から日報を作成", type="primary"):
-        with st.spinner("写真を読み取っています"):
-            try:
-                human_report = build_human_report_from_uploaded_images(photo_files)
-                st.session_state["human_report"] = human_report
-            except Exception as exc:
-                st.error(str(exc))
+    run_col, state_col = st.columns([2, 1])
+    with run_col:
+        run_photo_ocr = st.button("写真から日報を作成", type="primary")
+    progress_bar = state_col.progress(0)
+    progress_text = state_col.empty()
+    if run_photo_ocr:
+        try:
+            human_report = build_human_report_from_uploaded_images(
+                photo_files,
+                progress=lambda percent, message: (progress_bar.progress(percent), progress_text.caption(message)),
+            )
+            st.session_state["human_report"] = human_report
+        except Exception as exc:
+            progress_bar.progress(0)
+            progress_text.caption("作成できませんでした")
+            st.error(str(exc))
 
     uploaded_file = st.file_uploader("神地図ケースJSON", type=["json"])
     human_report = st.session_state.get("human_report")
