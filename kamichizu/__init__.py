@@ -17,7 +17,7 @@ from .models import (
 )
 from .reconcile import ReconciliationRule, reconcile_sources
 from .semantic import SemanticRow, build_semantic_rows
-from .view import build_human_rows
+from .view import build_claim_rows, build_human_rows
 
 __all__ = [
     "AdoptedReport",
@@ -32,6 +32,7 @@ __all__ = [
     "SourceMeta",
     "ViewMap",
     "build_human_rows",
+    "build_claim_rows",
     "build_semantic_rows",
     "reconcile_sources",
 ]

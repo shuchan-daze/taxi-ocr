@@ -2,8 +2,8 @@ import unittest
 
 from kamichizu.models import AdoptedReport, AdoptedRow
 from kamichizu.specials import claim_total, make_public_discount_claim, public_discount_candidates
-from kamichizu.view import build_human_rows
-from kamichizu.models import ViewMap
+from kamichizu.view import build_claim_rows, build_human_rows
+from kamichizu.models import EvidenceLink, ViewMap
 
 
 class KamichizuSpecialsTest(unittest.TestCase):
@@ -39,6 +39,28 @@ class KamichizuSpecialsTest(unittest.TestCase):
 
         self.assertEqual(build_human_rows(report, view), [{"時刻": "15:37", "未収": 3620, "状態": ""}])
         self.assertEqual(claim_total(report.claims), 380)
+
+    def test_build_claim_rows_shows_claims_separately_for_humans(self):
+        evidence = (EvidenceLink("P01:14_AF", "E01:10_AC", "discount_from_meter_amount"),)
+        claim = make_public_discount_claim(
+            target_row_addr="14",
+            meter_amount=3620,
+            expected_claim_amount=380,
+            evidence=evidence,
+        )
+        report = AdoptedReport(rows=(), claims=(claim,))
+
+        self.assertEqual(
+            build_claim_rows(report),
+            [
+                {
+                    "種別": "障割請求",
+                    "対象行": "14",
+                    "金額": 380,
+                    "根拠": "P01:14_AF ← E01:10_AC",
+                }
+            ],
+        )
 
     def test_ambiguous_or_unmatched_discount_claim_is_not_created(self):
         self.assertIsNone(make_public_discount_claim(target_row_addr="14", meter_amount=3620, expected_claim_amount=300))

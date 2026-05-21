@@ -20,3 +20,27 @@ def build_human_rows(report: AdoptedReport, view_map: ViewMap) -> list[dict[str,
                 item[label] = row.values.get(field_name)
         output.append(item)
     return output
+
+
+def build_claim_rows(report: AdoptedReport) -> list[dict[str, Any]]:
+    """Build human-facing rows for special claims.
+
+    Claims are shown separately from ride body sales.  This keeps disability
+    discount claims and future special charges visible without mixing them into
+    gen/mi body columns.
+    """
+
+    rows: list[dict[str, Any]] = []
+    labels = {
+        "public_discount_claim": "障割請求",
+    }
+    for claim in report.claims:
+        rows.append(
+            {
+                "種別": labels.get(claim.claim_type, claim.claim_type),
+                "対象行": claim.target_row_addr,
+                "金額": claim.amount,
+                "根拠": " / ".join(f"{link.paper_cell} ← {link.evidence_cell}" for link in claim.evidence),
+            }
+        )
+    return rows
