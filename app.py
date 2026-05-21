@@ -7,10 +7,12 @@ only renders HumanReport fields.
 from __future__ import annotations
 
 import json
+import os
 
 from kamichizu.models import HumanReport
 from kamichizu.demo import build_demo_human_report
 from kamichizu.case import build_human_report_from_case
+from kamichizu.openai_ocr import DEFAULT_OPENAI_OCR_MODEL, OcrImage, build_case_from_images
 
 try:
     import streamlit as st
@@ -18,7 +20,7 @@ except ModuleNotFoundError:  # Keep py_compile usable without Streamlit.
     st = None
 
 APP_TITLE = "神地図エンジン"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 
 def render_human_report(human_report: HumanReport) -> None:
@@ -49,6 +51,39 @@ def build_human_report_from_uploaded_json(uploaded_file) -> HumanReport | None:
     return build_human_report_from_case(case_data)
 
 
+def _secret(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value:
+        return value
+    try:
+        secret_value = st.secrets.get(name)
+    except Exception:
+        return None
+    return str(secret_value) if secret_value else None
+
+
+def _ocr_images_from_uploads(uploaded_files) -> list[OcrImage]:
+    images: list[OcrImage] = []
+    for uploaded_file in uploaded_files or []:
+        images.append(
+            OcrImage(
+                name=uploaded_file.name,
+                mime_type=uploaded_file.type or "image/jpeg",
+                data=uploaded_file.getvalue(),
+            )
+        )
+    return images
+
+
+def build_human_report_from_uploaded_images(uploaded_files) -> HumanReport:
+    api_key = _secret("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY が未設定です。Streamlit Secrets または環境変数に設定してください。")
+    model = _secret("OPENAI_OCR_MODEL") or DEFAULT_OPENAI_OCR_MODEL
+    case_data = build_case_from_images(_ocr_images_from_uploads(uploaded_files), api_key=api_key, model=model)
+    return build_human_report_from_case(case_data)
+
+
 def main() -> None:
     if st is None:
         raise RuntimeError("Streamlit is required to run app.py")
@@ -57,11 +92,25 @@ def main() -> None:
     st.title(APP_TITLE)
     st.caption(f"v{APP_VERSION}")
 
+    photo_files = st.file_uploader(
+        "日報とメーター明細の写真を選択",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+    )
+    if st.button("写真から日報を作成", type="primary"):
+        with st.spinner("写真を読み取っています"):
+            try:
+                human_report = build_human_report_from_uploaded_images(photo_files)
+                st.session_state["human_report"] = human_report
+            except Exception as exc:
+                st.error(str(exc))
+
     uploaded_file = st.file_uploader("神地図ケースJSON", type=["json"])
-    human_report = None
+    human_report = st.session_state.get("human_report")
     if uploaded_file is not None:
         try:
             human_report = build_human_report_from_uploaded_json(uploaded_file)
+            st.session_state["human_report"] = human_report
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             st.error(f"神地図ケースJSONを読めませんでした: {exc}")
 
