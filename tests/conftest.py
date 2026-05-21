@@ -1,6 +1,6 @@
 """pytest 共通フィクスチャ & app.py を import 可能にするための mock 設定。
 
-app.py は import 時に streamlit / anthropic / google.cloud.vision に依存している。
+app.py は import 時に streamlit などの UI 依存を持つ。
 テストではそれらを直接呼ばないので、import 時にだけ mock を当てて pure logic を
 取り出せるようにする。
 """
@@ -34,14 +34,9 @@ def _install_mocks():
     mock_st.secrets = {}
     sys.modules.setdefault('streamlit', mock_st)
     sys.modules.setdefault('streamlit.components', MagicMock())
-    # anthropic
+    # Anthropic SDK is imported lazily in OCR code, but keeping a mock here prevents
+    # optional dependency issues in focused unit tests.
     sys.modules.setdefault('anthropic', MagicMock())
-    # google
-    sys.modules.setdefault('google', MagicMock())
-    sys.modules.setdefault('google.cloud', MagicMock())
-    sys.modules.setdefault('google.cloud.vision', MagicMock())
-    sys.modules.setdefault('google.oauth2', MagicMock())
-    sys.modules.setdefault('google.oauth2.service_account', MagicMock())
     # PIL extras
     sys.modules.setdefault('pillow_heif', MagicMock())
 
