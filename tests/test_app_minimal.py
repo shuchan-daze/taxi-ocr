@@ -20,7 +20,7 @@ class MinimalAppTest(unittest.TestCase):
         report = build_demo_human_report()
 
         labels = [row["項目"] for row in report.summary_rows]
-        self.assertEqual(labels, ["現収", "未収", "総売上"])
+        self.assertEqual(labels, ["現収", "未収", "総売上", "消費税", "税抜運収"])
 
     def test_report_table_places_claims_in_payment_columns(self):
         report = build_demo_human_report()

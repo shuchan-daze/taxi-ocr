@@ -38,6 +38,8 @@ class KamichizuTotalsTest(unittest.TestCase):
         self.assertEqual(totals.gen, 17300)
         self.assertEqual(totals.mi, 12430)
         self.assertEqual(totals.sou, 29730)
+        self.assertEqual(totals.net, 27030)
+        self.assertEqual(totals.tax, 2700)
         self.assertIsNone(report.rows[0].values["mi"])
 
     def test_public_discount_claim_is_summed_as_mi_without_mutating_ride_row(self):
@@ -57,6 +59,8 @@ class KamichizuTotalsTest(unittest.TestCase):
         self.assertEqual(totals.claim_mi, 380)
         self.assertEqual(totals.mi, 4000)
         self.assertEqual(totals.sou, 4000)
+        self.assertEqual(totals.net, 3640)
+        self.assertEqual(totals.tax, 360)
         self.assertEqual(report.rows[0].values["mi"], 3620)
 
     def test_empty_report_totals_are_zero(self):
@@ -67,6 +71,8 @@ class KamichizuTotalsTest(unittest.TestCase):
         self.assertEqual(totals.claim_gen, 0)
         self.assertEqual(totals.claim_mi, 0)
         self.assertEqual(totals.sou, 0)
+        self.assertEqual(totals.net, 0)
+        self.assertEqual(totals.tax, 0)
 
 
 if __name__ == "__main__":

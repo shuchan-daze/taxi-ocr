@@ -22,6 +22,9 @@ class SalesTotals:
     ride_mi: int
     claim_gen: int
     claim_mi: int
+    tax_rate_numerator: int = 1
+    tax_rate_denominator: int = 10
+    rounding_unit: int = 10
 
     @property
     def gen(self) -> int:
@@ -34,6 +37,19 @@ class SalesTotals:
     @property
     def sou(self) -> int:
         return self.gen + self.mi
+
+    @property
+    def net(self) -> int:
+        """Tax-exclusive sales rounded to the configured unit."""
+
+        gross_denominator = self.tax_rate_denominator + self.tax_rate_numerator
+        denominator = gross_denominator * self.rounding_unit
+        numerator = self.sou * self.tax_rate_denominator
+        return ((numerator + denominator // 2) // denominator) * self.rounding_unit
+
+    @property
+    def tax(self) -> int:
+        return self.sou - self.net
 
 
 def _as_int(value: object) -> int:

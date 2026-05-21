@@ -31,7 +31,7 @@ class KamichizuHumanReportTest(unittest.TestCase):
 
         human_report = build_human_report(report, view_map)
 
-        self.assertEqual(human_report.summary_rows[-1]["項目"], "総売上")
+        self.assertEqual([row["項目"] for row in human_report.summary_rows], ["現収", "未収", "総売上", "消費税", "税抜運収"])
         self.assertEqual(human_report.ride_rows, ({"時刻": "10:44", "未収": 2430, "状態": ""},))
         self.assertEqual(human_report.claim_rows[0]["種別"], "障割請求")
         self.assertEqual(human_report.claim_rows[1]["種別"], "貸切")

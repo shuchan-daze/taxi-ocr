@@ -46,11 +46,13 @@ class KamichizuSummaryTest(unittest.TestCase):
         self.assertEqual(summary[0], {"項目": "現収", "金額": 17300, "内訳": "通常 900 + 特例 16400"})
         self.assertEqual(summary[1], {"項目": "未収", "金額": 12810, "内訳": "通常 2430 + 特例 10380"})
         self.assertEqual(summary[2], {"項目": "総売上", "金額": 30110, "内訳": "現収 + 未収"})
+        self.assertEqual(summary[3], {"項目": "消費税", "金額": 2740, "内訳": "総売上に含まれる税額"})
+        self.assertEqual(summary[4], {"項目": "税抜運収", "金額": 27370, "内訳": "総売上 - 消費税"})
 
     def test_summary_empty_report_is_zero(self):
         summary = build_summary_rows(AdoptedReport(rows=()))
 
-        self.assertEqual([row["金額"] for row in summary], [0, 0, 0])
+        self.assertEqual([row["金額"] for row in summary], [0, 0, 0, 0, 0])
 
 
 if __name__ == "__main__":

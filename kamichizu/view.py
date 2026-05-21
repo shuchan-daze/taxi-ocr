@@ -65,6 +65,8 @@ def build_summary_rows(report: AdoptedReport, totals: SalesTotals | None = None)
         {"項目": "現収", "金額": active_totals.gen, "内訳": f"通常 {active_totals.ride_gen} + 特例 {active_totals.claim_gen}"},
         {"項目": "未収", "金額": active_totals.mi, "内訳": f"通常 {active_totals.ride_mi} + 特例 {active_totals.claim_mi}"},
         {"項目": "総売上", "金額": active_totals.sou, "内訳": "現収 + 未収"},
+        {"項目": "消費税", "金額": active_totals.tax, "内訳": "総売上に含まれる税額"},
+        {"項目": "税抜運収", "金額": active_totals.net, "内訳": "総売上 - 消費税"},
     ]
 
 
