@@ -135,6 +135,103 @@ class KamichizuDesignTest(unittest.TestCase):
         self.assertEqual(row.values["memo"], "Uber")
         self.assertEqual(row.evidence[0].paper_cell, "P01:03_AG")
 
+    def test_cash_amount_without_mi_or_memo_adopts_as_cash(self):
+        paper = make_source(
+            "P01",
+            "daily_report",
+            "daily_a",
+            {
+                "03_AD": "10:44",
+                "03_AE": 1800,
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:45", "05_AC": 1800})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertEqual(row.values["gen"], 1800)
+        self.assertIsNone(row.values.get("mi"))
+        self.assertFalse(row.alerts)
+
+    def test_dash_in_cash_column_does_not_force_cash_when_mi_has_amount(self):
+        paper = SourceMap(
+            meta=SourceMeta(
+                source_id="P01",
+                source_role="primary",
+                source_type="daily_report",
+                label="daily_report",
+                format_id="daily_a",
+            ),
+            cells={
+                "03_AD": Cell(local_cell_id="03_AD", raw="10:44", value="10:44"),
+                "03_AE": Cell(local_cell_id="03_AE", raw="ー", value=None),
+                "03_AF": Cell(local_cell_id="03_AF", raw="2400", value=2400),
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:46", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertIsNone(row.values["gen"])
+        self.assertEqual(row.values["mi"], 2430)
+        self.assertEqual(row.evidence[0].paper_cell, "P01:03_AF")
+
+    def test_voided_cash_cell_is_not_used_as_cash_value(self):
+        paper = SourceMap(
+            meta=SourceMeta(
+                source_id="P01",
+                source_role="primary",
+                source_type="daily_report",
+                label="daily_report",
+                format_id="daily_a",
+            ),
+            cells={
+                "03_AD": Cell(local_cell_id="03_AD", raw="10:44", value="10:44"),
+                "03_AE": Cell(local_cell_id="03_AE", raw="2400", value=2400, marks=("strikethrough",)),
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:46", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertIsNone(row.values["gen"])
+        self.assertFalse(row.evidence)
+
+    def test_voided_cash_cell_can_still_use_memo_as_mi_hint(self):
+        paper = SourceMap(
+            meta=SourceMeta(
+                source_id="P01",
+                source_role="primary",
+                source_type="daily_report",
+                label="daily_report",
+                format_id="daily_a",
+            ),
+            cells={
+                "03_AD": Cell(local_cell_id="03_AD", raw="10:44", value="10:44"),
+                "03_AE": Cell(local_cell_id="03_AE", raw="2400", value=2400, state="voided"),
+                "03_AG": Cell(local_cell_id="03_AG", raw="Uber", value="Uber"),
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:49", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertIsNone(row.values["gen"])
+        self.assertEqual(row.values["mi"], 2430)
+        self.assertEqual(row.evidence[0].paper_cell, "P01:03_AG")
+
     def test_human_view_columns_are_view_map_not_engine_fixed(self):
         paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AE": 1800})
         paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen"})

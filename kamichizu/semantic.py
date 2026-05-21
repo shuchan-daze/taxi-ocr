@@ -15,6 +15,8 @@ class SemanticValue:
     raw: str
     global_cell_id: str
     local_cell_id: str
+    state: str = "observed"
+    marks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -47,5 +49,7 @@ def build_semantic_rows(source_map: SourceMap, format_map: FormatMap) -> list[Se
             raw=cell.raw,
             global_cell_id=source_map.global_cell_id(local_cell_id),
             local_cell_id=local_cell_id,
+            state=cell.state,
+            marks=cell.marks,
         )
     return [rows[key] for key in sorted(rows)]

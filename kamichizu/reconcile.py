@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Iterable
 
 from .models import AdoptedReport, AdoptedRow, EvidenceLink, FormatMap, SourceMap
+from .observations import has_effective_observation, has_effective_value, is_voided_observation
 from .semantic import SemanticRow, build_semantic_rows
 
 
@@ -50,13 +51,21 @@ def _time_diff_minutes(left: Any, right: Any) -> int | None:
 
 
 def _has_value(value: Any) -> bool:
-    return value not in (None, "")
+    return has_effective_value(value)
 
 
 def _has_observation(row: SemanticRow, field_name: str) -> bool:
-    if field_name not in row.fields:
+    item = row.fields.get(field_name)
+    if item is None:
         return False
-    return _has_value(row.value(field_name)) or bool(row.raw(field_name).strip())
+    return has_effective_observation(item.value, item.raw, item.state, item.marks)
+
+
+def _effective_row_values(row: SemanticRow) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for field, item in row.fields.items():
+        values[field] = None if is_voided_observation(item.state, item.marks) else item.value
+    return values
 
 
 def _text_contains_any(value: Any, terms: Iterable[str]) -> bool:
@@ -119,7 +128,7 @@ def reconcile_sources(
     diagnostics: list[str] = []
 
     for paper_row in paper_rows:
-        values: dict[str, Any] = {field: item.value for field, item in paper_row.fields.items()}
+        values = _effective_row_values(paper_row)
         alerts: dict[str, str] = {}
         links: list[EvidenceLink] = []
         destination = _find_payment_destination(paper_row, active_rule)

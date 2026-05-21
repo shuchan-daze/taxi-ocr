@@ -92,10 +92,13 @@ class Cell:
     value: Any = None
     confidence: float | None = None
     state: str = "observed"
+    marks: tuple[str, ...] = ()
     bbox: tuple[float, float, float, float] | None = None
 
     def __post_init__(self) -> None:
         split_local_cell_id(self.local_cell_id)
+        normalized_marks = tuple(str(mark).strip().lower() for mark in self.marks if str(mark).strip())
+        object.__setattr__(self, "marks", normalized_marks)
 
     @property
     def row_addr(self) -> str:
