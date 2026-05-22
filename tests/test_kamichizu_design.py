@@ -43,6 +43,20 @@ class KamichizuDesignTest(unittest.TestCase):
         self.assertEqual(rows[0].value("mi"), 2400)
         self.assertEqual(rows[0].fields["mi"].global_cell_id, "P01:03_AF")
 
+    def test_semantic_rows_keep_blank_physical_addresses_for_observed_rows(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44"})
+        format_map = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
+
+        row = build_semantic_rows(paper, format_map)[0]
+
+        self.assertEqual(row.value("time"), "10:44")
+        self.assertIn("gen", row.fields)
+        self.assertIn("mi", row.fields)
+        self.assertIn("memo", row.fields)
+        self.assertEqual(row.fields["gen"].local_cell_id, "03_AE")
+        self.assertEqual(row.fields["mi"].global_cell_id, "P01:03_AF")
+        self.assertEqual(row.fields["memo"].state, "blank")
+
     def test_same_physical_cell_changes_meaning_with_format_map(self):
         source = make_source("P01", "daily_report", "daily_a", {"03_AE": 1800})
         as_gen = FormatMap(format_id="daily_a", columns={"AE": "gen"})
@@ -284,8 +298,23 @@ class KamichizuDesignTest(unittest.TestCase):
         self.assertIn("time=17:08", report.diagnostics[0])
         self.assertIn("amount=1200", report.diagnostics[0])
 
-    def test_unmatched_meter_evidence_reports_missing_payment_destination_reason(self):
+    def test_blank_payment_cells_default_to_cash_when_unique_meter_time_matches(self):
         paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AB": 2})
+        paper_format = FormatMap(format_id="daily_a", columns={"AB": "passengers", "AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:46", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertEqual(row.values["gen"], 2430)
+        self.assertIsNone(row.values["mi"])
+        self.assertEqual(row.evidence[0].paper_cell, "P01:03_AE")
+        self.assertFalse(row.alerts)
+        self.assertEqual(report.diagnostics, ())
+
+    def test_unreadable_payment_memo_does_not_default_to_cash(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AB": 2, "03_AG": "?"})
         paper_format = FormatMap(format_id="daily_a", columns={"AB": "passengers", "AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
         meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:46", "05_AC": 2430})
         meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})

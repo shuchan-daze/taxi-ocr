@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .models import FormatMap, SourceMap
+from .models import FormatMap, SourceMap, make_local_cell_id
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,12 @@ class SemanticRow:
 
 
 def build_semantic_rows(source_map: SourceMap, format_map: FormatMap) -> list[SemanticRow]:
-    """Resolve physical cells into semantic rows using only format_map."""
+    """Resolve physical cells into semantic rows using only format_map.
+
+    If any cell in a physical row is observed, the row keeps every field
+    declared by the format map.  Blank or unread cells are still real paper
+    addresses; dropping them turns the map into an observation list.
+    """
 
     rows: dict[str, SemanticRow] = {}
     for local_cell_id, cell in sorted(source_map.cells.items()):
@@ -52,4 +57,17 @@ def build_semantic_rows(source_map: SourceMap, format_map: FormatMap) -> list[Se
             state=cell.state,
             marks=cell.marks,
         )
+    for row_addr, row in rows.items():
+        for col_addr, field_name in format_map.columns.items():
+            if field_name in row.fields:
+                continue
+            local_cell_id = make_local_cell_id(row_addr, col_addr)
+            row.fields[field_name] = SemanticValue(
+                field=field_name,
+                value=None,
+                raw="",
+                global_cell_id=source_map.global_cell_id(local_cell_id),
+                local_cell_id=local_cell_id,
+                state="blank",
+            )
     return [rows[key] for key in sorted(rows)]

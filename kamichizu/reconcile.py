@@ -62,6 +62,15 @@ def _has_observation(row: SemanticRow, field_name: str) -> bool:
     return has_effective_observation(item.value, item.raw, item.state, item.marks)
 
 
+def _has_written_observation(row: SemanticRow, field_name: str) -> bool:
+    item = row.fields.get(field_name)
+    if item is None:
+        return False
+    if is_voided_observation(item.state, item.marks):
+        return True
+    return bool(str(item.raw or "").strip()) or has_effective_value(item.value)
+
+
 def _effective_row_values(row: SemanticRow) -> dict[str, Any]:
     values: dict[str, Any] = {}
     for field, item in row.fields.items():
@@ -88,10 +97,26 @@ def _find_payment_destination(row: SemanticRow, rule: ReconciliationRule) -> str
     if _text_contains_any(hint_text, rule.mi_hint_terms):
         return "mi"
     destination = _find_destination(row, rule.destination_fields)
-    return destination
+    if destination is not None:
+        return destination
+    if (
+        "gen" in row.fields
+        and _parse_minutes(row.value(rule.paper_time_field)) is not None
+        and not _has_written_observation(row, "gen")
+        and not _has_observation(row, "mi")
+        and not _has_observation(row, rule.payment_hint_field)
+    ):
+        return "gen"
+    return None
 
 
 def _paper_link_cell(row: SemanticRow, destination: str, rule: ReconciliationRule) -> str:
+    hint_text = row.raw(rule.payment_hint_field) or row.value(rule.payment_hint_field)
+    if rule.payment_hint_field in row.fields:
+        if destination == "gen" and _text_contains_any(hint_text, rule.gen_hint_terms):
+            return row.fields[rule.payment_hint_field].global_cell_id
+        if destination == "mi" and _text_contains_any(hint_text, rule.mi_hint_terms):
+            return row.fields[rule.payment_hint_field].global_cell_id
     if destination in row.fields:
         return row.fields[destination].global_cell_id
     if rule.payment_hint_field in row.fields:
