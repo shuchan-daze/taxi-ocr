@@ -3,7 +3,18 @@ from pathlib import Path
 
 import app
 from kamichizu.demo import build_demo_human_report
+from kamichizu.openai_ocr import OcrImage
 from kamichizu.models import HumanReport
+
+
+class FakeUpload:
+    def __init__(self, name="paper.jpg", mime_type="image/jpeg", data=b"image"):
+        self.name = name
+        self.type = mime_type
+        self._data = data
+
+    def getvalue(self):
+        return self._data
 
 
 class MinimalAppTest(unittest.TestCase):
@@ -37,13 +48,19 @@ class MinimalAppTest(unittest.TestCase):
         self.assertEqual(rows[4]["現収"], "16,400")
         self.assertEqual(rows[4]["摘要"], "貸切")
 
-    def test_app_does_not_wire_photo_ocr_to_final_report(self):
+    def test_uploaded_files_become_ocr_images_without_interpretation(self):
+        images = app.build_ocr_images([FakeUpload(name="a.png", mime_type="image/png", data=b"abc")])
+
+        self.assertEqual(images, [OcrImage(name="a.png", mime_type="image/png", data=b"abc")])
+
+    def test_app_uses_ocr_observation_route_without_adopted_report_shortcut(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 
-        self.assertNotIn("build_observations_from_images", app_source)
-        self.assertNotIn("OPENAI_API_KEY", app_source)
-        self.assertNotIn("file_uploader", app_source)
-        self.assertNotIn("写真から日報を作成", app_source)
+        self.assertIn("build_observations_from_images", app_source)
+        self.assertIn("build_human_report_from_observations", app_source)
+        self.assertIn("file_uploader", app_source)
+        self.assertNotIn("AdoptedReport", app_source)
+        self.assertNotIn("AdoptedRow", app_source)
 
     def test_demo_does_not_hand_build_adopted_report(self):
         demo_source = Path("kamichizu/demo.py").read_text(encoding="utf-8")

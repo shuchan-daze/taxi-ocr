@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from kamichizu.demo import build_demo_human_report
+from kamichizu.demo import build_demo_human_report, build_demo_view
+from kamichizu.input import build_human_report_from_observations
 from kamichizu.models import HumanReport
+from kamichizu.openai_ocr import OcrImage, build_observations_from_images
 
 try:
     import streamlit as st
@@ -12,7 +15,7 @@ except Exception:  # pragma: no cover - Streamlit is optional in unit tests.
 
 
 APP_TITLE = "手書きAI日報"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 
 def _format_amount(value: object) -> str:
@@ -67,6 +70,41 @@ def build_report_table_rows(human_report: HumanReport) -> list[dict[str, Any]]:
     return table_rows
 
 
+def build_ocr_images(uploaded_files: list[Any]) -> list[OcrImage]:
+    """Convert Streamlit uploads to OCR images without interpreting them."""
+
+    images: list[OcrImage] = []
+    for uploaded_file in uploaded_files:
+        name = str(getattr(uploaded_file, "name", "image"))
+        mime_type = str(getattr(uploaded_file, "type", "") or "image/jpeg")
+        if hasattr(uploaded_file, "getvalue"):
+            data = uploaded_file.getvalue()
+        else:
+            data = uploaded_file.read()
+        images.append(OcrImage(name=name, mime_type=mime_type, data=bytes(data)))
+    return images
+
+
+def _openai_api_key() -> str | None:
+    key = os.environ.get("OPENAI_API_KEY")
+    if key:
+        return key
+    if st is None:
+        return None
+    try:
+        secret_key = st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        secret_key = None
+    return str(secret_key) if secret_key else None
+
+
+def build_human_report_from_photo_uploads(uploaded_files: list[Any], api_key: str) -> HumanReport:
+    """Build a HumanReport from uploaded photos through the formal pipeline."""
+
+    observations = build_observations_from_images(build_ocr_images(uploaded_files), api_key=api_key)
+    return build_human_report_from_observations(observations, build_demo_view())
+
+
 def render_human_report(human_report: HumanReport) -> None:
     if st is None:
         raise RuntimeError("Streamlit is required to render the app")
@@ -83,6 +121,47 @@ def render_human_report(human_report: HumanReport) -> None:
             st.warning(message)
 
 
+def render_photo_workflow() -> HumanReport | None:
+    if st is None:
+        raise RuntimeError("Streamlit is required to render the app")
+
+    st.header("写真から日報を作成")
+    uploaded_files = st.file_uploader(
+        "紙日報とメーター明細の写真をまとめて選択",
+        type=("png", "jpg", "jpeg"),
+        accept_multiple_files=True,
+    )
+    if uploaded_files:
+        st.caption(f"{len(uploaded_files)}枚の写真を読み込みます")
+        for uploaded_file in uploaded_files:
+            st.caption(f"{uploaded_file.name} を読み込み対象にしました")
+
+    if not st.button("写真から日報を作成", type="primary"):
+        return None
+
+    if not uploaded_files or len(uploaded_files) < 2:
+        st.error("紙日報とメーター明細の写真を2枚以上選択してください。")
+        return None
+
+    api_key = _openai_api_key()
+    if not api_key:
+        st.error("OPENAI_API_KEY が未設定です。Streamlit Secrets または環境変数に設定してください。")
+        return None
+
+    progress = st.progress(0)
+    try:
+        progress.progress(15)
+        with st.spinner("写真を読み取っています"):
+            human_report = build_human_report_from_photo_uploads(list(uploaded_files), api_key)
+        progress.progress(100)
+        st.success("日報を作成しました")
+        return human_report
+    except Exception as exc:
+        progress.empty()
+        st.error(f"作成できませんでした: {exc}")
+        return None
+
+
 def main() -> None:
     if st is None:
         raise RuntimeError("Streamlit is required to run this app")
@@ -91,8 +170,19 @@ def main() -> None:
     st.title(APP_TITLE)
     st.caption(f"v{APP_VERSION}")
 
-    human_report = build_demo_human_report()
-    render_human_report(human_report)
+    human_report = render_photo_workflow()
+    if human_report is not None:
+        st.session_state["human_report"] = human_report
+
+    current_report = st.session_state.get("human_report")
+    if isinstance(current_report, HumanReport):
+        render_human_report(current_report)
+    else:
+        with st.expander("開発者メニュー: 確認用デモ"):
+            st.caption("写真を選択して日報を作成してください。確認用の最小デモも表示できます。")
+            if st.button("確認用デモを表示"):
+                st.session_state["human_report"] = build_demo_human_report()
+                st.rerun()
 
 
 if __name__ == "__main__":
