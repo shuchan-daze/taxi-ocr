@@ -53,6 +53,23 @@ class MinimalAppTest(unittest.TestCase):
 
         self.assertEqual(images, [OcrImage(name="a.png", mime_type="image/png", data=b"abc")])
 
+    def test_unmatched_evidence_prevents_complete_success(self):
+        report = HumanReport(
+            summary_rows=(),
+            ride_rows=({"No": 7, "状態": "要確認"},),
+            claim_rows=(),
+            diagnostics=("unmatched evidence E01:08",),
+        )
+
+        issues = app.build_completion_issues(report)
+
+        self.assertEqual(issues, ["メーター明細に未照合が1件残っています。", "No.7 が要確認です。"])
+
+    def test_unmatched_evidence_message_is_human_readable(self):
+        message = app._human_diagnostic_message("unmatched evidence E01:08")
+
+        self.assertEqual(message, "メーター明細に未照合が残っています（E01:08）")
+
     def test_app_uses_ocr_observation_route_without_adopted_report_shortcut(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 

@@ -70,6 +70,33 @@ def build_report_table_rows(human_report: HumanReport) -> list[dict[str, Any]]:
     return table_rows
 
 
+def _human_diagnostic_message(message: str) -> str:
+    text = str(message)
+    if text.startswith("unmatched evidence "):
+        target = text.removeprefix("unmatched evidence ").strip()
+        return f"メーター明細に未照合が残っています（{target}）"
+    if "paper amount" in text and "adopted evidence amount" in text:
+        return "紙の金額とメーター明細の金額が異なるため、メーター明細の金額を採用しました。"
+    return text
+
+
+def build_completion_issues(human_report: HumanReport) -> list[str]:
+    """Return human-facing issues that prevent treating a report as complete."""
+
+    issues: list[str] = []
+    unmatched_count = sum(1 for message in human_report.diagnostics if str(message).startswith("unmatched evidence "))
+    if unmatched_count:
+        issues.append(f"メーター明細に未照合が{unmatched_count}件残っています。")
+
+    for ride in human_report.ride_rows:
+        status = str(ride.get("状態") or "").strip()
+        if status:
+            no = str(ride.get("No") or "").strip()
+            label = f"No.{no}" if no else "日報行"
+            issues.append(f"{label} が要確認です。")
+    return issues
+
+
 def build_ocr_images(uploaded_files: list[Any]) -> list[OcrImage]:
     """Convert Streamlit uploads to OCR images without interpreting them."""
 
@@ -118,7 +145,7 @@ def render_human_report(human_report: HumanReport) -> None:
     if human_report.diagnostics:
         st.subheader("確認メモ")
         for message in human_report.diagnostics:
-            st.warning(message)
+            st.warning(_human_diagnostic_message(message))
 
 
 def render_photo_workflow() -> HumanReport | None:
@@ -139,6 +166,8 @@ def render_photo_workflow() -> HumanReport | None:
     if not st.button("写真から日報を作成", type="primary"):
         return None
 
+    st.session_state.pop("human_report", None)
+
     if not uploaded_files or len(uploaded_files) < 2:
         st.error("紙日報とメーター明細の写真を2枚以上選択してください。")
         return None
@@ -154,7 +183,13 @@ def render_photo_workflow() -> HumanReport | None:
         with st.spinner("写真を読み取っています"):
             human_report = build_human_report_from_photo_uploads(list(uploaded_files), api_key)
         progress.progress(100)
-        st.success("日報を作成しました")
+        completion_issues = build_completion_issues(human_report)
+        if completion_issues:
+            st.error("日報はまだ完成していません。未照合または要確認が残っています。")
+            for issue in completion_issues:
+                st.warning(issue)
+        else:
+            st.success("日報を作成しました")
         return human_report
     except Exception as exc:
         progress.empty()
