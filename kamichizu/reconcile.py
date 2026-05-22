@@ -111,6 +111,54 @@ def _candidate_score(paper_row: SemanticRow, evidence_row: SemanticRow, rule: Re
     return score, diff
 
 
+def _diagnostic_value(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _near_paper_rows(evidence_row: SemanticRow, paper_rows: list[SemanticRow], rule: ReconciliationRule) -> list[tuple[SemanticRow, int]]:
+    near_rows: list[tuple[SemanticRow, int]] = []
+    for paper_row in paper_rows:
+        diff = _time_diff_minutes(paper_row.value(rule.paper_time_field), evidence_row.value(rule.evidence_time_field))
+        if diff is not None and diff <= rule.time_window_minutes:
+            near_rows.append((paper_row, diff))
+    near_rows.sort(key=lambda item: (item[1], item[0].row_addr))
+    return near_rows
+
+
+def _unmatched_evidence_diagnostic(
+    evidence_row: SemanticRow,
+    paper_rows: list[SemanticRow],
+    rule: ReconciliationRule,
+) -> str:
+    evidence_time = _diagnostic_value(evidence_row.value(rule.evidence_time_field))
+    evidence_amount = _diagnostic_value(evidence_row.value(rule.evidence_amount_field))
+    near_rows = _near_paper_rows(evidence_row, paper_rows, rule)
+
+    if _parse_minutes(evidence_row.value(rule.evidence_time_field)) is None:
+        reason = "evidence_time_missing"
+    elif not near_rows:
+        reason = "no_paper_time_within_9_minutes"
+    elif not any(_find_payment_destination(row, rule) is not None for row, _ in near_rows):
+        reason = "paper_time_match_without_payment_destination"
+    else:
+        reason = "paper_time_match_not_adopted"
+
+    parts = [
+        f"unmatched evidence {evidence_row.source_id}:{evidence_row.row_addr}",
+        f"reason={reason}",
+    ]
+    if evidence_time:
+        parts.append(f"time={evidence_time}")
+    if evidence_amount:
+        parts.append(f"amount={evidence_amount}")
+    if near_rows:
+        near_text = ",".join(f"{row.row_addr}@{diff}m" for row, diff in near_rows[:3])
+        parts.append(f"near_paper={near_text}")
+    return " ".join(parts)
+
+
 def reconcile_sources(
     paper: SourceMap,
     paper_format: FormatMap,
@@ -172,6 +220,6 @@ def reconcile_sources(
     for evidence_row in evidence_rows:
         evidence_key = (evidence_row.source_id, evidence_row.row_addr)
         if evidence_key not in used_evidence and _has_value(evidence_row.value(active_rule.evidence_amount_field)):
-            diagnostics.append(f"unmatched evidence {evidence_row.source_id}:{evidence_row.row_addr}")
+            diagnostics.append(_unmatched_evidence_diagnostic(evidence_row, paper_rows, active_rule))
 
     return AdoptedReport(rows=tuple(adopted_rows), diagnostics=tuple(diagnostics))

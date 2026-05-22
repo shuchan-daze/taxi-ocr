@@ -70,6 +70,22 @@ class MinimalAppTest(unittest.TestCase):
 
         self.assertEqual(message, "メーター明細に未照合が残っています（E01:08）")
 
+    def test_unmatched_evidence_message_explains_missing_paper_row(self):
+        message = app._human_diagnostic_message(
+            "unmatched evidence E01:08 reason=no_paper_time_within_9_minutes time=17:08 amount=1200"
+        )
+
+        self.assertIn("17:08 / 1,200円", message)
+        self.assertIn("対応する紙日報行が見つかりません", message)
+
+    def test_unmatched_evidence_message_explains_missing_payment_destination(self):
+        message = app._human_diagnostic_message(
+            "unmatched evidence E01:05 reason=paper_time_match_without_payment_destination time=10:46 amount=2430 near_paper=03@2m"
+        )
+
+        self.assertIn("10:46 / 2,430円", message)
+        self.assertIn("現収・未収・摘要の判断材料が不足", message)
+
     def test_app_uses_ocr_observation_route_without_adopted_report_shortcut(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 

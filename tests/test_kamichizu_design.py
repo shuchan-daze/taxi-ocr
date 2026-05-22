@@ -266,6 +266,36 @@ class KamichizuDesignTest(unittest.TestCase):
 
         self.assertEqual(build_human_rows(report, view), [{"時刻": "10:44", "現収": 1800, "状態": ""}])
 
+    def test_unmatched_meter_evidence_reports_no_near_paper_row_reason(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AE": 1800})
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen"})
+        meter = make_source(
+            "E01",
+            "meter_receipt",
+            "meter_a",
+            {"08_AB": "17:08", "08_AC": 1200},
+        )
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        self.assertIn("unmatched evidence E01:08", report.diagnostics[0])
+        self.assertIn("reason=no_paper_time_within_9_minutes", report.diagnostics[0])
+        self.assertIn("time=17:08", report.diagnostics[0])
+        self.assertIn("amount=1200", report.diagnostics[0])
+
+    def test_unmatched_meter_evidence_reports_missing_payment_destination_reason(self):
+        paper = make_source("P01", "daily_report", "daily_a", {"03_AD": "10:44", "03_AB": 2})
+        paper_format = FormatMap(format_id="daily_a", columns={"AB": "passengers", "AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"05_AB": "10:46", "05_AC": 2430})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        self.assertIn("unmatched evidence E01:05", report.diagnostics[0])
+        self.assertIn("reason=paper_time_match_without_payment_destination", report.diagnostics[0])
+        self.assertIn("near_paper=03@2m", report.diagnostics[0])
+
 
 if __name__ == "__main__":
     unittest.main()

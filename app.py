@@ -73,7 +73,34 @@ def build_report_table_rows(human_report: HumanReport) -> list[dict[str, Any]]:
 def _human_diagnostic_message(message: str) -> str:
     text = str(message)
     if text.startswith("unmatched evidence "):
-        target = text.removeprefix("unmatched evidence ").strip()
+        body = text.removeprefix("unmatched evidence ").strip()
+        tokens = body.split()
+        target = tokens[0] if tokens else ""
+        details: dict[str, str] = {}
+        for token in tokens[1:]:
+            if "=" in token:
+                key, value = token.split("=", 1)
+                details[key] = value
+
+        time_text = details.get("time")
+        amount_text = _format_amount(int(details["amount"])) if details.get("amount", "").isdigit() else details.get("amount", "")
+        evidence_label = target
+        if time_text and amount_text:
+            evidence_label = f"{time_text} / {amount_text}円"
+        elif time_text:
+            evidence_label = time_text
+
+        reason = details.get("reason")
+        if reason == "no_paper_time_within_9_minutes":
+            return f"メーター明細（{evidence_label}）に対応する紙日報行が見つかりません。時刻の読み取り、写真の範囲、行の欠落を確認してください。"
+        if reason == "paper_time_match_without_payment_destination":
+            return f"メーター明細（{evidence_label}）に近い紙日報行はありますが、現収・未収・摘要の判断材料が不足しています。紙の該当行を確認してください。"
+        if reason == "paper_time_match_not_adopted":
+            near = details.get("near_paper")
+            suffix = f" 近い紙行: {near}" if near else ""
+            return f"メーター明細（{evidence_label}）は候補がありますが採用できていません。候補の重複や金額差を確認してください。{suffix}"
+        if reason == "evidence_time_missing":
+            return f"メーター明細（{target}）の時刻が読めないため、紙日報へ対応づけできません。"
         return f"メーター明細に未照合が残っています（{target}）"
     if "paper amount" in text and "adopted evidence amount" in text:
         return "紙の金額とメーター明細の金額が異なるため、メーター明細の金額を採用しました。"
