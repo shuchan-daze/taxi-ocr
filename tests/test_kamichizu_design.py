@@ -135,6 +135,29 @@ class KamichizuDesignTest(unittest.TestCase):
         self.assertEqual(row.values["memo"], "Uber")
         self.assertEqual(row.evidence[0].paper_cell, "P01:03_AG")
 
+    def test_cash_memo_forces_cash_even_when_amount_was_observed_in_mi_column(self):
+        paper = make_source(
+            "P01",
+            "daily_report",
+            "daily_a",
+            {
+                "04_AD": "11:12",
+                "04_AF": 1000,
+                "04_AG": "現金",
+            },
+        )
+        paper_format = FormatMap(format_id="daily_a", columns={"AD": "time", "AE": "gen", "AF": "mi", "AG": "memo"})
+        meter = make_source("E01", "meter_receipt", "meter_a", {"04_AB": "11:12", "04_AC": 1000})
+        meter_format = FormatMap(format_id="meter_a", columns={"AB": "time", "AC": "amount"})
+
+        report = reconcile_sources(paper, paper_format, [(meter, meter_format)])
+
+        row = report.rows[0]
+        self.assertEqual(row.values["gen"], 1000)
+        self.assertIsNone(row.values["mi"])
+        self.assertEqual(row.values["memo"], "現金")
+        self.assertEqual(row.evidence[0].paper_cell, "P01:04_AG")
+
     def test_cash_amount_without_mi_or_memo_adopts_as_cash(self):
         paper = make_source(
             "P01",

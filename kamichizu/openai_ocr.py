@@ -1,4 +1,8 @@
-"""OpenAI OCR adapter for the single Kamichizu case contract."""
+"""OpenAI OCR adapter for Kamichizu observations only.
+
+OCR is allowed to observe documents.  It must not adopt amounts, create claims,
+choose a view, or complete a report.  Layer 2 and Layer 3 own those decisions.
+"""
 
 from __future__ import annotations
 
@@ -23,14 +27,14 @@ class OcrImage:
 
 
 class OcrContractError(ValueError):
-    """Raised when OCR output does not match the formal Kamichizu case contract."""
+    """Raised when OCR output does not match the observation contract."""
 
 
-def build_case_ocr_prompt() -> str:
-    return """あなたはタクシー手書き日報を神地図形式へ変換するOCRです。
+def build_observation_ocr_prompt() -> str:
+    return """あなたはタクシー手書き日報とメーター明細を読むOCRです。
 
 目的:
-写真の紙日報とメーター明細から、神地図エンジンの正式ケースJSONだけを返してください。
+写真から、紙面と証拠資料の観測JSONだけを返してください。
 
 絶対ルール:
 - JSONだけを返す
@@ -38,11 +42,17 @@ def build_case_ocr_prompt() -> str:
 - セルIDは物理住所だけにする。例: 01_AA, 01_AB, 02_AF
 - GEN, MI, MEMO, TIME など意味入りセルIDは禁止
 - 別名キーは禁止
-- paper / paper_format / evidences / view を必ず返す
+- paper / paper_format / evidences を必ず返す
+- claims は返さない
+- view は返さない
+- summary は返さない
+- adopted や total を返さない
+- 障割請求、貸切売上、総売上を作らない
+- 読み取りと判断を混ぜない
 - 写真のアップロード順に依存しない
 - 画像ごとに紙日報かメーター明細かを自動判別する
 - 紙日報は paper に、メーター明細は evidences に入れる
-- 紙日報の金額OCRは確定値ではない。確定金額はメーター明細で照合する
+- 紙日報の金額OCRは確定値ではない。確定金額は後段で証拠資料と照合する
 - 紙日報では時刻、現収欄/未収欄の位置、摘要の支払い種別を優先して読む
 - 現収欄/未収欄に何か書かれているが金額が読めない場合も、そのセルを raw に残し value は null にする
 
@@ -99,39 +109,14 @@ AA=time, AB=amount
         }
       }
     }
-  ],
-  "claims": [],
-  "view": {
-    "view_id": "daily_report_table",
-    "columns": [
-      ["no", "No"],
-      ["passengers", "人数"],
-      ["time", "時刻"],
-      ["gen", "現収"],
-      ["mi", "未収"],
-      ["memo", "摘要"],
-      ["status", "状態"]
-    ]
-  }
+  ]
 }
 
-障割が紙日報にある場合:
-- claims に type=public_discount_claim を追加
-- target_row_addr は対象乗車の紙行
-- target_global_cell_id は対象乗車の金額セルのグローバル住所。例: P01:03_AF
-- meter_amount は対象乗車のメーター明細金額
-- expected_claim_amount は紙日報の障割額
-- evidence は必須。paper_cell / evidence_cell / reason を持つ根拠を入れる
-
-貸切が紙日報にある場合:
-- claims に type=charter_sale を追加
-- claim_amount は貸切金額
-- target_global_cell_id は貸切を示す紙セルのグローバル住所。例: P01:06_AG
-- payment_kind は紙の欄位置に従い gen または mi
-- evidence は必須。paper_cell / evidence_cell / reason を持つ根拠を入れる
-
-判断できない金額を推測して作らないでください。
-ただし、現収欄/未収欄/摘要に書き込みが見える場合は、金額が読めなくてもセル住所を残してください。"""
+障割・貸切・自己負担などの特例:
+- claims を作らない
+- その文字が紙に見える場合は memo セルの raw/value に観測として残す
+- 特例判断は後段の Layer 3 が行う
+"""
 
 
 def _data_url(image: OcrImage) -> str:
@@ -172,7 +157,7 @@ def _require(data: Mapping[str, Any], key: str, name: str) -> Any:
 def _reject_keys(data: Mapping[str, Any], forbidden: tuple[str, ...], name: str) -> None:
     for key in forbidden:
         if key in data:
-            raise OcrContractError(f"{name}.{key} is not part of the Kamichizu case contract")
+            raise OcrContractError(f"{name}.{key} is not part of the observation contract")
 
 
 def _validate_cells(data: Any, name: str) -> None:
@@ -184,24 +169,28 @@ def _validate_cells(data: Any, name: str) -> None:
         _mapping(cell_data, f"{name}.{cell_id}")
 
 
-def validate_case_ocr_response(data: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Validate OCR output before it can enter the Kamichizu engine."""
+def validate_observation_ocr_response(data: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Validate OCR observations before Layer 2 can adopt anything."""
 
-    case_data = _mapping(data, "ocr_response")
-    _reject_keys(case_data, ("paper_map", "paper_map_v1", "meter_data", "meter_rows", "rows"), "ocr_response")
+    observation = _mapping(data, "ocr_response")
+    _reject_keys(
+        observation,
+        ("paper_map", "paper_map_v1", "meter_data", "meter_rows", "rows", "claims", "view", "summary", "adopted"),
+        "ocr_response",
+    )
 
-    paper = _mapping(_require(case_data, "paper", "ocr_response"), "paper")
+    paper = _mapping(_require(observation, "paper", "ocr_response"), "paper")
     _reject_keys(paper, ("rows",), "paper")
     _validate_cells(_require(paper, "cells", "paper"), "paper.cells")
     for key in ("source_id", "source_role", "source_type", "format_id"):
         _require(paper, key, "paper")
 
-    paper_format = _mapping(_require(case_data, "paper_format", "ocr_response"), "paper_format")
+    paper_format = _mapping(_require(observation, "paper_format", "ocr_response"), "paper_format")
     _mapping(_require(paper_format, "columns", "paper_format"), "paper_format.columns")
 
-    evidences = _list(_require(case_data, "evidences", "ocr_response"), "ocr_response.evidences")
+    evidences = _list(_require(observation, "evidences", "ocr_response"), "ocr_response.evidences")
     if not evidences:
-        raise OcrContractError("ocr_response.evidences must include at least one meter evidence source")
+        raise OcrContractError("ocr_response.evidences must include at least one evidence source")
     for index, evidence_data in enumerate(evidences):
         evidence = _mapping(evidence_data, f"evidences[{index}]")
         source = _mapping(_require(evidence, "source", f"evidences[{index}]"), f"evidences[{index}].source")
@@ -210,23 +199,21 @@ def validate_case_ocr_response(data: Mapping[str, Any]) -> Mapping[str, Any]:
         format_map = _mapping(_require(evidence, "format", f"evidences[{index}]"), f"evidences[{index}].format")
         _mapping(_require(format_map, "columns", f"evidences[{index}].format"), f"evidences[{index}].format.columns")
 
-    view = _mapping(_require(case_data, "view", "ocr_response"), "view")
-    _list(_require(view, "columns", "view"), "view.columns")
-    return case_data
+    return observation
 
 
-def build_case_from_images(
+def build_observations_from_images(
     images: list[OcrImage],
     *,
     api_key: str,
     model: str = DEFAULT_OPENAI_OCR_MODEL,
     timeout: int = 120,
 ) -> Mapping[str, Any]:
-    """Call OpenAI vision OCR and return the single formal case JSON."""
+    """Call OpenAI vision OCR and return source observations only."""
 
     if len(images) < 2:
         raise ValueError("日報とメーター明細の写真を2枚以上選択してください")
-    content: list[dict[str, Any]] = [{"type": "text", "text": build_case_ocr_prompt()}]
+    content: list[dict[str, Any]] = [{"type": "text", "text": build_observation_ocr_prompt()}]
     for image in images:
         content.append({"type": "text", "text": f"image file: {image.name}"})
         content.append({"type": "image_url", "image_url": {"url": _data_url(image)}})
@@ -249,4 +236,4 @@ def build_case_from_images(
     with urllib.request.urlopen(request, timeout=timeout) as response:
         body = json.loads(response.read().decode("utf-8"))
     content_text = body["choices"][0]["message"]["content"]
-    return validate_case_ocr_response(_extract_json_object(content_text))
+    return validate_observation_ocr_response(_extract_json_object(content_text))

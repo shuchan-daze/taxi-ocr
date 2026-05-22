@@ -23,7 +23,8 @@ class ReconciliationRule:
     evidence_amount_field: str = "amount"
     destination_fields: tuple[str, ...] = ("gen", "mi")
     time_window_minutes: int = 9
-    mi_hint_field: str = "memo"
+    payment_hint_field: str = "memo"
+    gen_hint_terms: tuple[str, ...] = ("現金", "現収", "CASH")
     mi_hint_terms: tuple[str, ...] = ("カード", "CARD", "VISA", "UBER", "GO", "PAYPAY", "SUICA", "交通系", "チケット", "券")
 
 
@@ -81,19 +82,20 @@ def _find_destination(row: SemanticRow, destination_fields: Iterable[str]) -> st
 
 
 def _find_payment_destination(row: SemanticRow, rule: ReconciliationRule) -> str | None:
-    destination = _find_destination(row, rule.destination_fields)
-    if destination is not None:
-        return destination
-    if _text_contains_any(row.raw(rule.mi_hint_field) or row.value(rule.mi_hint_field), rule.mi_hint_terms):
+    hint_text = row.raw(rule.payment_hint_field) or row.value(rule.payment_hint_field)
+    if _text_contains_any(hint_text, rule.gen_hint_terms):
+        return "gen"
+    if _text_contains_any(hint_text, rule.mi_hint_terms):
         return "mi"
-    return None
+    destination = _find_destination(row, rule.destination_fields)
+    return destination
 
 
 def _paper_link_cell(row: SemanticRow, destination: str, rule: ReconciliationRule) -> str:
     if destination in row.fields:
         return row.fields[destination].global_cell_id
-    if rule.mi_hint_field in row.fields:
-        return row.fields[rule.mi_hint_field].global_cell_id
+    if rule.payment_hint_field in row.fields:
+        return row.fields[rule.payment_hint_field].global_cell_id
     raise ValueError(f"paper row {row.row_addr} has no cell to link destination {destination!r}")
 
 
@@ -134,6 +136,9 @@ def reconcile_sources(
         destination = _find_payment_destination(paper_row, active_rule)
 
         if destination is not None:
+            for field_name in active_rule.destination_fields:
+                if field_name != destination:
+                    values[field_name] = None
             candidates: list[tuple[int, int, SemanticRow]] = []
             for evidence_row in evidence_rows:
                 evidence_key = (evidence_row.source_id, evidence_row.row_addr)

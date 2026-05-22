@@ -8,6 +8,10 @@ from .models import AdoptedReport, HumanReport, ViewMap
 from .totals import SalesTotals, compute_sales_totals
 
 
+def _display_value(value: Any) -> Any:
+    return "" if value is None else value
+
+
 def build_human_rows(report: AdoptedReport, view_map: ViewMap) -> list[dict[str, Any]]:
     """Build rows for human display from an adopted report and a view map."""
 
@@ -18,7 +22,7 @@ def build_human_rows(report: AdoptedReport, view_map: ViewMap) -> list[dict[str,
             if field_name == "status":
                 item[label] = "要確認" if row.alerts else ""
             else:
-                item[label] = row.values.get(field_name)
+                item[label] = _display_value(row.values.get(field_name))
         output.append(item)
     return output
 

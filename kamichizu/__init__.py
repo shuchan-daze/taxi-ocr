@@ -16,7 +16,7 @@ from .models import (
     SourceMeta,
     ViewMap,
 )
-from .case import build_human_report_from_case
+from .input import build_human_report_from_observations
 from .reconcile import ReconciliationRule, reconcile_sources
 from .semantic import SemanticRow, build_semantic_rows
 from .totals import SalesTotals, compute_sales_totals
@@ -37,7 +37,7 @@ __all__ = [
     "SourceMeta",
     "SalesTotals",
     "ViewMap",
-    "build_human_report_from_case",
+    "build_human_report_from_observations",
     "build_human_rows",
     "build_claim_rows",
     "build_human_report",
