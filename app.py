@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 from typing import Any
 
 from kamichizu.demo import build_demo_human_report, build_demo_view
@@ -15,7 +17,8 @@ except Exception:  # pragma: no cover - Streamlit is optional in unit tests.
 
 
 APP_TITLE = "手書きAI日報"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.2"
+DEBUG_DIR = Path(".kamichizu_debug")
 
 
 def _format_amount(value: object) -> str:
@@ -29,6 +32,25 @@ def _format_amount(value: object) -> str:
 def _row_key(value: object) -> str:
     text = str(value or "").strip()
     return text.zfill(2) if text.isdigit() else text
+
+
+def _write_debug_json(file_name: str, data: Any) -> None:
+    """Save diagnostic data outside the repo-visible UI without affecting output."""
+
+    try:
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        (DEBUG_DIR / file_name).write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _human_report_debug_data(human_report: HumanReport) -> dict[str, Any]:
+    return {
+        "summary_rows": [dict(row) for row in human_report.summary_rows],
+        "ride_rows": [dict(row) for row in human_report.ride_rows],
+        "claim_rows": [dict(row) for row in human_report.claim_rows],
+        "diagnostics": list(human_report.diagnostics),
+    }
 
 
 def build_report_table_rows(human_report: HumanReport) -> list[dict[str, Any]]:
@@ -111,6 +133,18 @@ def build_completion_issues(human_report: HumanReport) -> list[str]:
     """Return human-facing issues that prevent treating a report as complete."""
 
     issues: list[str] = []
+    summary_amounts = {str(row.get("項目")): row.get("金額") for row in human_report.summary_rows}
+    gen_amount = summary_amounts.get("現収")
+    mi_amount = summary_amounts.get("未収")
+    if (
+        isinstance(gen_amount, int)
+        and isinstance(mi_amount, int)
+        and gen_amount == 0
+        and mi_amount > 0
+        and len(human_report.ride_rows) >= 5
+    ):
+        issues.append("現収が0円です。紙日報の現収欄・未収欄のOCR位置を確認してください。")
+
     unmatched_count = sum(1 for message in human_report.diagnostics if str(message).startswith("unmatched evidence "))
     if unmatched_count:
         issues.append(f"メーター明細に未照合が{unmatched_count}件残っています。")
@@ -156,7 +190,10 @@ def build_human_report_from_photo_uploads(uploaded_files: list[Any], api_key: st
     """Build a HumanReport from uploaded photos through the formal pipeline."""
 
     observations = build_observations_from_images(build_ocr_images(uploaded_files), api_key=api_key)
-    return build_human_report_from_observations(observations, build_demo_view())
+    _write_debug_json("last_observations.json", observations)
+    human_report = build_human_report_from_observations(observations, build_demo_view())
+    _write_debug_json("last_human_report.json", _human_report_debug_data(human_report))
+    return human_report
 
 
 def render_human_report(human_report: HumanReport) -> None:

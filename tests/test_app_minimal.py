@@ -65,6 +65,21 @@ class MinimalAppTest(unittest.TestCase):
 
         self.assertEqual(issues, ["メーター明細に未照合が1件残っています。", "No.7 が要確認です。"])
 
+    def test_all_mi_large_report_prevents_complete_success(self):
+        report = HumanReport(
+            summary_rows=(
+                {"項目": "現収", "金額": 0, "内訳": "通常 0 + 特例 0"},
+                {"項目": "未収", "金額": 41500, "内訳": "通常 41500 + 特例 0"},
+            ),
+            ride_rows=tuple({"No": index, "時刻": "10:10", "現収": "", "未収": 1000, "摘要": "Visa", "状態": ""} for index in range(1, 13)),
+            claim_rows=(),
+            diagnostics=(),
+        )
+
+        issues = app.build_completion_issues(report)
+
+        self.assertEqual(issues, ["現収が0円です。紙日報の現収欄・未収欄のOCR位置を確認してください。"])
+
     def test_unmatched_evidence_message_is_human_readable(self):
         message = app._human_diagnostic_message("unmatched evidence E01:08")
 
